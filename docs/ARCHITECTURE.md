@@ -132,7 +132,8 @@ func is_server() -> bool                 # true in solo
 func my_id() -> int
 func send_chat(text: String) -> void
 ```
-Rune glyphs are drawn procedurally by `RuneGlyph` (ui/rune_glyph.gd) from stroke lists in `RuneCode` (network/rune_code.gd).
+Rune glyphs (strokes, names, key mapping) live in `RuneGlyph` (ui/rune_glyph.gd); `RuneCode` (network/rune_code.gd)
+handles code generation and encoding — the network only ever deals with rune indices 0..15.
 
 ## UI (ui/)
 

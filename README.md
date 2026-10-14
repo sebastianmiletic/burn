@@ -104,13 +104,24 @@ docs/        ARCHITECTURE.md — module contracts
 ## Tests
 
 ```sh
-godot --headless --path . --import                 # once, after pulling
-godot --headless --path . -s res://tests/run_tests.gd
-tests/net/run_net_test.sh                          # LAN discovery, lobby, payloads, 150 ms / 2 % loss
-godot --path . --fullscreen -- --capture-game=/tmp/burn --tour=vista,village,night   # screenshot tour + timings
+godot --headless --path . --import                         # once, after pulling (also after editing .glsl shaders)
+godot --headless --path . -s res://tests/run_tests.gd      # 58 unit tests (+ boss and enemy fight simulations)
+godot --headless --path . -- --playtest                    # scripted playthrough: quests, mining, combat, boss, hell, save
+godot --headless --path . -s res://tests/game/flow_test.gd # intro -> menu -> new game -> quit -> continue
+tests/net/run_net_test.sh                                  # LAN discovery, lobby, payloads, 150 ms / 2 % loss
+tests/net/run_game_mp_test.sh [--latency 150 --loss 0.02]  # host + client actually playing together
+godot --path . --fullscreen -- --capture-game=/tmp/burn --tour=vista,village,night,dragonfight   # screenshots + timings
 ```
+
+Developer flags: `--load-timing` (loading phase timings), `--gfx=noshadow,nofog,nossao,noglow,dist4,noascii`
+(profiling toggles), `--prof` with `--capture-game` (per-subsystem frame cost), `--print-window`.
 
 ## Exporting
 
-`export_presets.cfg` defines macOS, Windows and Linux presets. Install the Godot 4.7 export templates
-(Editor → Manage Export Templates), then e.g. `godot --headless --path . --export-release "macOS" build/Burn.zip`.
+`export_presets.cfg` defines macOS, Windows and Linux presets. With the Godot 4.7.2 export templates installed:
+
+```sh
+godot --headless --path . --export-release "macOS"   build/macos/Burn.zip     # ~59 MB, universal, ad-hoc signed
+godot --headless --path . --export-release "Windows" build/windows/Burn.exe   # ~105 MB, single exe
+godot --headless --path . --export-release "Linux"   build/linux/Burn.x86_64  # ~71 MB, single binary
+```

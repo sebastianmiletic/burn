@@ -130,11 +130,13 @@ func apply_display() -> void:
 	var screen := window.current_screen
 	match int(get_value("display", "window_mode")):
 		WindowMode.FILL_SCREEN:
-			# A borderless window covering the screen: no separate fullscreen space.
+			# A borderless window covering the screen (all of it but the OS menu
+			# bar / taskbar), without switching to a separate fullscreen space.
 			window.mode = Window.MODE_WINDOWED
 			window.borderless = true
-			window.position = DisplayServer.screen_get_position(screen)
-			window.size = DisplayServer.screen_get_size(screen)
+			var usable := DisplayServer.screen_get_usable_rect(screen)
+			window.position = usable.position
+			window.size = usable.size
 		WindowMode.WINDOWED:
 			window.mode = Window.MODE_WINDOWED
 			window.borderless = false
