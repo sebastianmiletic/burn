@@ -174,7 +174,8 @@ void main() {
 	imageStore(cell_lum_image, cell, vec4(log2(scene_lum + 1e-4), dom == M_SKY ? 0.0 : 1.0, 0.0, 0.0));
 	float x = pow(clamp(lum / (1.0 + lum), 0.0, 1.0), gamma);
 	// Contrast around the middle of the ramp: deep darks, dense brights.
-	x = clamp((x - 0.42) * 1.5 + 0.45, 0.0, 1.0);
+	x = clamp((x - 0.42) * 1.3 + 0.45, 0.0, 1.0);
+	x = max(x, pow(clamp(lum / (1.0 + lum), 0.0, 1.0), gamma) * 0.6);  // keep shadow detail
 	float dither = (flags & FLAG_DITHER) != 0u ? bayer4(cell) - 0.5 : 0.0;
 	float h = hash12(vec2(cell) + 17.0);
 

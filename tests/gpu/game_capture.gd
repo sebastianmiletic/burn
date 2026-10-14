@@ -70,7 +70,10 @@ func _run() -> void:
 		p.body.velocity = Vector3.ZERO
 		await _frames(90)
 		var stats := await _measure(1.5)
-		report.append("%-8s %-28s load %5d ms  avg %.2f ms (%.0f fps) worst %.2f ms" % [stop, loc.name, Time.get_ticks_msec() - t0, stats.x, 1000.0 / stats.x, stats.y])
+		report.append("%-8s %-28s load %5d ms  avg %.2f ms (%.0f fps) worst %.2f ms  process %.2f ms  draws %d  prims %d" % [stop, loc.name, Time.get_ticks_msec() - t0, stats.x, 1000.0 / stats.x, stats.y,
+				Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
+				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
 		await _shot(stop)
 		if "--raw" in OS.get_cmdline_user_args():
 			Ascii.effect.enabled = false
@@ -95,6 +98,8 @@ func _run() -> void:
 		printerr("[game-capture] visible meshes ", nvis, " entity root vis ", w.get_node("Entities").visible, " gw vis ", w.visible)
 		printerr("[game-capture] model meshes ", meshes.size(), " first ", first.global_position if first else Vector3.ZERO, " in tree vis ", first.is_visible_in_tree() if first else false, " layers ", (first as VisualInstance3D).layers if first else 0, " cam mask ", w.view.camera.cull_mask, " cam pos ", w.view.camera.global_position)
 		printerr("[game-capture] player at ", p.global_position, " cam ", p.camera.global_position, " model ", p.model, " vis ", p.visible, " model vis ", p.model.visible if p.model else false)
+	if "--prof" in OS.get_cmdline_user_args():
+		await _profile(w, report)
 	for line in report:
 		printerr("[game-capture] ", line)
 	var f := FileAccess.open(out_dir.path_join("report.txt"), FileAccess.WRITE)
@@ -128,3 +133,37 @@ func _shot(shot_name: String) -> void:
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join(shot_name + ".png"))
+
+
+## Pauses one subsystem at a time and reports main-thread process time.
+func _profile(w: GameWorld, report: PackedStringArray) -> void:
+	var groups := {
+		"all on": [],
+		"hud": [w.hud],
+		"entities": [w.get_node("Entities")],
+		"voxels": w.worlds.values(),
+		"sky+weather": [w.sky, w.weather],
+		"tracker+director+spawner": [w.tracker, w.director, w.spawner],
+		"view": [w.view],
+		"replicator": [w.replicator],
+		"Audio": [Audio],
+		"Net": [Net],
+		"Ascii": [Ascii],
+		"local player": [w.local_player],
+		"EVERYTHING": [w, Audio, Net, Ascii, Settings, Events],
+	}
+	for label: String in groups:
+		var nodes: Array = groups[label]
+		for n: Node in nodes:
+			n.process_mode = Node.PROCESS_MODE_DISABLED
+		await _frames(30)
+		var total := 0.0
+		for i in 120:
+			await get_tree().process_frame
+			total += Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+		var phys := Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+		var objs := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+		report.append("   physics %.2f ms, nodes %d, fps %.0f" % [phys, objs, Engine.get_frames_per_second()])
+		report.append("profile %-26s process %.2f ms" % ["without " + label if not nodes.is_empty() else label, total / 120.0])
+		for n: Node in nodes:
+			n.process_mode = Node.PROCESS_MODE_INHERIT

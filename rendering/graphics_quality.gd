@@ -21,7 +21,7 @@ static func apply_environment(env: Environment) -> void:
 	env.sdfgi_cascades = 3 if q == Settings.Quality.HIGH else 5
 	env.sdfgi_min_cell_size = 0.25
 	env.sdfgi_use_occlusion = true
-	env.volumetric_fog_enabled = q >= Settings.Quality.MEDIUM and fog_mult > 0.01
+	env.volumetric_fog_enabled = q >= Settings.Quality.HIGH and fog_mult > 0.01
 	env.glow_enabled = bloom > 0.01
 	env.glow_intensity = 0.8 * bloom
 
@@ -33,6 +33,19 @@ static func apply_environment(env: Environment) -> void:
 			[RenderingServer.ENV_SSAO_QUALITY_VERY_LOW, RenderingServer.ENV_SSAO_QUALITY_LOW,
 			RenderingServer.ENV_SSAO_QUALITY_MEDIUM, RenderingServer.ENV_SSAO_QUALITY_HIGH][q],
 			true, 0.5, 2, 50, 300)
+
+
+## Sun/moon shadow setup for this quality.
+static func apply_directional(light: DirectionalLight3D, sun: bool) -> void:
+	var q := int(Settings.get_value("graphics", "quality"))
+	light.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS if q <= Settings.Quality.MEDIUM else DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	light.directional_shadow_max_distance = ([40.0, 60.0, 100.0, 140.0][q]) * (1.0 if sun else 0.7)
+	light.directional_shadow_blend_splits = q >= Settings.Quality.HIGH
+
+
+## How far (m) chunk meshes still cast shadows.
+static func shadow_caster_distance() -> float:
+	return [32.0, 48.0, 80.0, 120.0][int(Settings.get_value("graphics", "quality"))]
 
 
 ## Shadow-casting budget for point lights at this quality.

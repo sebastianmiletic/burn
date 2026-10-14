@@ -114,7 +114,7 @@ func render_scale() -> float:
 	var forced: float = get_value("graphics", "render_scale")
 	if forced > 0.0:
 		return forced
-	return [0.5, 0.62, 0.75, 1.0][int(get_value("graphics", "quality"))]
+	return [0.4, 0.5, 0.65, 0.85][int(get_value("graphics", "quality"))]
 
 
 func apply_display() -> void:

@@ -26,6 +26,17 @@ func _ready() -> void:
 	near = 0.08
 	far = 600.0
 	_noise.frequency = 3.5
+	# Soft fill from the viewer's side so characters never collapse into
+	# glyph-less silhouettes against bright ground.
+	var fill := OmniLight3D.new()
+	fill.light_color = Color(1.0, 0.82, 0.62)
+	fill.light_energy = 0.55
+	fill.omni_range = 9.0
+	fill.omni_attenuation = 1.6
+	fill.light_specular = 0.1
+	fill.shadow_enabled = false
+	fill.light_volumetric_fog_energy = 0.0
+	add_child(fill)
 	Events.screen_shake.connect(add_trauma)
 	Settings.changed.connect(func(section: String, key: String) -> void:
 		if section == "graphics" and key == "fov":

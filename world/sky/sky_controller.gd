@@ -48,22 +48,24 @@ func _ready() -> void:
 	GraphicsQuality.apply_environment(environment)
 	Settings.changed.connect(func(section: String, _key: String) -> void:
 		if section == "graphics":
-			GraphicsQuality.apply_environment(environment))
+			GraphicsQuality.apply_environment(environment)
+			GraphicsQuality.apply_directional(sun, true)
+			GraphicsQuality.apply_directional(moon, false))
 	var we := WorldEnvironment.new()
 	we.environment = environment
 	add_child(we)
 
 	sun.shadow_enabled = true
 	sun.shadow_blur = 1.2
-	sun.directional_shadow_max_distance = 110.0
 	sun.light_angular_distance = 0.6
 	sun.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	add_child(sun)
 	moon.shadow_enabled = true
-	moon.directional_shadow_max_distance = 80.0
 	moon.light_color = Color(0.55, 0.63, 0.9)
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_AND_SKY
 	add_child(moon)
+	GraphicsQuality.apply_directional(sun, true)
+	GraphicsQuality.apply_directional(moon, false)
 
 
 func set_dimension(dim: int) -> void:
@@ -126,9 +128,9 @@ func _process(delta: float) -> void:
 	moon.visible = not hell
 	sun.light_energy = (1.05 * smoothstep(-0.05, 0.25, sun_dir.y)) * weather_dim * surface_light
 	sun.light_color = Color(1.0, 0.62, 0.38).lerp(Color(1.0, 0.93, 0.84), smoothstep(0.05, 0.5, sun_dir.y))
-	sun.shadow_enabled = sun.light_energy > 0.02
+	sun.shadow_enabled = sun.light_energy > 0.02 and not has_meta("no_shadow")
 	moon.light_energy = 0.12 * smoothstep(0.0, 0.3, moon_dir.y) * (1.0 - dayf) * weather_dim * surface_light
-	moon.shadow_enabled = moon.light_energy > 0.02
+	moon.shadow_enabled = moon.light_energy > 0.02 and not has_meta("no_shadow")
 
 	_sky_mat.set_shader_parameter(&"day", dayf)
 	_sky_mat.set_shader_parameter(&"dusk", dusk)

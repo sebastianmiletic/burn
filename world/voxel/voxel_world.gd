@@ -506,11 +506,23 @@ func _set_mesh(k: Vector3i, result: Dictionary) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.position = Vector3(k * Chunk.SIZE)
+	mi.cast_shadow = _shadow_setting(k)
 	add_child(mi)
 	_meshes[k] = mi
 
 
+func _shadow_setting(k: Vector3i) -> int:
+	var c := Vector3(k * Chunk.SIZE) + Vector3(8, 8, 8)
+	var near := c.distance_to(focus) < GraphicsQuality.shadow_caster_distance() + 12.0
+	return GeometryInstance3D.SHADOW_CASTING_SETTING_ON if near else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
 func _unload_far(fkey: Vector3i) -> void:
+	# Only nearby terrain casts shadows: halves the shadow-pass draw calls.
+	for k: Vector3i in _meshes:
+		var m: MeshInstance3D = _meshes[k]
+		if m != null:
+			m.cast_shadow = _shadow_setting(k)
 	var r := view_radius + 2
 	var mesh_keys := _meshes.keys()
 	for k: Vector3i in mesh_keys:

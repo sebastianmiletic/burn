@@ -121,12 +121,39 @@ func setup(info: Dictionary) -> void:
 		var p := local_player.global_position
 		local_player.global_position = Vector3(p.x, world.surface_y(int(p.x), int(p.z)) + 1.05, p.z)
 
+	_apply_gfx_flags()
 	hud = _make_ui()
 	if hud != null:
 		add_child(hud)
 	loading.emit(1.0, "")
 	Audio.set_music("explore")
 	ready_to_play.emit()
+
+
+## Profiling aid: --gfx=noshadow,nofog,nossao,noglow,nosun,dist4,noascii
+func _apply_gfx_flags() -> void:
+	for a in OS.get_cmdline_user_args():
+		if not a.begins_with("--gfx="):
+			continue
+		for f in a.trim_prefix("--gfx=").split(","):
+			match f:
+				"noshadow":
+					sky.sun.shadow_enabled = false
+					sky.moon.shadow_enabled = false
+					sky.set_meta("no_shadow", true)
+				"nofog":
+					sky.environment.volumetric_fog_enabled = false
+				"nossao":
+					sky.environment.ssao_enabled = false
+				"noglow":
+					sky.environment.glow_enabled = false
+				"nosun":
+					sky.sun.visible = false
+				"dist4":
+					for d: int in worlds:
+						(worlds[d] as VoxelWorld).view_radius = 4
+				"noascii":
+					Ascii.effect.enabled = false
 
 
 func _prepare_dimension(dim: int, seed_value: int, p0: float, p1: float) -> void:
