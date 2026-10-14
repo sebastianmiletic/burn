@@ -22,17 +22,14 @@ func _ready() -> void:
 	camera.fov = 62.0
 	camera.near = 0.05
 	camera.far = 400.0
-	camera.compositor = Ascii.make_compositor()
-	camera.attributes = _camera_attributes()
 	add_child(camera)
+	if not "--no-view" in OS.get_cmdline_user_args():
+		var view := AsciiView.new()
+		view.source_camera = camera
+		add_child(view)
 
 	rain = RainCurtain.new()
 	add_child(rain)
-
-	var overlay := AsciiDebugOverlay.new()
-	overlay.rain_toggled.connect(func(on: bool) -> void: rain.emitting = on; rain.visible = on)
-	overlay.orbit_toggled.connect(func(on: bool) -> void: camera.auto_orbit = on)
-	add_child(overlay)
 	add_child(PerfOverlay.new())
 
 	_apply_disable_flags()
@@ -97,7 +94,7 @@ func _build_environment() -> void:
 	environment.ambient_light_energy = 0.6
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 
-	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
+	environment.tonemap_mode = Environment.TONE_MAPPER_ACES
 	environment.tonemap_exposure = 1.0
 
 	environment.ssao_enabled = true
@@ -131,19 +128,10 @@ func _build_environment() -> void:
 	for i in 7:
 		environment.set_glow_level(i, i >= 1 and i <= 5)
 
+	if not "--no-quality" in OS.get_cmdline_user_args(): GraphicsQuality.apply_environment(environment)
 	var world_env := WorldEnvironment.new()
 	world_env.environment = environment
 	add_child(world_env)
-
-
-func _camera_attributes() -> CameraAttributesPractical:
-	var attr := CameraAttributesPractical.new()
-	attr.auto_exposure_enabled = true
-	attr.auto_exposure_scale = 0.45
-	attr.auto_exposure_speed = 0.8
-	attr.auto_exposure_min_sensitivity = 100.0
-	attr.auto_exposure_max_sensitivity = 400.0
-	return attr
 
 
 func _build_lights() -> void:

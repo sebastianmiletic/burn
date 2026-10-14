@@ -15,8 +15,8 @@ layout(rgba16f, set = 0, binding = 0) uniform restrict readonly image2D color_im
 layout(rgba16f, set = 0, binding = 1) uniform restrict readonly image2D lummat_image;
 layout(rgba16f, set = 0, binding = 2) uniform restrict readonly image2D gbuf_image;
 layout(r16f, set = 0, binding = 3) uniform restrict readonly image2D dir_image;
-layout(rgba16f, set = 0, binding = 4) uniform restrict writeonly image2D cell_color_image;
-layout(r32ui, set = 0, binding = 5) uniform restrict writeonly uimage2D cell_info_image;
+layout(rgba16f, set = 0, binding = 4) uniform restrict writeonly image2D cell_color_image; // fg (exposed, linear), glyph index
+layout(rgba16f, set = 0, binding = 5) uniform restrict writeonly image2D cell_aux_image;   // mode, material, edge dir, brightness
 layout(set = 0, binding = 6, std430) restrict readonly buffer GlyphTable {
 	int data[];
 } tbl;
@@ -27,7 +27,7 @@ layout(set = 0, binding = 8, std430) restrict readonly buffer Exposure {
 } ex;
 
 layout(push_constant, std430) uniform Params {
-	vec4 p0; // width, height, cell w, cell h
+	vec4 p0; // width, height, cell w, cell h (internal pixels, fractional)
 	vec4 p1; // cols, rows, time, flags
 	vec4 p2; // exposure, gamma, edge fraction, saturation
 	vec4 p3; // contrast, glyph gain, flicker, liquid speed
@@ -99,9 +99,11 @@ void main() {
 	}
 
 	ivec2 size = ivec2(pc.p0.xy);
-	ivec2 csz = ivec2(pc.p0.zw);
-	ivec2 origin = cell * csz;
-	// Large (HiDPI) cells are sampled sparsely; the averages barely change.
+	vec2 cszf = pc.p0.zw;
+	ivec2 origin = ivec2(floor(vec2(cell) * cszf));
+	ivec2 cend = max(ivec2(floor(vec2(cell + 1) * cszf)), origin + 1);
+	cend = min(cend, size);
+	ivec2 csz = max(cend - origin, ivec2(1));
 	ivec2 stp = max(ivec2(1), csz / ivec2(8, 12));
 	uint flags = uint(pc.p1.w + 0.5);
 	float time = pc.p1.z;
@@ -123,9 +125,6 @@ void main() {
 	for (int y = 0; y < csz.y; y += stp.y) {
 		for (int x = 0; x < csz.x; x += stp.x) {
 			ivec2 p = origin + ivec2(x, y);
-			if (p.x >= size.x || p.y >= size.y) {
-				continue;
-			}
 			vec4 lm = imageLoad(lummat_image, p);
 			int m = clamp(int(lm.y + 0.5), 0, 8);
 			vec3 c = max(imageLoad(color_image, p).rgb, vec3(0.0));
@@ -167,6 +166,8 @@ void main() {
 	float adapted = ex.initialised > 0.5 ? exp2(ex.adapted_log) : pc.p4.w;
 	float norm = clamp(pow(pc.p4.w / max(adapted, 1e-5), pc.p4.z), 0.25, 64.0);
 	float exposure = pc.p2.x * norm;
+	// Colour exposure: full adaptation, like a camera's auto exposure.
+	float colour_exposure = pc.p2.x * clamp(pc.p4.w / max(adapted, 1e-5), 0.05, 400.0);
 	float gamma = pc.p2.y;
 	float lum = scene_lum * exposure;
 	imageStore(cell_lum_image, cell, vec4(log2(scene_lum + 1e-4), dom == M_SKY ? 0.0 : 1.0, 0.0, 0.0));
@@ -290,10 +291,6 @@ void main() {
 	fg = mix(vec3(l), fg, pc.p2.w);
 	fg = 0.18 * pow(max(fg, vec3(0.0)) / 0.18, vec3(pc.p3.x));
 
-	uint info = uint(glyph) & 0xFFu;
-	info |= (mode & 0xFu) << 8u;
-	info |= (uint(dom) & 0xFu) << 12u;
-	info |= (uint(edge_dir) & 0x7u) << 16u;
-	imageStore(cell_info_image, cell, uvec4(info, 0u, 0u, 0u));
-	imageStore(cell_color_image, cell, vec4(fg * pc.p3.y, x));
+	imageStore(cell_color_image, cell, vec4(fg * colour_exposure, float(glyph)));
+	imageStore(cell_aux_image, cell, vec4(float(mode), float(dom), float(edge_dir), x));
 }

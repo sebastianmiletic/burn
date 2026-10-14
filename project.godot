@@ -17,7 +17,12 @@ config/features=PackedStringArray("4.7", "Forward Plus")
 
 [autoload]
 
+Settings="*res://core/settings.gd"
 Ascii="*res://rendering/ascii/ascii_config.gd"
+Events="*res://core/events.gd"
+Audio="*res://audio/audio.gd"
+Net="*res://network/net.gd"
+Game="*res://core/game.gd"
 
 [display]
 
@@ -25,7 +30,7 @@ window/size/viewport_width=1600
 window/size/viewport_height=900
 window/dpi/allow_hidpi=true
 window/vsync/vsync_mode=1
-window/stretch/mode="canvas_items"
+window/stretch/mode="disabled"
 window/stretch/aspect="expand"
 
 [input_devices]

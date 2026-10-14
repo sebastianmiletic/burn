@@ -1,35 +1,38 @@
 @tool
 class_name AsciiEffect
 extends CompositorEffect
-## Compositor effect that redraws the lit opaque scene as coloured glyphs.
+## Scene analysis half of the ASCII renderer.
 ##
-## Runs at PRE_TRANSPARENT: lighting, GI, SSAO, SSR and volumetric fog are
-## already in the colour buffer, but transparent materials are not. Fire,
-## sparks and spells use transparent/additive materials, so Godot draws them
-## after this pass, on top of the glyphs, and its glow + tonemap passes then
-## bloom them across neighbouring cells.
+## Runs at PRE_TRANSPARENT inside the (reduced-resolution) 3D viewport, after
+## lighting, GI, SSAO, SSR and volumetric fog. It decides, for every screen
+## cell, which glyph to show and in what colour, and stores that in two small
+## cell textures. ascii_composite.gdshader then draws the glyphs at native
+## screen resolution, so they stay sharp while the 3D scene renders at a
+## fraction of the pixels.
 ##
-## Five compute passes (rendering/ascii/shaders):
-##   prep    -> per-pixel normal, linear depth, luminance, material id
-##   edges   -> depth / normal / luminance edge mask
-##   sobel   -> edge direction per pixel
-##   cells   -> per-cell glyph choice and colour
-##   compose -> glyph atlas lookup written back into the colour buffer
+## Finally the scene colour is cleared (except emissive pass-through cells):
+## Godot then draws the transparent FX (fire, sparks, spells) and its glow on
+## black, and that image becomes the additive FX layer of the composite, so FX
+## are never turned into glyphs and their bloom spills across the grid.
 ##
-## Settings are plain properties written from the main thread (see the Ascii
-## autoload) and read on the render thread each frame.
+## Passes (rendering/ascii/shaders):
+##   prep     -> per-pixel normal, linear depth, luminance, material id
+##   edges    -> depth / normal (/ luminance) edge mask
+##   sobel    -> edge direction per pixel
+##   cells    -> per-cell glyph choice and colour
+##   exposure -> adapted scene brightness for the next frame
+##   finish   -> clear to the FX layer (or draw a debug view)
 
 enum DebugView { NONE, EDGES, MATERIALS }
 
 const CTX_PIXELS := &"ascii_pixels"
-const CTX_CELLS := &"ascii_cells"
 const SHADER_FILES := {
 	&"prep": "res://rendering/ascii/shaders/ascii_prep.glsl",
 	&"edges": "res://rendering/ascii/shaders/ascii_edges.glsl",
 	&"sobel": "res://rendering/ascii/shaders/ascii_sobel.glsl",
 	&"cells": "res://rendering/ascii/shaders/ascii_cells.glsl",
-	&"compose": "res://rendering/ascii/shaders/ascii_compose.glsl",
 	&"exposure": "res://rendering/ascii/shaders/ascii_exposure.glsl",
+	&"finish": "res://rendering/ascii/shaders/ascii_finish.glsl",
 }
 
 const FLAG_EDGES := 1
@@ -38,18 +41,20 @@ const FLAG_DITHER := 4
 const FLAG_FLICKER := 8
 const FLAG_RAIN := 16
 
+# --- Output (set by AsciiView every frame) ------------------------------------
+## Size of the final screen in physical pixels, and the glyph cell size there.
+var output_size := Vector2i(1920, 1080)
+var output_cell := Vector2i(8, 14)
+
 # --- Look -------------------------------------------------------------------
 var exposure := 1.0
 ## How strongly glyph choice follows the adapted scene brightness (0 = fixed).
-var adaptation := 0.8
+var adaptation := 0.75
 var adaptation_speed := 1.5
-var exposure_key := 0.45
-var gamma := 0.8
-var saturation := 1.15
-var contrast := 1.08
-var glyph_gain := 2.2
-var background_tint := 0.18
-var background_level := 0.0015
+var exposure_key := 0.5
+var gamma := 0.72
+var saturation := 1.1
+var contrast := 1.05
 var classic_ramp := false
 var dither := true
 var rain_strokes := true
@@ -59,7 +64,7 @@ var wind_slant := 0.4
 
 # --- Edges ------------------------------------------------------------------
 var draw_edges := true
-var edge_fraction := 0.08
+var edge_fraction := 0.1
 var depth_threshold := 0.18
 var normal_threshold := 1.1
 var edge_max_distance := 90.0
@@ -68,15 +73,8 @@ var dog_sigma := 1.0
 var dog_scale := 1.6
 var dog_threshold := 0.6
 
-# --- Optional effects ---------------------------------------------------------
 var flicker := 0.0
-var shimmer := 0.0
-var vignette := 0.35
-var grain := 0.0
-
-# --- Debug ------------------------------------------------------------------
 var debug_view := DebugView.NONE
-var grid_overlay := false
 
 # --- Camera (set from the main thread; used to linearise depth) ---------------
 var z_near := 0.05
@@ -86,23 +84,20 @@ var _rd: RenderingDevice
 var _shaders := {}
 var _pipelines := {}
 var _nearest: RID
-var _atlas: RID
 var _table: RID
 var _exposure: RID
-var _last_frame_usec := 0
-var _cell := Vector2i.ZERO
+var _cell_color: RID
+var _cell_aux: RID
+var _cell_lum: RID
+var _grid := Vector2i.ZERO
 var _lock := Mutex.new()
-var _pending_image: Image
 var _pending_table := PackedInt32Array()
-var _pending_cell := Vector2i.ZERO
+var _published := [RID(), RID(), Vector2i.ZERO]
 var _start_usec := Time.get_ticks_usec()
-var _skip := PackedStringArray()  # profiling: --ascii-skip=prep,edges,...
+var _last_frame_usec := 0
 
 
 func _init() -> void:
-	for arg in OS.get_cmdline_user_args():
-		if arg.begins_with("--ascii-skip="):
-			_skip = arg.trim_prefix("--ascii-skip=").split(",")
 	effect_callback_type = EFFECT_CALLBACK_TYPE_PRE_TRANSPARENT
 	needs_normal_roughness = true
 	RenderingServer.call_on_render_thread(_initialize)
@@ -110,25 +105,34 @@ func _init() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PREDELETE and _rd != null:
+		for rid: RID in [_cell_color, _cell_aux, _cell_lum]:
+			if rid.is_valid():
+				_rd.free_rid(rid)
 		for key: StringName in _shaders:
 			_rd.free_rid(_shaders[key])  # pipelines are freed with their shader
-		for rid: RID in [_nearest, _atlas, _table, _exposure]:
+		for rid: RID in [_nearest, _table, _exposure]:
 			if rid.is_valid():
 				_rd.free_rid(rid)
 
 
-## Hands over a new glyph atlas. Safe to call from the main thread; the
-## textures are swapped on the render thread before the next frame.
-func set_atlas(image: Image, cell: Vector2i, table: PackedInt32Array) -> void:
+## Glyph ramp table (see GlyphSet). Safe to call from the main thread.
+func set_glyph_table(table: PackedInt32Array) -> void:
 	_lock.lock()
-	_pending_image = image
-	_pending_cell = cell
 	_pending_table = table
 	_lock.unlock()
 
 
-func current_cell_size() -> Vector2i:
-	return _cell
+## [cell colour RID, cell aux RID, grid size] as last created on the render
+## thread. AsciiView wraps the RIDs in Texture2DRD for the composite shader.
+func published_cells() -> Array:
+	_lock.lock()
+	var out := _published.duplicate()
+	_lock.unlock()
+	return out
+
+
+func is_ready() -> bool:
+	return _table.is_valid()
 
 
 func _initialize() -> void:
@@ -151,44 +155,60 @@ func _initialize() -> void:
 	var state := RDSamplerState.new()
 	state.min_filter = RenderingDevice.SAMPLER_FILTER_NEAREST
 	state.mag_filter = RenderingDevice.SAMPLER_FILTER_NEAREST
-	state.repeat_u = RenderingDevice.SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE
-	state.repeat_v = RenderingDevice.SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE
 	_nearest = _rd.sampler_create(state)
 	_exposure = _rd.storage_buffer_create(8, PackedFloat32Array([0.0, 0.0]).to_byte_array())
 
 
-func _consume_pending_atlas() -> void:
+func _consume_pending_table() -> void:
 	_lock.lock()
-	var image := _pending_image
-	var cell := _pending_cell
 	var table := _pending_table
-	_pending_image = null
+	_pending_table = PackedInt32Array()
 	_lock.unlock()
-	if image == null:
+	if table.is_empty():
 		return
-
-	if _atlas.is_valid():
-		_rd.free_rid(_atlas)
 	if _table.is_valid():
 		_rd.free_rid(_table)
-
-	var fmt := RDTextureFormat.new()
-	fmt.width = image.get_width()
-	fmt.height = image.get_height()
-	fmt.format = RenderingDevice.DATA_FORMAT_R8_UNORM
-	fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_SAMPLING_BIT | RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT
-	_atlas = _rd.texture_create(fmt, RDTextureView.new(), [image.get_data()])
-
 	var bytes := table.to_byte_array()
 	_table = _rd.storage_buffer_create(bytes.size(), bytes)
-	_cell = cell
+
+
+func _ensure_cells(grid: Vector2i) -> void:
+	if grid == _grid and _cell_color.is_valid():
+		return
+	_free_cells()
+	var fmt := RDTextureFormat.new()
+	fmt.width = grid.x
+	fmt.height = grid.y
+	fmt.format = RenderingDevice.DATA_FORMAT_R16G16B16A16_SFLOAT
+	fmt.usage_bits = RenderingDevice.TEXTURE_USAGE_SAMPLING_BIT | RenderingDevice.TEXTURE_USAGE_STORAGE_BIT
+	_cell_color = _rd.texture_create(fmt, RDTextureView.new())
+	_cell_aux = _rd.texture_create(fmt, RDTextureView.new())
+	var lum_fmt := RDTextureFormat.new()
+	lum_fmt.width = grid.x
+	lum_fmt.height = grid.y
+	lum_fmt.format = RenderingDevice.DATA_FORMAT_R16G16_SFLOAT
+	lum_fmt.usage_bits = fmt.usage_bits
+	_cell_lum = _rd.texture_create(lum_fmt, RDTextureView.new())
+	_grid = grid
+	_lock.lock()
+	_published = [_cell_color, _cell_aux, grid]
+	_lock.unlock()
+
+
+func _free_cells() -> void:
+	for rid: RID in [_cell_color, _cell_aux, _cell_lum]:
+		if rid.is_valid():
+			_rd.free_rid(rid)
+	_cell_color = RID()
+	_cell_aux = RID()
+	_cell_lum = RID()
 
 
 func _render_callback(callback_type: int, render_data: RenderData) -> void:
 	if _rd == null or callback_type != effect_callback_type:
 		return
-	_consume_pending_atlas()
-	if not _atlas.is_valid():
+	_consume_pending_table()
+	if not _table.is_valid():
 		return
 
 	var buffers := render_data.get_render_scene_buffers() as RenderSceneBuffersRD
@@ -200,8 +220,13 @@ func _render_callback(callback_type: int, render_data: RenderData) -> void:
 	if not buffers.has_texture(&"forward_clustered", &"normal_roughness"):
 		return
 
-	var csz := _cell
-	var grid := Vector2i(ceili(size.x / float(csz.x)), ceili(size.y / float(csz.y)))
+	var out_size := output_size
+	var out_cell := output_cell
+	var grid := Vector2i(ceili(out_size.x / float(out_cell.x)), ceili(out_size.y / float(out_cell.y)))
+	_ensure_cells(grid)
+	# Cell size in internal pixels; fractional when the 3D view is scaled.
+	var csz := Vector2(out_cell) * Vector2(size) / Vector2(out_size)
+
 	var px_groups := Vector2i(ceili(size.x / 8.0), ceili(size.y / 8.0))
 	var cell_groups := Vector2i(ceili(grid.x / 8.0), ceili(grid.y / 8.0))
 	var now := Time.get_ticks_usec()
@@ -211,13 +236,10 @@ func _render_callback(callback_type: int, render_data: RenderData) -> void:
 	var blend := 1.0 - exp(-dt * adaptation_speed)
 
 	var usage := RenderingDevice.TEXTURE_USAGE_SAMPLING_BIT | RenderingDevice.TEXTURE_USAGE_STORAGE_BIT
-	var gbuf := _texture(buffers, CTX_PIXELS, &"gbuf", RenderingDevice.DATA_FORMAT_R16G16B16A16_SFLOAT, size, usage)
-	var lummat := _texture(buffers, CTX_PIXELS, &"lummat", RenderingDevice.DATA_FORMAT_R16G16B16A16_SFLOAT, size, usage)
-	var edge := _texture(buffers, CTX_PIXELS, &"edge", RenderingDevice.DATA_FORMAT_R16_SFLOAT, size, usage)
-	var dir := _texture(buffers, CTX_PIXELS, &"dir", RenderingDevice.DATA_FORMAT_R16_SFLOAT, size, usage)
-	var cell_color := _texture(buffers, CTX_CELLS, &"cell_color", RenderingDevice.DATA_FORMAT_R16G16B16A16_SFLOAT, grid, usage)
-	var cell_info := _texture(buffers, CTX_CELLS, &"cell_info", RenderingDevice.DATA_FORMAT_R32_UINT, grid, usage)
-	var cell_lum := _texture(buffers, CTX_CELLS, &"cell_lum", RenderingDevice.DATA_FORMAT_R16G16_SFLOAT, grid, usage)
+	var gbuf := _texture(buffers, &"gbuf", RenderingDevice.DATA_FORMAT_R16G16B16A16_SFLOAT, size, usage)
+	var lummat := _texture(buffers, &"lummat", RenderingDevice.DATA_FORMAT_R16G16B16A16_SFLOAT, size, usage)
+	var edge := _texture(buffers, &"edge", RenderingDevice.DATA_FORMAT_R16_SFLOAT, size, usage)
+	var dir := _texture(buffers, &"dir", RenderingDevice.DATA_FORMAT_R16_SFLOAT, size, usage)
 
 	var flags := 0
 	if draw_edges:
@@ -267,52 +289,45 @@ func _render_callback(callback_type: int, render_data: RenderData) -> void:
 			_image(1, lummat),
 			_image(2, gbuf),
 			_image(3, dir),
-			_image(4, cell_color),
-			_image(5, cell_info),
+			_image(4, _cell_color),
+			_image(5, _cell_aux),
 			_storage(6, _table),
-			_image(7, cell_lum),
+			_image(7, _cell_lum),
 			_storage(8, _exposure),
 		], [
-			w, h, float(csz.x), float(csz.y),
+			w, h, csz.x, csz.y,
 			float(grid.x), float(grid.y), t, float(flags),
 			exposure, gamma, edge_fraction, saturation,
-			contrast, glyph_gain, flicker, liquid_speed,
+			contrast, 1.0, flicker, liquid_speed,
 			wind_slant, star_threshold, adaptation, exposure_key,
 		], cell_groups)
 
 		_dispatch(&"exposure", [
-			_image(0, cell_lum),
+			_image(0, _cell_lum),
 			_storage(1, _exposure),
 		], [float(grid.x), float(grid.y), blend, 0.0], Vector2i(1, 1))
 
-		_dispatch(&"compose", [
+		_dispatch(&"finish", [
 			_image(0, color),
-			_image(1, cell_color),
-			_image(2, cell_info),
-			_sampled(3, _atlas),
-			_image(4, lummat),
-			_image(5, dir),
+			_image(1, _cell_aux),
+			_image(2, lummat),
+			_image(3, dir),
 		], [
-			w, h, float(csz.x), float(csz.y),
-			float(grid.x), float(grid.y), t, float(debug_view),
-			background_tint, vignette, grain, shimmer,
-			1.0 if grid_overlay else 0.0, background_level, glyph_gain, 0.0,
+			w, h, csz.x, csz.y,
+			float(grid.x), float(grid.y), float(debug_view), 0.0,
 		], px_groups)
 
 
-func _texture(buffers: RenderSceneBuffersRD, ctx: StringName, tex_name: StringName, format: int, size: Vector2i, usage: int) -> RID:
-	if buffers.has_texture(ctx, tex_name):
-		var f := buffers.get_texture_format(ctx, tex_name)
+func _texture(buffers: RenderSceneBuffersRD, tex_name: StringName, format: int, size: Vector2i, usage: int) -> RID:
+	if buffers.has_texture(CTX_PIXELS, tex_name):
+		var f := buffers.get_texture_format(CTX_PIXELS, tex_name)
 		if f.width == size.x and f.height == size.y:
-			return buffers.get_texture(ctx, tex_name)
-		# Size changed (e.g. new cell size): drop the whole context and rebuild.
-		buffers.clear_context(ctx)
-	return buffers.create_texture(ctx, tex_name, format, usage, RenderingDevice.TEXTURE_SAMPLES_1, size, 1, 1, true, false)
+			return buffers.get_texture(CTX_PIXELS, tex_name)
+		buffers.clear_context(CTX_PIXELS)
+	return buffers.create_texture(CTX_PIXELS, tex_name, format, usage, RenderingDevice.TEXTURE_SAMPLES_1, size, 1, 1, true, false)
 
 
 func _dispatch(shader: StringName, uniforms: Array, push: Array, groups: Vector2i) -> void:
-	if not _skip.is_empty() and _skip.has(String(shader)):
-		return
 	var typed: Array[RDUniform] = []
 	typed.assign(uniforms)
 	var uniform_set := UniformSetCacheRD.get_cache(_shaders[shader], 0, typed)
