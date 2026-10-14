@@ -224,7 +224,9 @@ func _on_choice(npc: Node, option_id: String) -> void:
 		Events.dialog_close.emit()
 		return
 	if option_id.begins_with("turnin:"):
-		w.quests.complete(option_id.trim_prefix("turnin:"))
+		var qid := option_id.trim_prefix("turnin:")
+		if w.quests.ready_to_turn_in(_giver_key()).has(qid) or w.quests.ready_to_turn_in("villager@" + village).has(qid):
+			w.quests.complete(qid)
 		_open_dialog()
 		return
 	if option_id.begins_with("accept:") or option_id.begins_with("side:"):

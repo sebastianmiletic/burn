@@ -28,7 +28,7 @@ func _ready() -> void:
 ## Called by the main scene.
 func boot() -> void:
 	var args := Array(OS.get_cmdline_user_args())
-	if "--solo" in args or args.any(func(a: String) -> bool: return a.begins_with("--capture-game")):
+	if "--solo" in args or "--playtest" in args or args.any(func(a: String) -> bool: return a.begins_with("--capture-game")):
 		start_solo(int(_arg("--slot", "8")), not "--continue" in args)
 		return
 	if "--host" in args or args.any(func(a: String) -> bool: return a.begins_with("--join")):
@@ -248,6 +248,8 @@ func _on_campaign_won() -> void:
 
 
 func _maybe_capture() -> void:
+	if "--playtest" in OS.get_cmdline_user_args():
+		world.add_child(load("res://tests/game/playtest.gd").new())
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--capture-game="):
 			var script: Script = load("res://tests/gpu/game_capture.gd")
