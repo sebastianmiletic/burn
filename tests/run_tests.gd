@@ -3,7 +3,18 @@ extends SceneTree
 ## Runs every tests/unit/test_*.gd (each extends TestCase). Exit code 1 on failure.
 
 
-func _init() -> void:
+var _ran := false
+
+
+## Runs on the first frame, after autoloads (Events, Audio, ...) exist.
+func _process(_delta: float) -> bool:
+	if not _ran:
+		_ran = true
+		_run()
+	return false
+
+
+func _run() -> void:
 	var dir := DirAccess.open("res://tests/unit")
 	var files := PackedStringArray()
 	for f in dir.get_files():

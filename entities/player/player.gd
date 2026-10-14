@@ -81,19 +81,10 @@ func _ready() -> void:
 
 
 func _make_model() -> Node3D:
-	var path := "res://models/humanoid_model.gd"
-	if ResourceLoader.exists(path):
-		var colors := [Color(0.42, 0.16, 0.1), Color(0.18, 0.2, 0.3), Color(0.25, 0.3, 0.18), Color(0.35, 0.25, 0.4)]
-		var c: Color = colors[absi(peer_id) % colors.size()]
-		return load(path).new({"cloth": c, "cloth2": Color(0.16, 0.13, 0.11), "hood": true, "cloak": true, "skin": Color(0.78, 0.6, 0.48)})
-	# Fallback silhouette until the model library is present.
-	var mi := MeshInstance3D.new()
-	var cap := CapsuleMesh.new()
-	cap.radius = 0.32
-	cap.height = 1.8
-	mi.mesh = cap
-	mi.position.y = 0.9
-	return mi
+	var colour := 0
+	if Net.players.has(peer_id):
+		colour = Net.players.keys().find(peer_id)
+	return Models.player(colour, is_local)
 
 
 func _model_call(method: String, args := []) -> void:

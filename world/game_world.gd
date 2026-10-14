@@ -344,7 +344,8 @@ func spawn_entity(kind: String, pos: Vector3, dim: int, data := {}) -> Entity:
 	var id := _next_id
 	_next_id += 1
 	var e := _create_entity(id, kind, pos, dim, data)
-	replicator.broadcast_spawn(e, data)
+	if e != null:
+		replicator.broadcast_spawn(e, data)
 	return e
 
 
@@ -400,8 +401,8 @@ func _on_entity_died(e: Entity) -> void:
 	var credit := players_near_credit(e)
 	for p in credit:
 		replicator.give_xp_to(p.peer_id, xp, e.kind)
-	# Loot.
-	var loot: Variant = e.get("loot")
+	# Loot (bosses drop theirs in boss_finished, with the relic).
+	var loot: Variant = e.get("loot") if not e is Boss else null
 	if loot is Array:
 		for entry: Array in loot:
 			if randf() < float(entry[1]):
@@ -409,9 +410,11 @@ func _on_entity_died(e: Entity) -> void:
 	if e.get("gold_value") != null and int(e.get("gold_value")) > 0:
 		for p in credit:
 			replicator.give_gold_to(p.peer_id, int(e.get("gold_value")))
-	get_tree().create_timer(4.0).timeout.connect(func() -> void:
-		if is_instance_valid(e) and not (e.has_method("is_boss") and e.call("is_boss")):
-			despawn_entity(e))
+	# Enemies and bosses despawn themselves once their death animation is done.
+	if not (e is Enemy or e is Boss):
+		get_tree().create_timer(4.0).timeout.connect(func() -> void:
+			if is_instance_valid(e):
+				despawn_entity(e))
 
 
 ## Players who share a kill: everyone in the dimension within 60 m.
@@ -431,10 +434,9 @@ func damage(target: Entity, amount: float, source_id: int, kind := "hit") -> voi
 	if target is Player:
 		replicator.hurt_player((target as Player).peer_id, amount, source_id, kind)
 		return
-	var dealt := target.take_damage(amount, source_id, kind)
-	if dealt > 0.0:
-		var crit := kind == "crit"
-		replicator.damage_fx(target.center() + Vector3(0, 0.4, 0), int(round(dealt)), crit, "fire" if kind == "burn" else "hit", target.dimension)
+	# Enemies and bosses show their own damage numbers and hit flashes on every
+	# machine when their health changes, so nothing else to broadcast here.
+	target.take_damage(amount, source_id, kind)
 
 
 func request_attack(targets: Array, amount: float, kind: String) -> void:
@@ -529,6 +531,25 @@ func _set_arena_gates(boss: Node, closed: bool) -> void:
 				if vw.get_block(p) == Blocks.AIR:
 					request_set_block_server(p, Blocks.IRON_BARS, dim)
 					_arena_gate_blocks.append([dim, p])
+
+
+## A boss whose fight was abandoned (everyone died or fled): reopen the arena.
+func boss_reset(boss: Node) -> void:
+	if not Net.is_server():
+		return
+	_set_arena_gates(boss, false)
+	if _active_boss == boss:
+		_active_boss = null
+	replicator.broadcast_boss_state(boss.get("net_id"), false, String(boss.get("kind")), false)
+
+
+func knockback(target: Entity, impulse: Vector3) -> void:
+	if not Net.is_server() or target == null:
+		return
+	if target is Player:
+		replicator.knockback_player((target as Player).peer_id, impulse)
+	else:
+		target.body.velocity += impulse
 
 
 func active_boss() -> Node:

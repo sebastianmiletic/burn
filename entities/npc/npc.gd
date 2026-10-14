@@ -62,26 +62,8 @@ func _make_name(s: int) -> String:
 
 
 func _make_model(s: int) -> Node3D:
-	var path := "res://models/humanoid_model.gd"
-	if not ResourceLoader.exists(path):
-		var mi := MeshInstance3D.new()
-		var cap := CapsuleMesh.new()
-		cap.radius = 0.3
-		cap.height = 1.75
-		mi.mesh = cap
-		mi.position.y = 0.88
-		return mi
-	var rng := RandomNumberGenerator.new()
-	rng.seed = s
-	var palette := [Color(0.45, 0.32, 0.2), Color(0.3, 0.35, 0.22), Color(0.4, 0.2, 0.18), Color(0.25, 0.28, 0.35), Color(0.5, 0.45, 0.3)]
-	var style := {"role": role, "cloth": palette[rng.randi() % palette.size()], "cloth2": palette[rng.randi() % palette.size()],
-		"skin": Color(0.8, 0.62, 0.5).lerp(Color(0.45, 0.32, 0.24), rng.randf()), "hood": role == "villager" and rng.randf() < 0.3,
-		"cloak": role in ["elder", "chief"], "beard": role in ["elder", "blacksmith", "chief"] and rng.randf() < 0.8,
-		"height": rng.randf_range(0.92, 1.06), "bulk": 1.2 if role == "blacksmith" else rng.randf_range(0.9, 1.1)}
-	var m: Node3D = load(path).new(style)
-	if role == "blacksmith" and m.has_method("set_held"):
-		m.call("set_held", "pickaxe_iron")
-	elif role == "guard" and m.has_method("set_held"):
+	var m: Node3D = Models.villager(role, s)
+	if role == "guard":
 		m.call("set_held", "sword_iron")
 	return m
 

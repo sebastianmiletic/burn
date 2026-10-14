@@ -259,6 +259,20 @@ func _hurt(amount: float, source_id: int, kind: String) -> void:
 	w.local_player.receive_damage(amount, src.global_position if src != null else Vector3.INF, kind, src.display_name if src != null else "")
 
 
+func knockback_player(peer: int, impulse: Vector3) -> void:
+	if peer == multiplayer.get_unique_id() or not Net.is_online():
+		_knockback(impulse)
+	else:
+		_knockback.rpc_id(peer, impulse)
+
+
+@rpc("authority", "reliable")
+func _knockback(impulse: Vector3) -> void:
+	var p := gw().local_player
+	if p != null and not p.dead:
+		p.body.velocity += impulse
+
+
 func damage_fx(pos: Vector3, amount: int, crit: bool, kind: String, dim: int) -> void:
 	_damage_fx.rpc(pos, amount, crit, kind, dim) if Net.is_online() else _damage_fx(pos, amount, crit, kind, dim)
 
@@ -280,12 +294,8 @@ func broadcast_projectile(kind: String, origin: Vector3, velocity: Vector3, owne
 
 @rpc("authority", "reliable", "call_local")
 func _projectile(kind: String, origin: Vector3, velocity: Vector3, owner_id: int, team: int, dim: int, dmg: float) -> void:
-	var script: Script = load("res://entities/projectile.gd") if ResourceLoader.exists("res://entities/projectile.gd") else null
-	if script == null:
-		return
-	var p: Node3D = script.new()
+	var p := Projectile.new().setup(kind, origin, velocity, owner_id, team, dim, dmg)
 	gw().add_child(p)
-	p.call("setup", kind, origin, velocity, owner_id, team, dim, dmg)
 	p.visible = dim == gw().local_dimension
 	if kind.contains("fire"):
 		Audio.play("fireball_cast", origin)
