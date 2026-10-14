@@ -50,19 +50,19 @@ func _maybe_spawn_near(w: GameWorld, p: Player) -> void:
 	var kinds: Array[String] = []
 	if p.dimension == 1:
 		cap = 6
-		kinds = ["imp", "imp", "shade"]
+		kinds.assign(["imp", "imp", "shade"])
 	elif underground:
 		cap = 5
-		kinds = ["skeleton", "ghoul", "skeleton"] if p.global_position.y > -60 else ["ghoul", "imp", "skeleton"]
+		kinds.assign(["skeleton", "ghoul", "skeleton"] if p.global_position.y > -60 else ["ghoul", "imp", "skeleton"])
 	elif night:
 		cap = 5
 		var biome := vw.gen.biome_at(int(p.global_position.x), int(p.global_position.z))
-		kinds = ["skeleton", "ghoul", "archer"]
+		kinds.assign(["skeleton", "ghoul", "archer"])
 		if biome == WorldGen.Biome.PEAKS:
 			kinds.append("troll")
 	else:
 		cap = 1
-		kinds = ["skeleton"]
+		kinds.assign(["skeleton"])
 	var count := 0
 	for e in w.entities_near(p.global_position, 50.0, p.dimension, Entity.Team.MONSTERS):
 		count += 1

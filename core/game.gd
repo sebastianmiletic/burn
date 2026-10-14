@@ -20,6 +20,12 @@ var _autosave := AUTOSAVE_SECONDS
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	if _arg("--mp-test", "") == "host":
+		# Test harness: begin the campaign as soon as a second player is in the lobby.
+		Net.lobby_changed.connect(func() -> void:
+			if state != State.LOADING and state != State.PLAYING and Net.players.size() >= 2:
+				state = State.LOADING
+				start_campaign())
 	Net.session_started.connect(_on_session_started)
 	Net.join_failed.connect(_on_join_failed)
 	Events.campaign_won.connect(_on_campaign_won)
@@ -173,6 +179,9 @@ func start_campaign() -> void:
 
 
 func _on_session_started(info: Dictionary) -> void:
+	# The same session can be announced twice (campaign start racing a late join).
+	if (state == State.LOADING or state == State.PLAYING) and int(session.get("seed", -1)) == int(info.get("seed", -2)) and world != null:
+		return
 	var host := Net.is_server()
 	var save := {}
 	if host:
@@ -192,7 +201,7 @@ func _on_session_started(info: Dictionary) -> void:
 
 ## The host sends this to players who join a campaign already in progress.
 func join_state() -> Dictionary:
-	return world.join_state() if world != null else {}
+	return world.join_state() if world != null and world.is_ready_for_join() else {}
 
 
 func _load_world(info: Dictionary) -> void:
@@ -200,13 +209,14 @@ func _load_world(info: Dictionary) -> void:
 	session = info
 	_set_screen(null)
 	if world != null and is_instance_valid(world):
+		world.get_parent().remove_child(world)
 		world.queue_free()
-		await get_tree().process_frame
 	_loading = _ui("res://ui/loading_screen.gd")
 	if _loading != null:
 		get_tree().root.add_child(_loading)
 	Audio.set_music("silence")
 	world = GameWorld.new()
+	world.name = "GameWorld"  # identical path on every peer for RPCs
 	get_tree().root.add_child(world)
 	world.loading.connect(func(p: float, text: String) -> void:
 		if _loading != null and is_instance_valid(_loading) and _loading.has_method("set_progress"):
@@ -224,6 +234,7 @@ func _load_world(info: Dictionary) -> void:
 
 
 func quit_to_menu() -> void:
+	session = {}
 	if state == State.PLAYING:
 		if Net.is_server():
 			save_game()
@@ -248,6 +259,11 @@ func _on_campaign_won() -> void:
 
 
 func _maybe_capture() -> void:
+	var mp := _arg("--mp-test", "")
+	if mp != "":
+		var probe: Node = load("res://tests/net/mp_probe.gd").new()
+		probe.set("role", mp)
+		world.add_child(probe)
 	if "--playtest" in OS.get_cmdline_user_args():
 		world.add_child(load("res://tests/game/playtest.gd").new())
 	for a in OS.get_cmdline_user_args():

@@ -27,6 +27,29 @@ static func player_net_id(peer: int) -> int:
 	return -peer
 
 
+## Peers whose GameWorld has finished loading (server side). Gameplay RPCs go
+## only to them; a peer still loading gets everything in _client_ready.
+var _ready_peers := {}
+
+
+func _targets() -> Array:
+	var out := []
+	for peer in multiplayer.get_peers():
+		if _ready_peers.has(peer):
+			out.append(peer)
+	return out
+
+
+## Runs `method` here (if `local`) and on every loaded peer.
+func _broadcast(method: StringName, args: Array, local := true) -> void:
+	if local:
+		callv(method, args)
+	if not Net.is_online():
+		return
+	for peer in _targets():
+		callv("rpc_id", [peer, method] + args)
+
+
 func gw() -> GameWorld:
 	return get_parent() as GameWorld
 
@@ -79,7 +102,7 @@ func _player_state(state: Array) -> void:
 
 func _relay_player_state(peer: int, state: Array) -> void:
 	_peer_dim[peer] = int(state[0])
-	for other in multiplayer.get_peers():
+	for other in _targets():
 		if other != peer:
 			_player_state_relayed.rpc_id(other, peer, state)
 
@@ -111,6 +134,7 @@ func _on_peer_disconnected(peer: int) -> void:
 	if w == null:
 		return
 	w.remove_entity(player_net_id(peer))
+	_ready_peers.erase(peer)
 	_peer_dim.erase(peer)
 	_known.erase(peer)
 
@@ -141,6 +165,7 @@ func _client_ready(dim: int) -> void:
 	var peer := multiplayer.get_remote_sender_id()
 	_peer_dim[peer] = dim
 	_known[peer] = {}
+	_ready_peers[peer] = true
 	_sync_bosses.rpc_id(peer, gw().bosses_defeated.keys())
 	_clock.rpc_id(peer, gw().sky.time_of_day, gw().sky.day, gw().weather.state_name())
 
@@ -151,7 +176,7 @@ func broadcast_spawn(e: Entity, data: Dictionary) -> void:
 	e.set_meta("spawn_data", data)
 	if not Net.is_online():
 		return
-	for peer in multiplayer.get_peers():
+	for peer in _targets():
 		_spawn_on(peer, e)
 
 
@@ -170,10 +195,10 @@ func _spawn(id: int, kind: String, pos: Vector3, dim: int, data: Dictionary) -> 
 func broadcast_despawn(id: int) -> void:
 	if not Net.is_online():
 		return
-	for peer in multiplayer.get_peers():
-		if _known.has(peer):
+	for peer in _targets():
+		if _known.has(peer) and _known[peer].has(id):
 			_known[peer].erase(id)
-		_despawn.rpc_id(peer, id)
+			_despawn.rpc_id(peer, id)
 
 
 @rpc("authority", "reliable")
@@ -184,7 +209,7 @@ func _despawn(id: int) -> void:
 func _send_snapshots() -> void:
 	var w := gw()
 	var now := _now()
-	for peer in multiplayer.get_peers():
+	for peer in _targets():
 		var p := w.entity(player_net_id(peer)) as Player
 		if p == null:
 			continue
@@ -274,7 +299,7 @@ func _knockback(impulse: Vector3) -> void:
 
 
 func damage_fx(pos: Vector3, amount: int, crit: bool, kind: String, dim: int) -> void:
-	_damage_fx.rpc(pos, amount, crit, kind, dim) if Net.is_online() else _damage_fx(pos, amount, crit, kind, dim)
+	_broadcast(&"_damage_fx", [pos, amount, crit, kind, dim])
 
 
 @rpc("authority", "unreliable", "call_local")
@@ -286,10 +311,7 @@ func _damage_fx(pos: Vector3, amount: int, crit: bool, kind: String, dim: int) -
 
 
 func broadcast_projectile(kind: String, origin: Vector3, velocity: Vector3, owner_id: int, team: int, dim: int, dmg: float) -> void:
-	if Net.is_online():
-		_projectile.rpc(kind, origin, velocity, owner_id, team, dim, dmg)
-	else:
-		_projectile(kind, origin, velocity, owner_id, team, dim, dmg)
+	_broadcast(&"_projectile", [kind, origin, velocity, owner_id, team, dim, dmg])
 
 
 @rpc("authority", "reliable", "call_local")
@@ -325,10 +347,7 @@ func _spawn_player_projectile(peer: int, kind: String, origin: Vector3, velocity
 
 
 func broadcast_telegraph(shape: String, pos: Vector3, dir: Vector3, size: Vector3, duration: float, dim: int) -> void:
-	if Net.is_online():
-		_telegraph.rpc(shape, pos, dir, size, duration, dim)
-	else:
-		_telegraph(shape, pos, dir, size, duration, dim)
+	_broadcast(&"_telegraph", [shape, pos, dir, size, duration, dim])
 
 
 @rpc("authority", "reliable", "call_local")
@@ -337,10 +356,7 @@ func _telegraph(shape: String, pos: Vector3, dir: Vector3, size: Vector3, durati
 
 
 func broadcast_shake(strength: float, at: Vector3, dim: int) -> void:
-	if Net.is_online():
-		_shake.rpc(strength, at, dim)
-	else:
-		_shake(strength, at, dim)
+	_broadcast(&"_shake", [strength, at, dim])
 
 
 @rpc("authority", "unreliable", "call_local")
@@ -358,10 +374,7 @@ func _shake(strength: float, at: Vector3, dim: int) -> void:
 # --- Bosses ---------------------------------------------------------------------------
 
 func broadcast_boss_state(id: int, engaged: bool, kind: String, defeated := false) -> void:
-	if Net.is_online():
-		_boss_state.rpc(id, engaged, kind, defeated)
-	else:
-		_boss_state(id, engaged, kind, defeated)
+	_broadcast(&"_boss_state", [id, engaged, kind, defeated])
 
 
 @rpc("authority", "reliable", "call_local")
@@ -385,8 +398,7 @@ func _boss_state(id: int, engaged: bool, kind: String, defeated: bool) -> void:
 
 
 func sync_bosses_defeated(defeated: Dictionary) -> void:
-	if Net.is_online():
-		_sync_bosses.rpc(defeated.keys())
+	_broadcast(&"_sync_bosses", [defeated.keys()], false)
 
 
 @rpc("authority", "reliable")
@@ -396,10 +408,7 @@ func _sync_bosses(kinds: Array) -> void:
 
 
 func broadcast_victory() -> void:
-	if Net.is_online():
-		_victory.rpc()
-	else:
-		_victory()
+	_broadcast(&"_victory", [])
 
 
 @rpc("authority", "reliable", "call_local")
@@ -495,10 +504,7 @@ func _resolve_block(peer: int, pos: Vector3i, block: int, dim: int) -> void:
 
 
 func broadcast_block(pos: Vector3i, block: int, dim: int) -> void:
-	if Net.is_online():
-		_block.rpc(pos, block, dim)
-	else:
-		_block(pos, block, dim)
+	_broadcast(&"_block", [pos, block, dim])
 
 
 @rpc("authority", "reliable", "call_local")
@@ -561,10 +567,7 @@ func _resolve_interact(peer: int, id: int) -> void:
 
 
 func broadcast_entity_event(id: int, event: String, arg: Variant = null) -> void:
-	if Net.is_online():
-		_entity_event.rpc(id, event, arg)
-	else:
-		_entity_event(id, event, arg)
+	_broadcast(&"_entity_event", [id, event, arg])
 
 
 @rpc("authority", "reliable", "call_local")
@@ -578,7 +581,7 @@ func _entity_event(id: int, event: String, arg: Variant) -> void:
 
 func broadcast_clock(t: float, day: int, weather_state: String) -> void:
 	if Net.is_online() and Net.is_server():
-		_clock.rpc(t, day, weather_state)
+		_broadcast(&"_clock", [t, day, weather_state], false)
 
 
 @rpc("authority", "unreliable")
@@ -589,10 +592,7 @@ func _clock(t: float, day: int, weather_state: String) -> void:
 
 
 func broadcast_lightning(pos: Vector3, dim: int) -> void:
-	if Net.is_online():
-		_lightning.rpc(pos, dim)
-	else:
-		_lightning(pos, dim)
+	_broadcast(&"_lightning", [pos, dim])
 
 
 @rpc("authority", "reliable", "call_local")

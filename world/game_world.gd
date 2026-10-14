@@ -703,6 +703,10 @@ func _load_world_state(save: Dictionary) -> void:
 		sky.day = int(save.get("day", 1))
 
 
+func is_ready_for_join() -> bool:
+	return worlds.has(0) and worlds.has(1) and sky != null
+
+
 ## State a joining client needs: edits, bosses, clock.
 func join_state() -> Dictionary:
 	return {
