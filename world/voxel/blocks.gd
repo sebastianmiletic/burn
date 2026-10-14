@@ -47,10 +47,17 @@ const DEEPSLATE := 37
 const MUD := 38
 const SOUL_SAND := 39
 const LANTERN := 40
-const COUNT := 41
+## Natural tree trunks: collision and chopping only; Flora draws the tree.
+const OAK_TRUNK := 41
+const CRIMSON_TRUNK := 42
+const PINE_TRUNK := 43
+const DEAD_TRUNK := 44
+const COUNT := 45
 
 ## Block shape families used by the mesher.
 enum Shape { CUBE, NONE, SMALL }
+## How a block is drawn: SMOOTH terrain surface, crisp CUBE, SMALL prop, TREE (Flora), LIQUID, NONE.
+enum Family { NONE, SMOOTH, CUBE, SMALL, TREE, LIQUID }
 
 # name, colour, ascii class, hardness, tier, drop item, light, solid, opaque, liquid, shape
 const DATA := [
@@ -95,7 +102,15 @@ const DATA := [
 	["Mud", Color(0.2, 0.15, 0.1), AsciiMaterialId.GROUND, 0.45, 0, "dirt", 0.0, true, true, false, Shape.CUBE],
 	["Soul sand", Color(0.3, 0.22, 0.18), AsciiMaterialId.GROUND, 0.5, 0, "soul_sand", 0.0, true, true, false, Shape.CUBE],
 	["Lantern", Color(1.0, 0.75, 0.4), AsciiMaterialId.EMISSIVE, 0.3, 0, "lantern", 3.0, true, false, false, Shape.SMALL],
+	["Oak", Color(0.33, 0.22, 0.13), AsciiMaterialId.SOLID, 0.9, 0, "wood", 0.0, true, true, false, Shape.NONE],
+	["Crimson oak", Color(0.3, 0.2, 0.13), AsciiMaterialId.SOLID, 0.9, 0, "wood", 0.0, true, true, false, Shape.NONE],
+	["Pine", Color(0.24, 0.17, 0.11), AsciiMaterialId.SOLID, 0.9, 0, "wood", 0.0, true, true, false, Shape.NONE],
+	["Dead tree", Color(0.28, 0.24, 0.2), AsciiMaterialId.SOLID, 0.7, 0, "wood", 0.0, true, true, false, Shape.NONE],
 ]
+
+## Blocks drawn as the smooth terrain surface.
+const SMOOTH_BLOCKS := [STONE, DIRT, GRASS, SAND, SNOW, ICE, GRAVEL, COAL_ORE, IRON_ORE, GOLD_ORE, EMBER_ORE,
+		OBSIDIAN, BEDROCK, BASALT, ASH, BONE, HELLSTONE, DRY_GRASS, CRYSTAL, DEEPSLATE, MUD, SOUL_SAND]
 
 static var _solid := PackedByteArray()
 static var _opaque := PackedByteArray()
@@ -103,6 +118,7 @@ static var _liquid := PackedByteArray()
 static var _class := PackedByteArray()
 static var _colors := PackedColorArray()
 static var _light := PackedFloat32Array()
+static var _family := PackedByteArray()
 
 
 static func _static_init() -> void:
@@ -112,6 +128,7 @@ static func _static_init() -> void:
 	_class.resize(256)
 	_colors.resize(256)
 	_light.resize(256)
+	_family.resize(256)
 	for i in DATA.size():
 		var d: Array = DATA[i]
 		_solid[i] = 1 if d[7] else 0
@@ -120,6 +137,21 @@ static func _static_init() -> void:
 		_class[i] = d[2]
 		_colors[i] = d[1]
 		_light[i] = d[6]
+		if i == AIR or i == LEAVES or i == PINE_LEAVES or i == CRIMSON_LEAVES:
+			_family[i] = Family.NONE
+			# Leaves are drawn by Flora now; old saves may still contain them.
+			_solid[i] = 0
+			_opaque[i] = 0
+		elif d[9]:
+			_family[i] = Family.LIQUID
+		elif i >= OAK_TRUNK and i <= DEAD_TRUNK:
+			_family[i] = Family.TREE
+		elif d[10] == Shape.SMALL:
+			_family[i] = Family.SMALL
+		elif i in SMOOTH_BLOCKS:
+			_family[i] = Family.SMOOTH
+		else:
+			_family[i] = Family.CUBE
 
 
 static func name_of(id: int) -> String:
@@ -164,6 +196,22 @@ static func is_liquid(id: int) -> bool:
 
 static func shape(id: int) -> int:
 	return DATA[id][10]
+
+
+static func family(id: int) -> int:
+	return _family[id]
+
+
+static func is_smooth(id: int) -> bool:
+	return _family[id] == Family.SMOOTH
+
+
+static func is_trunk(id: int) -> bool:
+	return id >= OAK_TRUNK and id <= DEAD_TRUNK
+
+
+static func family_table() -> PackedByteArray:
+	return _family
 
 
 static func is_breakable(id: int) -> bool:

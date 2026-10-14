@@ -52,3 +52,30 @@ environment/volumetric_fog/volume_size=96
 environment/volumetric_fog/volume_depth=96
 textures/canvas_textures/default_texture_filter=0
 textures/vram_compression/import_etc2_astc=true
+
+[shader_globals]
+
+wind_dir={
+"type": "vec2",
+"value": Vector2(0.9, 0.44)
+}
+wind_strength={
+"type": "float",
+"value": 0.35
+}
+wetness={
+"type": "float",
+"value": 0.0
+}
+snow_cover={
+"type": "float",
+"value": 0.0
+}
+foliage_pushers={
+"type": "sampler2D",
+"value": ""
+}
+foliage_pusher_count={
+"type": "int",
+"value": 0
+}
