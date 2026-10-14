@@ -153,10 +153,10 @@ func _process(delta: float) -> void:
 		var fog_day := Color(0.55, 0.52, 0.5).lerp(Color(0.7, 0.4, 0.22), dusk * 0.6)
 		environment.fog_light_color = Color(0.015, 0.016, 0.022).lerp(fog_day, dayf) * lerpf(1.0, 0.05, _underground)
 		var weather_fog := w.weather.fog_amount() if w != null and w.weather != null else 0.0
-		environment.fog_density = (0.003 + weather_fog * 0.03) * float(Settings.get_value("graphics", "fog")) * lerpf(1.0, 3.0, _underground)
+		environment.fog_density = (0.0011 + weather_fog * 0.03) * float(Settings.get_value("graphics", "fog")) * lerpf(1.0, 3.0, _underground)
 		environment.volumetric_fog_albedo = Color(0.8, 0.78, 0.75)
 		environment.volumetric_fog_emission = Color(0.0, 0.0, 0.0)
-		environment.volumetric_fog_density = (0.008 + weather_fog * 0.03) * float(Settings.get_value("graphics", "fog"))
+		environment.volumetric_fog_density = (0.002 + weather_fog * 0.03) * float(Settings.get_value("graphics", "fog"))
 	if w != null:
 		for d: int in w.worlds:
 			var mat: ShaderMaterial = (w.worlds[d] as VoxelWorld).opaque_material

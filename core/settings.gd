@@ -35,7 +35,7 @@ const DEFAULTS := {
 		"edges": true,
 		"flicker": false,
 		"shimmer": false,
-		"bg_fill": 0.2,
+		"bg_fill": 0.08,
 	},
 	"audio": {
 		"master": 0.8,

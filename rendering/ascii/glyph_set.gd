@@ -9,23 +9,24 @@ extends RefCounted
 ## every cell size. Fixed ramps keep their order because the shader indexes
 ## them by meaning (e.g. EDGES[2] is always "/").
 
-enum Ramp { SOLID, GROUND, FOLIAGE, LIQUID, SKY, CLASSIC, EDGES, RAIN }
+enum Ramp { SOLID, GROUND, FOLIAGE, LIQUID, SKY, CLASSIC, EDGES, RAIN, LEAF }
 
-const RAMP_COUNT := 8
+const RAMP_COUNT := 9
 const HEADER_INTS := RAMP_COUNT * 2
 
 const RAMPS: Array[String] = [
-	" .:-=+*o0#%8@",  # SOLID: stone, creatures, the dragon
-	" .,'`:;-~=+*",  # GROUND: terrain and floors read lighter
+	" .,:coO0P#%@",  # SOLID: stone, creatures, the dragon
+	" .,:;coP0#",  # GROUND: terrain and floors
 	" .,'|/\\;:",  # FOLIAGE (fixed): space . , ' | / \ ; :
 	" .-~=",  # LIQUID
 	" .'`+*",  # SKY: faint cloud texture and stars
 	" .'`^\",:;Il!i><~+_-?][}{1)(|/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$",  # CLASSIC
 	"|-/\\_",  # EDGES (fixed): | - / \ _
 	"|/\\'.,",  # RAIN (fixed): | / \ ' . ,
+	" .,;*%&@",  # LEAF: canopies read as dense, soft masses
 ]
 
-const SORTABLE: Array[bool] = [true, true, false, true, true, true, false, false]
+const SORTABLE: Array[bool] = [true, true, false, true, true, true, false, false, true]
 
 
 ## Every distinct glyph, in first-seen order. Atlas column i holds glyph i.

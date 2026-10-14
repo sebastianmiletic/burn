@@ -18,6 +18,9 @@ const STOPS := {
 	"crypt": [&"silent_crypt", 21.0, 2.0],
 	"gates": [&"gates_of_hades", 12.0, 0.0],
 	"hell": [&"asphodel", 12.0, 0.0],
+	"vista": [&"emberfall", 15.5, 0.0, Vector3(0, 6, 46), -0.2],
+	"road": [&"emberfall", 17.0, 2.2, Vector3(60, 2, -40), -0.1],
+	"woods": [&"thornwick", 16.0, 1.0, Vector3(-40, 2, 30), -0.1],
 }
 
 
@@ -47,15 +50,18 @@ func _run() -> void:
 			target = s["pos"]
 		var p := w.local_player
 		var vw := w.world_for(loc.dimension)
-		p.global_position = target + Vector3(0, 2, 4)
+		var offset: Vector3 = spec[3] if spec.size() > 3 else Vector3(0, 2, 4)
+		if spec.size() > 3:
+			target = loc.center
+		p.global_position = target + offset
 		vw.focus = p.global_position
 		w.sky.time_of_day = spec[1]
 		p.camera.yaw = float(spec[2])
-		p.camera.pitch = -0.18
+		p.camera.pitch = float(spec[4]) if spec.size() > 4 else -0.18
 		var t0 := Time.get_ticks_msec()
 		while (not vw.is_area_loaded(p.global_position) or vw.loading_progress() < 0.95) and Time.get_ticks_msec() - t0 < 20000:
 			await get_tree().process_frame
-		if vw.is_solid(Vector3i(p.global_position.floor())) or not vw.is_solid(Vector3i((p.global_position - Vector3(0, 3, 0)).floor())):
+		if spec.size() > 3 or vw.is_solid(Vector3i(p.global_position.floor())) or not vw.is_solid(Vector3i((p.global_position - Vector3(0, 3, 0)).floor())):
 			var y := vw.surface_y(int(p.global_position.x), int(p.global_position.z))
 			if loc.half_height > 0.0:
 				y = int(loc.center.y) - 1

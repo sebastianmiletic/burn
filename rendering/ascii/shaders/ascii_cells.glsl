@@ -52,6 +52,7 @@ const int R_SKY = 4;
 const int R_CLASSIC = 5;
 const int R_EDGES = 6;
 const int R_RAIN = 7;
+const int R_LEAF = 8;
 
 // FOLIAGE ramp is fixed: " .,'|/\;:"
 const int F_SPACE = 0, F_DOT = 1, F_COMMA = 2, F_TICK = 3, F_BAR = 4, F_SLASH = 5, F_BACK = 6, F_SEMI = 7, F_COLON = 8;
@@ -72,7 +73,7 @@ int ramp_len(int r) {
 }
 
 int ramp_glyph(int r, int i) {
-	return tbl.data[16 + tbl.data[r * 2] + clamp(i, 0, ramp_len(r) - 1)];
+	return tbl.data[18 + tbl.data[r * 2] + clamp(i, 0, ramp_len(r) - 1)];
 }
 
 float hash12(vec2 p) {
@@ -167,11 +168,13 @@ void main() {
 	float norm = clamp(pow(pc.p4.w / max(adapted, 1e-5), pc.p4.z), 0.25, 64.0);
 	float exposure = pc.p2.x * norm;
 	// Colour exposure: full adaptation, like a camera's auto exposure.
-	float colour_exposure = pc.p2.x * clamp(pc.p4.w / max(adapted, 1e-5), 0.05, 400.0);
+	float colour_exposure = pc.p2.x * clamp(0.3 / max(adapted, 1e-5), 0.05, 60.0);
 	float gamma = pc.p2.y;
 	float lum = scene_lum * exposure;
 	imageStore(cell_lum_image, cell, vec4(log2(scene_lum + 1e-4), dom == M_SKY ? 0.0 : 1.0, 0.0, 0.0));
 	float x = pow(clamp(lum / (1.0 + lum), 0.0, 1.0), gamma);
+	// Contrast around the middle of the ramp: deep darks, dense brights.
+	x = clamp((x - 0.42) * 1.5 + 0.45, 0.0, 1.0);
 	float dither = (flags & FLAG_DITHER) != 0u ? bayer4(cell) - 0.5 : 0.0;
 	float h = hash12(vec2(cell) + 17.0);
 
@@ -228,26 +231,18 @@ void main() {
 	} else if (dom == M_FOLIAGE) {
 		if (x < 0.05) {
 			glyph = ramp_glyph(R_FOLIAGE, F_SPACE);
-		} else if (best_votes >= 0.06 * total) {
+		} else if (best_votes >= 0.16 * total) {
 			// Blade silhouettes: follow the blade direction.
 			int k = best_dir == 0 ? F_BAR : (best_dir == 2 ? F_SLASH : (best_dir == 3 ? F_BACK : F_TICK));
 			glyph = ramp_glyph(R_FOLIAGE, k);
 			edge_dir = best_dir;
-		} else if (x < 0.16) {
-			glyph = ramp_glyph(R_FOLIAGE, h < 0.5 ? F_DOT : F_COMMA);
-		} else if (x < 0.3) {
-			glyph = ramp_glyph(R_FOLIAGE, h < 0.5 ? F_COLON : F_SEMI);
 		} else {
-			float slant = pc.p4.x;
-			int lean = slant > 0.25 ? F_SLASH : (slant < -0.25 ? F_BACK : F_BAR);
-			if (h < 0.18) {
-				glyph = ramp_glyph(R_FOLIAGE, h < 0.09 ? F_COMMA : F_DOT); // sparse highlights
-			} else if (h < 0.34) {
-				glyph = ramp_glyph(R_FOLIAGE, F_TICK);
-			} else if (h < 0.5) {
-				glyph = ramp_glyph(R_FOLIAGE, F_BAR);
+			// Canopy interiors: a soft dense ramp, with sparse . , highlights.
+			int len = ramp_len(R_LEAF);
+			if (x > 0.55 && h < 0.12) {
+				glyph = ramp_glyph(R_FOLIAGE, h < 0.06 ? F_COMMA : F_DOT);
 			} else {
-				glyph = ramp_glyph(R_FOLIAGE, lean);
+				glyph = ramp_glyph(R_LEAF, int(x * float(len) + dither * 0.9));
 			}
 		}
 	} else if (dom == M_LIQUID) {

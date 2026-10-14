@@ -46,6 +46,8 @@ var _scan_timer := 0.0
 var _last_focus_key := Vector3i(1 << 20, 0, 0)
 var _wanted_mesh: Array[Vector3i] = []
 var _wanted_data: Array[Vector3i] = []
+var _mesh_todo: Array[Vector3i] = []
+var _data_cursor := 0
 var _area_ready_emitted := false
 var _light_nodes: Array[OmniLight3D] = []
 var _light_timer := 0.0
@@ -211,7 +213,7 @@ func _process(delta: float) -> void:
 	_scan_timer -= delta
 	if fkey != _last_focus_key or _scan_timer <= 0.0:
 		_last_focus_key = fkey
-		_scan_timer = 0.5
+		_scan_timer = 4.0
 		_rebuild_wanted(fkey)
 		_unload_far(fkey)
 	_schedule()
@@ -270,9 +272,13 @@ func _rebuild_wanted(fkey: Vector3i) -> void:
 				var k := Vector3i(cx, y, cz)
 				candidates.append([d2 + absi(y - fkey.y) * 2, k])
 	candidates.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+	_data_cursor = 0
+	_mesh_todo.clear()
 	for c: Array in candidates:
 		var k: Vector3i = c[1]
 		_wanted_mesh.append(k)
+		if not _meshes.has(k):
+			_mesh_todo.append(k)
 		for dz in range(-1, 2):
 			for dy in range(-1, 2):
 				for dx in range(-1, 2):
@@ -293,10 +299,13 @@ func _rebuild_wanted(fkey: Vector3i) -> void:
 
 
 func _schedule() -> void:
-	# Data first (meshing needs neighbours), nearest first.
-	for k in _wanted_data:
-		if _in_flight >= _max_in_flight:
-			return
+	# Cursors walk the (distance-sorted) wanted lists a bounded amount per
+	# frame, so streaming cost stays flat no matter how much is loaded.
+	var checks := 0
+	while _data_cursor < _wanted_data.size() and _in_flight < _max_in_flight and checks < 512:
+		var k := _wanted_data[_data_cursor]
+		_data_cursor += 1
+		checks += 1
 		if _chunks.has(k) or _gen_pending.has(k):
 			continue
 		_gen_pending[k] = true
@@ -304,26 +313,43 @@ func _schedule() -> void:
 		WorkerThreadPool.add_task(_task_generate.bind(k), false, "chunk gen")
 	if not meshing_enabled:
 		return
-	for k in _wanted_mesh:
+	# Edited chunks first: the player is looking at them.
+	for k: Vector3i in _dirty.keys():
 		if _in_flight >= _max_in_flight:
 			return
-		if _mesh_pending.has(k):
-			continue
-		if _meshes.has(k) and not _dirty.has(k):
-			continue
-		if not _chunks.has(k):
-			continue
-		var neighbours := _neighbour_data(k)
-		if neighbours.is_empty():
-			continue
-		_dirty.erase(k)
-		if _skip_mesh(k):
-			_set_mesh(k, {})
-			continue
-		_mesh_pending[k] = true
-		_in_flight += 1
-		var version := int(_mesh_version.get(k, 0))
-		WorkerThreadPool.add_task(_task_mesh.bind(k, neighbours, version), false, "chunk mesh")
+		_try_mesh(k)
+	checks = 0
+	var i := 0
+	while i < _mesh_todo.size() and _in_flight < _max_in_flight and checks < 96:
+		checks += 1
+		var k := _mesh_todo[i]
+		var state := _try_mesh(k)
+		if state != 0:
+			_mesh_todo.remove_at(i)  # dispatched or nothing to do
+		else:
+			i += 1
+
+
+## 1 = dispatched or empty, 2 = already meshed, 0 = not ready yet.
+func _try_mesh(k: Vector3i) -> int:
+	if _mesh_pending.has(k):
+		return 1
+	if _meshes.has(k) and not _dirty.has(k):
+		return 2
+	if not _chunks.has(k):
+		return 0
+	var neighbours := _neighbour_data(k)
+	if neighbours.is_empty():
+		return 0
+	_dirty.erase(k)
+	if _skip_mesh(k):
+		_set_mesh(k, {})
+		return 1
+	_mesh_pending[k] = true
+	_in_flight += 1
+	var version := int(_mesh_version.get(k, 0))
+	WorkerThreadPool.add_task(_task_mesh.bind(k, neighbours, version), false, "chunk mesh")
+	return 1
 
 
 func _neighbour_data(k: Vector3i) -> Array:

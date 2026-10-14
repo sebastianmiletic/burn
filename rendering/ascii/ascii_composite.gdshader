@@ -103,11 +103,12 @@ void fragment() {
 		vec3 bg;
 		if (style == 0) {
 			// Perceptual brightness drives the duotone; reds keep a little hue.
-			float t = pow(lum, 0.55);
+			float t = pow(lum, 0.6);
+			t = clamp((t - 0.45) * 1.45 + 0.47, 0.0, 1.0);
 			float warm = clamp((mapped.r - max(mapped.g, mapped.b)) * 2.5, 0.0, 1.0);
 			vec3 hue = to_srgb(mapped);
 			fg = mix(ember(min(t * 1.18 + 0.06, 1.0)), hue * 1.1, warm * 0.35);
-			bg = ember(t * 0.7) * bg_fill * 2.0;
+			bg = ember(t * 0.6) * bg_fill * 2.0 * t;
 			fg = to_linear(fg);
 			bg = to_linear(bg);
 		} else if (style == 3) {
