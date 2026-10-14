@@ -83,8 +83,22 @@ func _client() -> void:
 		_w.request_attack(ids, 25.0, "hit")
 		guard += 1
 		await get_tree().create_timer(0.1).timeout
-	_check(_w.entities_near(me.global_position, 12.0, 0, Entity.Team.MONSTERS).is_empty(), "killed it (state replicated back)")
+	var left := _w.entities_near(me.global_position, 12.0, 0, Entity.Team.MONSTERS)
+	for e in left:
+		print("MP CLIENT note: still near: %s hp %.0f at %s (me %s)" % [e.kind, e.health, e.global_position, me.global_position])
+	_check(left.is_empty(), "killed it (state replicated back)")
 	var target := Vector3i(me.global_position.floor()) + EDIT_OFFSET
+	# Pick a breakable ground block within reach (the spawn may be on a shrine's runestones).
+	var feet := Vector3i(me.global_position.floor())
+	var best_d := 1e9
+	for dz in range(-4, 5):
+		for dx in range(-4, 5):
+			for dy in [-1, -2]:
+				var c: Vector3i = feet + Vector3i(dx, dy, dz)
+				var d := (Vector3(c) + Vector3(0.5, 0.5, 0.5)).distance_to(me.global_position + Vector3(0, 1.4, 0))
+				if d > 2.0 and d < 5.5 and d < best_d and Blocks.is_breakable(_w.world_for(0).get_block(c)):
+					best_d = d
+					target = c
 	var before := _w.world_for(0).get_block(target)
 	_w.request_set_block(target, Blocks.AIR, 0)
 	var echoed := await _wait_for(func() -> bool: return _w.world_for(0).get_block(target) == Blocks.AIR, 10.0)

@@ -505,6 +505,8 @@ func _resolve_block(peer: int, pos: Vector3i, block: int, dim: int) -> void:
 	if p == null or p.dimension != dim:
 		return
 	if (Vector3(pos) + Vector3(0.5, 0.5, 0.5)).distance_to(p.global_position + Vector3(0, 1.4, 0)) > MAX_REACH:
+		if OS.is_debug_build() and "--mp-test=host" in OS.get_cmdline_user_args():
+			print("MP HOST note: block edit out of reach: %s vs player %s" % [pos, p.global_position])
 		return
 	var vw := w.world_for(dim)
 	var current := vw.get_block(pos)

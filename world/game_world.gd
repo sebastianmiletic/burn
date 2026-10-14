@@ -113,9 +113,21 @@ func setup(info: Dictionary) -> void:
 	_add_entity(local_player)
 	local_player.load_from(save.get("player", {}))
 	local_dimension = local_player.dimension
-	if save.is_empty() or not save.has("player"):
+	var pdata: Dictionary = save.get("player", {})
+	var lp := local_player.global_position
+	var gsize := gen_for(local_player.dimension).size if gen_for(local_player.dimension) != null else 2048
+	var lost := lp.x < 8.0 or lp.z < 8.0 or lp.x > gsize - 8.0 or lp.z > gsize - 8.0 or lp.y < WorldGen.Y_MIN + 4.0
+	if pdata.has("pos") and lost:
+		# A save from outside the world (an old bug put guests at the origin): bring them home.
+		pdata = pdata.duplicate()
+		pdata.erase("pos")
+	if not pdata.has("pos"):
+		# New characters, and guests bringing their character into a host's world.
+		local_player.dimension = 0
 		local_player.global_position = default_spawn(0)
-		local_player.respawn_point = local_player.global_position
+		if not pdata.has("respawn") or (pdata["respawn"] as Vector3) == Vector3.ZERO:
+			local_player.respawn_point = local_player.global_position
+	if pdata.is_empty():
 		local_player.give_starting_kit()
 		quests.accept("kindling")
 
