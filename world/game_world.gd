@@ -35,6 +35,7 @@ var spawner: WildSpawner
 var tracker: LocationTracker
 var sky: SkyController
 var weather: Weather
+var fx: MiningFx
 var hud: CanvasLayer
 var ui_open := false
 
@@ -75,11 +76,21 @@ func setup(info: Dictionary) -> void:
 	_log_time("overworld prepared", t0)
 	await _prepare_dimension(1, seed_value ^ 0x5eed, 0.45, 0.6)
 	_log_time("underworld prepared", t0)
+	if ResourceLoader.exists(VoxelWorld.FLORA_PATH):
+		(load(VoxelWorld.FLORA_PATH) as Script).call("warmup")
+		_log_time("flora warmed up", t0)
 
 	sky = SkyController.new()
 	add_child(sky)
 	weather = Weather.new()
 	add_child(weather)
+	fx = MiningFx.new()
+	add_child(fx)
+	# Flora's interaction / ambient-life nodes (bending grass, insects), when present.
+	for path in ["res://world/flora/foliage_interaction.gd", "res://world/flora/ambient_life.gd"]:
+		if ResourceLoader.exists(path):
+			var node: Node = (load(path) as Script).new()
+			add_child(node)
 	director = LocationDirector.new()
 	add_child(director)
 	spawner = WildSpawner.new()
@@ -125,9 +136,13 @@ func setup(info: Dictionary) -> void:
 		await get_tree().process_frame
 	_log_time("spawn area streamed", t0)
 	# Make sure we stand on solid ground (saves can predate edits).
-	if world.is_solid(Vector3i(local_player.global_position.floor())):
-		var p := local_player.global_position
-		local_player.global_position = Vector3(p.x, world.surface_y(int(p.x), int(p.z)) + 1.05, p.z)
+	var p := local_player.global_position
+	if world.field(p + Vector3(0, 0.3, 0)) >= 0.5 or world.is_box_solid(Vector3i(p.floor())):
+		var g := world.ground_below(p.x, p.y + 40.0, p.z, 80.0)
+		if absf(g) < 1e6:
+			local_player.global_position = Vector3(p.x, g + 0.02, p.z)
+		else:
+			local_player.global_position = Vector3(p.x, world.surface_y(int(p.x), int(p.z)) + 1.05, p.z)
 
 	_apply_gfx_flags()
 	hud = _make_ui()
@@ -623,8 +638,33 @@ func request_set_block_server(pos: Vector3i, block: int, dim: int) -> void:
 
 
 func _on_block_changed(pos: Vector3i, old_block: int, new_block: int, dim: int) -> void:
-	if dim == local_dimension and old_block != Blocks.AIR and new_block == Blocks.AIR:
-		Audio.play("block_break", Vector3(pos) + Vector3(0.5, 0.5, 0.5))
+	if dim != local_dimension or Blocks.is_trunk(old_block):
+		return
+	var c := Vector3(pos) + Vector3(0.5, 0.5, 0.5)
+	if old_block != Blocks.AIR and new_block == Blocks.AIR:
+		var fam := Blocks.sound_family(old_block)
+		var snd := "break_" + ("dirt" if fam in ["dirt", "sand", "snow"] else ("wood" if fam == "wood" else ("crystal" if fam == "crystal" else "stone")))
+		Audio.play(snd, c)
+		if fx != null:
+			fx.debris(c, Vector3.UP, Blocks.color(old_block), true)
+	elif new_block != Blocks.AIR and old_block == Blocks.AIR and fx != null:
+		fx.debris(c, Vector3.UP, Blocks.color(new_block), false)
+
+
+## A tree toppling (visual only; the trunk blocks are removed separately).
+func fell_tree_fx(root: Vector3i, trunk: int, dim: int, dir: Vector3) -> void:
+	if dim != local_dimension:
+		return
+	var vw := world_for(dim)
+	var info := WorldGen.tree_info(trunk, root)
+	var ground := vw.ground_below(root.x + 0.5, root.y + 1.0, root.z + 0.5, 3.0)
+	var base := Vector3(root.x + 0.5, ground if absf(ground) < 1e6 else float(root.y), root.z + 0.5)
+	if vw.flora != null:
+		vw.flora.call("fell", self, base, int(info[0]), float(info[1]), int(info[2]), dir)
+	Audio.play("tree_creak", base + Vector3(0, 2, 0))
+	get_tree().create_timer(1.1).timeout.connect(func() -> void: Audio.play("tree_fall", base + dir * 4.0))
+	if fx != null:
+		fx.debris(base + Vector3(0, 0.8, 0), -dir, Blocks.color(trunk), true)
 
 
 # --- Dimensions --------------------------------------------------------------------------

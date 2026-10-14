@@ -8,6 +8,10 @@ const CRACK_SHADER := preload("res://world/materials/block_crack.gdshader")
 var _outline: MeshInstance3D
 var _crack: MeshInstance3D
 var _crack_mat := ShaderMaterial.new()
+## Smooth ground: a soft ring where the pick will strike and decal cracks.
+var _ring: Decal
+var _cracks: Decal
+var _smooth := false
 
 
 func _ready() -> void:
@@ -25,19 +29,85 @@ func _ready() -> void:
 	_crack.material_override = _crack_mat
 	_crack.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_crack)
+	_ring = Decal.new()
+	_ring.size = Vector3(1.3, 0.8, 1.3)
+	_ring.texture_albedo = _ring_texture()
+	_ring.texture_emission = _ring.texture_albedo
+	_ring.emission_energy = 1.4
+	_ring.modulate = Color(1.0, 0.72, 0.4, 0.55)
+	_ring.albedo_mix = 0.35
+	_ring.cull_mask = 1
+	add_child(_ring)
+	_cracks = Decal.new()
+	_cracks.size = Vector3(1.4, 0.9, 1.4)
+	_cracks.texture_albedo = _crack_texture()
+	_cracks.modulate = Color(0.05, 0.04, 0.03, 1.0)
+	add_child(_cracks)
 	visible = false
 
 
 func show_target(hit: Dictionary, show: bool) -> void:
 	visible = show and not hit.is_empty()
-	if visible:
+	if not visible:
+		return
+	_smooth = Blocks.is_smooth(int(hit["block"]))
+	_outline.visible = not _smooth
+	_ring.visible = _smooth
+	if _smooth:
+		# Decals project along their -Y: line Y up with the surface normal.
+		var n: Vector3 = hit.get("surface_normal", Vector3.UP)
+		var x := n.cross(Vector3.FORWARD if absf(n.y) > 0.9 else Vector3.UP).normalized()
+		global_transform = Transform3D(Basis(x, n, x.cross(n)), hit["point"])
+	else:
 		global_position = Vector3(hit["pos"]) + Vector3(0.5, 0.5, 0.5)
 		global_rotation = Vector3.ZERO
 
 
 func set_crack(progress: float) -> void:
-	_crack.visible = progress > 0.02
-	_crack_mat.set_shader_parameter(&"progress", clampf(progress, 0.0, 1.0))
+	progress = clampf(progress, 0.0, 1.0)
+	_crack.visible = progress > 0.02 and not _smooth
+	_crack_mat.set_shader_parameter(&"progress", progress)
+	_cracks.visible = progress > 0.02 and _smooth
+	_cracks.modulate.a = 0.35 + progress * 0.65
+	_cracks.size = Vector3.ONE * (0.5 + progress * 0.9) + Vector3(0, 0.4, 0)
+
+
+static func _ring_texture() -> ImageTexture:
+	var img := Image.create(128, 128, false, Image.FORMAT_RGBA8)
+	for y in 128:
+		for x in 128:
+			var d := Vector2(x - 63.5, y - 63.5).length() / 63.5
+			var a := clampf(1.0 - absf(d - 0.78) / 0.09, 0.0, 1.0)
+			a = a * a + clampf(1.0 - d, 0.0, 1.0) * 0.12
+			img.set_pixel(x, y, Color(1, 1, 1, a))
+	return ImageTexture.create_from_image(img)
+
+
+static func _crack_texture() -> ImageTexture:
+	# Fissures: edges of a jittered Voronoi diagram, fading towards the rim.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 77
+	var pts: Array[Vector2] = []
+	for i in 22:
+		pts.append(Vector2(rng.randf(), rng.randf()) * 128.0)
+	var img := Image.create(128, 128, false, Image.FORMAT_RGBA8)
+	for y in 128:
+		for x in 128:
+			var p := Vector2(x, y)
+			var d1 := 1e9
+			var d2 := 1e9
+			for q in pts:
+				var d := p.distance_squared_to(q)
+				if d < d1:
+					d2 = d1
+					d1 = d
+				elif d < d2:
+					d2 = d
+			var edge := sqrt(d2) - sqrt(d1)
+			var rim := clampf(1.0 - p.distance_to(Vector2(64, 64)) / 64.0, 0.0, 1.0)
+			var a := clampf(1.0 - edge / 1.6, 0.0, 1.0) * clampf(rim * 2.0, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, a))
+	return ImageTexture.create_from_image(img)
 
 
 static func _box_lines(size: float) -> ArrayMesh:

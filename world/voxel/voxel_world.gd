@@ -12,6 +12,8 @@ signal block_changed(pos: Vector3i, old_block: int, new_block: int)
 signal area_ready  ## first time the area around the focus is fully meshed
 
 const OPAQUE_SHADER := preload("res://world/materials/voxel.gdshader")
+const TERRAIN_SHADER := preload("res://world/materials/terrain.gdshader")
+const FLORA_PATH := "res://world/flora/flora.gd"
 const LIQUID_SHADER := preload("res://world/materials/voxel_liquid.gdshader")
 
 var gen: WorldGen
@@ -26,9 +28,14 @@ var meshing_enabled := true
 var max_point_lights := 12
 
 var opaque_material := ShaderMaterial.new()
+var terrain_material := ShaderMaterial.new()
+## Flora script (world/flora/flora.gd) when present: plans and builds grass and trees per chunk.
+var flora: Script
+var flora_quality := 1
 var liquid_material := ShaderMaterial.new()
 
 var _chunks := {}         # Vector3i -> PackedByteArray (empty = all air)
+var _density := {}        # Vector3i -> PackedByteArray (empty = derived from the blocks)
 var _solid_uniform := {}  # Vector3i -> true when the chunk is entirely opaque
 var _edits := {}          # Vector3i -> Dictionary(local index -> block)
 var _meshes := {}         # Vector3i -> MeshInstance3D
@@ -63,6 +70,12 @@ func setup(world_gen: WorldGen, dim: int) -> void:
 	dimension = dim
 	opaque_material.shader = OPAQUE_SHADER
 	liquid_material.shader = LIQUID_SHADER
+	terrain_material.shader = TERRAIN_SHADER
+	TerrainTextures.apply(terrain_material)
+	TerrainTextures.apply(opaque_material)
+	if ResourceLoader.exists(FLORA_PATH):
+		flora = load(FLORA_PATH)
+	flora_quality = int(Settings.get_value("graphics", "quality"))
 	var cores := maxi(2, OS.get_processor_count() - 1)
 	_max_in_flight = cores
 	# Separate budgets: meshing must never wait behind a long generation queue.
@@ -146,7 +159,10 @@ func raycast(origin: Vector3, dir: Vector3, max_dist: float, include_liquid := f
 		if b < 0:
 			return {}
 		if b != Blocks.AIR and (Blocks.is_solid(b) or Blocks.shape(b) == Blocks.Shape.SMALL or (include_liquid and Blocks.is_liquid(b))):
-			return {"pos": p, "normal": normal, "block": b, "distance": t, "point": origin + dir * t}
+			var hit := {"pos": p, "normal": normal, "block": b, "distance": t, "point": origin + dir * t, "surface_normal": Vector3(normal)}
+			if Blocks.is_smooth(b):
+				_refine_smooth_hit(hit, origin, dir, t)
+			return hit
 		if t_max.x < t_max.y and t_max.x < t_max.z:
 			p.x += step.x
 			t = t_max.x
@@ -163,6 +179,54 @@ func raycast(origin: Vector3, dir: Vector3, max_dist: float, include_liquid := f
 			t_max.z += t_delta.z
 			normal = Vector3i(0, 0, -step.z)
 	return {}
+
+
+## The voxel grid finds which block; the smooth surface says where the ray
+## really meets the ground (up to about half a block either side).
+func _refine_smooth_hit(hit: Dictionary, origin: Vector3, dir: Vector3, t_hit: float) -> void:
+	var t := maxf(0.0, t_hit - 0.9)
+	var t_end := t_hit + 0.9
+	var prev_t := t
+	var prev_in := field(origin + dir * t) >= 0.5
+	if prev_in:
+		return  # started inside the ground: keep the grid answer
+	t += 0.08
+	while t <= t_end:
+		if field(origin + dir * t) >= 0.5:
+			# Bisect the crossing.
+			var lo := prev_t
+			var hi := t
+			for i in 5:
+				var mid := (lo + hi) * 0.5
+				if field(origin + dir * mid) >= 0.5:
+					hi = mid
+				else:
+					lo = mid
+			var point := origin + dir * hi
+			hit["point"] = point
+			hit["distance"] = hi
+			var n := field_normal(point)
+			hit["surface_normal"] = n
+			# Place blocks against the face the surface mostly looks along.
+			var a := n.abs()
+			if a.y >= a.x and a.y >= a.z:
+				hit["normal"] = Vector3i(0, 1 if n.y > 0.0 else -1, 0)
+			elif a.x >= a.z:
+				hit["normal"] = Vector3i(1 if n.x > 0.0 else -1, 0, 0)
+			else:
+				hit["normal"] = Vector3i(0, 0, 1 if n.z > 0.0 else -1)
+			return
+		prev_t = t
+		t += 0.08
+
+
+## Outward surface normal of the smooth field at p.
+func field_normal(p: Vector3) -> Vector3:
+	const E := 0.35
+	var g := Vector3(field(p + Vector3(E, 0, 0)) - field(p - Vector3(E, 0, 0)),
+			field(p + Vector3(0, E, 0)) - field(p - Vector3(0, E, 0)),
+			field(p + Vector3(0, 0, E)) - field(p - Vector3(0, 0, E)))
+	return (-g).normalized() if g.length_squared() > 1e-8 else Vector3.UP
 
 
 # --- Edits ----------------------------------------------------------------------
@@ -184,6 +248,8 @@ func set_block(p: Vector3i, block: int) -> void:
 	arr[i] = block
 	_chunks[key] = arr
 	_solid_uniform.erase(key)
+	_set_density(key, i, block, arr)
+	_fk = Vector3i(1 << 20, 0, 0)
 	for dz in range(-1 if l.z == 0 else 0, 2 if l.z == 15 else 1):
 		for dy in range(-1 if l.y == 0 else 0, 2 if l.y == 15 else 1):
 			for dx in range(-1 if l.x == 0 else 0, 2 if l.x == 15 else 1):
@@ -203,6 +269,127 @@ func apply_edits(edits: Dictionary) -> void:
 			var z := (i % Chunk.AREA) / Chunk.SIZE
 			var x := i % Chunk.SIZE
 			set_block(key * Chunk.SIZE + Vector3i(x, y, z), entries[i])
+
+
+## Density byte an edit leaves behind: placed ground is fully solid, dug
+## space fully empty, built blocks keep the ground's shape around them.
+static func _edit_density(block: int, old: int) -> int:
+	if Blocks.is_smooth(block):
+		return 255
+	if block == Blocks.AIR or Blocks.is_liquid(block):
+		return 0
+	return mini(old, 100)
+
+
+func _set_density(key: Vector3i, i: int, block: int, blocks: PackedByteArray) -> void:
+	var d: PackedByteArray = _density.get(key, PackedByteArray())
+	d = SmoothMesher.derive_density(blocks) if d.is_empty() else d.duplicate()
+	if d.is_empty():
+		d = Chunk.empty()
+	d[i] = _edit_density(block, d[i])
+	_density[key] = d
+
+
+# --- Smooth field -------------------------------------------------------------------
+# The terrain surface is the 0.5 level set of a field sampled at voxel centres:
+# smooth-family blocks are >= 0.5, everything else < 0.5. Crisp cubes are boxes.
+
+var _fk := Vector3i(1 << 20, 0, 0)  # one-chunk cache for field lookups
+var _fb := PackedByteArray()
+var _fd := PackedByteArray()
+var _fl := false  # cached chunk loaded
+
+
+func _cache_chunk(key: Vector3i) -> void:
+	_fk = key
+	var data: Variant = _chunks.get(key)
+	_fl = data != null
+	_fb = data if data != null else PackedByteArray()
+	_fd = _density.get(key, PackedByteArray())
+
+
+## Field value at a voxel (0..1); unloaded space reads as solid.
+func voxel_field(p: Vector3i) -> float:
+	var key := Vector3i(p.x >> 4, p.y >> 4, p.z >> 4)
+	if key != _fk:
+		_cache_chunk(key)
+	if not _fl:
+		return 1.0
+	if _fb.is_empty():
+		return 0.0 if _fd.is_empty() else minf(_fd[(p.x & 15) + ((p.z & 15) << 4) + ((p.y & 15) << 8)] / 255.0, 0.498)
+	var i := (p.x & 15) + ((p.z & 15) << 4) + ((p.y & 15) << 8)
+	var b := _fb[i]
+	var smooth := Blocks.is_smooth(b)
+	var d := (255 if smooth else 0) if _fd.is_empty() else int(_fd[i])
+	if smooth:
+		return maxf(d, 128) / 255.0
+	return minf(d, 127) / 255.0
+
+
+## Trilinear field value at a world position (>= 0.5 means inside smooth ground).
+func field(p: Vector3) -> float:
+	var q := p - Vector3(0.5, 0.5, 0.5)
+	var x0 := floori(q.x)
+	var y0 := floori(q.y)
+	var z0 := floori(q.z)
+	var tx := q.x - x0
+	var ty := q.y - y0
+	var tz := q.z - z0
+	var c000 := voxel_field(Vector3i(x0, y0, z0))
+	var c100 := voxel_field(Vector3i(x0 + 1, y0, z0))
+	var c010 := voxel_field(Vector3i(x0, y0 + 1, z0))
+	var c110 := voxel_field(Vector3i(x0 + 1, y0 + 1, z0))
+	var c001 := voxel_field(Vector3i(x0, y0, z0 + 1))
+	var c101 := voxel_field(Vector3i(x0 + 1, y0, z0 + 1))
+	var c011 := voxel_field(Vector3i(x0, y0 + 1, z0 + 1))
+	var c111 := voxel_field(Vector3i(x0 + 1, y0 + 1, z0 + 1))
+	var a := lerpf(lerpf(c000, c100, tx), lerpf(c010, c110, tx), ty)
+	var b := lerpf(lerpf(c001, c101, tx), lerpf(c011, c111, tx), ty)
+	return lerpf(a, b, tz)
+
+
+## Height of the smooth ground under (x, z), searching down from y_from for
+## at most `depth` metres. Returns -INF when there is none in range.
+func ground_below(x: float, y_from: float, z: float, depth: float) -> float:
+	# Along a vertical line the trilinear field is linear between sample layers:
+	# evaluate it at each layer (y = k + 0.5) and solve for the crossing.
+	var qx := x - 0.5
+	var qz := z - 0.5
+	var x0 := floori(qx)
+	var z0 := floori(qz)
+	var tx := qx - x0
+	var tz := qz - z0
+	var k := floori(y_from - 0.5)
+	var below := _column_value(x0, z0, tx, tz, k)
+	var above := _column_value(x0, z0, tx, tz, k + 1)
+	var prev := lerpf(below, above, (y_from - 0.5) - k)
+	var prev_y := y_from
+	if prev >= 0.5:
+		return INF  # buried: the caller is inside the ground
+	var k_end := floori(y_from - depth - 0.5)
+	while k >= k_end:
+		var v := _column_value(x0, z0, tx, tz, k)
+		var vy := float(k) + 0.5
+		if v >= 0.5:
+			var t := (v - 0.5) / maxf(v - prev, 1e-5)
+			var h := vy + t * (prev_y - vy)
+			return h if h <= y_from + 0.001 else -INF
+		prev = v
+		prev_y = vy
+		k -= 1
+	return -INF
+
+
+func _column_value(x0: int, z0: int, tx: float, tz: float, k: int) -> float:
+	var a := lerpf(voxel_field(Vector3i(x0, k, z0)), voxel_field(Vector3i(x0 + 1, k, z0)), tx)
+	var b := lerpf(voxel_field(Vector3i(x0, k, z0 + 1)), voxel_field(Vector3i(x0 + 1, k, z0 + 1)), tx)
+	return lerpf(a, b, tz)
+
+
+## Crisp cube (or trunk) block at p: these collide as boxes.
+func is_box_solid(p: Vector3i) -> bool:
+	var b := get_block(p)
+	return b > 0 and Blocks.is_solid(b) and not Blocks.is_smooth(b)
 
 
 func _mark_dirty(key: Vector3i) -> void:
@@ -357,7 +544,13 @@ func _try_mesh(k: Vector3i) -> int:
 	_in_flight += 1
 	_mesh_in_flight += 1
 	var version := int(_mesh_version.get(k, 0))
-	WorkerThreadPool.add_task(_task_mesh.bind(k, neighbours, version), false, "chunk mesh")
+	var densities := []
+	densities.resize(27)
+	for dz in range(-1, 2):
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				densities[(dx + 1) + (dy + 1) * 3 + (dz + 1) * 9] = _density.get(k + Vector3i(dx, dy, dz), PackedByteArray())
+	WorkerThreadPool.add_task(_task_mesh.bind(k, neighbours, densities, version), false, "chunk mesh")
 	return 1
 
 
@@ -389,24 +582,37 @@ func _skip_mesh(k: Vector3i) -> bool:
 
 
 func _task_generate(k: Vector3i) -> void:
-	var data := gen.generate_chunk(k)
+	var r := gen.generate(k)
 	_lock.lock()
-	_gen_results.append([k, data])
+	_gen_results.append([k, r[0], r[1]])
 	_lock.unlock()
 
 
-func _task_mesh(k: Vector3i, neighbours: Array, version: int) -> void:
+func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) -> void:
 	var detail := gen.make_detail_noise()
 	var ridge := gen.make_ridge_noise()
 	var surface := PackedInt32Array()
 	surface.resize(Chunk.AREA)
+	var biomes := PackedByteArray()
+	biomes.resize(Chunk.AREA)
 	var o := k * Chunk.SIZE
 	for z in Chunk.SIZE:
 		for x in Chunk.SIZE:
 			var wx := o.x + x
 			var wz := o.z + z
 			surface[x + z * Chunk.SIZE] = int(gen.column(wx, wz, detail, ridge).x) if gen.in_bounds(wx, wz) else -64
+			biomes[x + z * Chunk.SIZE] = gen.biome_at(wx, wz)
 	var result := ChunkMesher.build(neighbours, surface, o.y)
+	var smooth := SmoothMesher.build(neighbours, densities, surface, biomes, o, dimension)
+	if smooth.has("terrain"):
+		result["terrain"] = smooth["terrain"]
+	if flora != null:
+		var fs: Dictionary = smooth.get("flora_surface", {})
+		var trees: Array = smooth.get("trees", [])
+		if not fs.is_empty() or not trees.is_empty():
+			if fs.is_empty():
+				fs = {"tris": PackedVector3Array(), "normals": PackedVector3Array(), "blocks": PackedByteArray(), "sky": PackedFloat32Array()}
+			result["flora"] = flora.call("plan_chunk", o, fs, trees, dimension, gen.world_seed)
 	# Emissive blocks become light sources.
 	var center: PackedByteArray = neighbours[13]
 	var lights: Array = []
@@ -437,11 +643,22 @@ func _consume_results() -> void:
 		_gen_in_flight -= 1
 		var k: Vector3i = r[0]
 		var data: PackedByteArray = r[1]
+		var dens: PackedByteArray = r[2]
 		_gen_pending.erase(k)
 		if _edits.has(k):
 			var entries: Dictionary = _edits[k]
+			if dens.is_empty():
+				dens = SmoothMesher.derive_density(data)
 			for i: int in entries:
 				data[i] = entries[i]
+				if not dens.is_empty():
+					dens[i] = _edit_density(entries[i], dens[i])
+		# Density only matters near a surface: drop it when it says nothing.
+		if not dens.is_empty() and (dens.count(0) == Chunk.VOLUME or dens.count(255) == Chunk.VOLUME):
+			dens = PackedByteArray()
+		_density[k] = dens
+		if k == _fk:
+			_fk = Vector3i(1 << 20, 0, 0)
 		if Chunk.is_all(data, Blocks.AIR):
 			data = PackedByteArray()
 		elif Blocks.is_opaque(data[0]) and data.count(data[0]) == Chunk.VOLUME:
@@ -510,10 +727,13 @@ func _set_mesh(k: Vector3i, result: Dictionary) -> void:
 	if old != null:
 		old.queue_free()
 	_light_points[k] = result.get("lights", [])
-	if not result.has("opaque") and not result.has("liquid"):
+	if not result.has("opaque") and not result.has("liquid") and not result.has("terrain") and not result.has("flora"):
 		_meshes[k] = null
 		return
 	var mesh := ArrayMesh.new()
+	if result.has("terrain"):
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, result["terrain"], [], {}, SmoothMesher.format_flags())
+		mesh.surface_set_material(mesh.get_surface_count() - 1, terrain_material)
 	if result.has("opaque"):
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, result["opaque"])
 		mesh.surface_set_material(mesh.get_surface_count() - 1, opaque_material)
@@ -526,6 +746,10 @@ func _set_mesh(k: Vector3i, result: Dictionary) -> void:
 	mi.cast_shadow = _shadow_setting(k)
 	add_child(mi)
 	_meshes[k] = mi
+	if result.has("flora") and flora != null:
+		var node: Node3D = flora.call("build_chunk", result["flora"], flora_quality)
+		if node != null:
+			mi.add_child(node)
 
 
 func _shadow_setting(k: Vector3i) -> int:
@@ -562,7 +786,9 @@ func _unload_far(fkey: Vector3i) -> void:
 				break
 		if not near_other and not _mesh_pending.has(k):
 			_chunks.erase(k)
+			_density.erase(k)
 			_solid_uniform.erase(k)
+			_fk = Vector3i(1 << 20, 0, 0)
 
 
 # --- Lights -------------------------------------------------------------------------

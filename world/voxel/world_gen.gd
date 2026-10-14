@@ -214,6 +214,13 @@ func raw_height(x: int, z: int, detail: FastNoiseLite, ridge: FastNoiseLite) -> 
 
 ## Final surface height (top solid block y) and whether the column is road.
 func column(x: int, z: int, detail: FastNoiseLite, ridge: FastNoiseLite) -> Vector2:
+	var c := column_f(x, z, detail, ridge)
+	return Vector2(floorf(c.x + 0.5), c.y)
+
+
+## Continuous terrain height (before rounding to a block) and road flag. The
+## smooth ground surface lies at world height c.x + 1.0.
+func column_f(x: int, z: int, detail: FastNoiseLite, ridge: FastNoiseLite) -> Vector2:
 	var h := raw_height(x, z, detail, ridge)
 	var road := 0.0
 	var pad: Variant = _pads.get(x + z * size)
@@ -221,7 +228,7 @@ func column(x: int, z: int, detail: FastNoiseLite, ridge: FastNoiseLite) -> Vect
 		var p: Vector3 = pad
 		h = lerpf(h, p.x, p.y)
 		road = p.z
-	return Vector2(floorf(h), road)
+	return Vector2(h, road)
 
 
 func make_detail_noise() -> FastNoiseLite:
@@ -244,6 +251,20 @@ func surface_height(x: int, z: int) -> int:
 		_main_detail = make_detail_noise()
 		_main_ridge = make_ridge_noise()
 	return int(column(x, z, _main_detail, _main_ridge).x)
+
+
+## Height of the smooth natural ground surface in world units (ignores caves and edits).
+func ground_level(x: float, z: float) -> float:
+	if _main_detail == null:
+		_main_detail = make_detail_noise()
+		_main_ridge = make_ridge_noise()
+	var ix := floori(x)
+	var iz := floori(z)
+	var tx := x - ix
+	var tz := z - iz
+	var a := lerpf(column_f(ix, iz, _main_detail, _main_ridge).x, column_f(ix + 1, iz, _main_detail, _main_ridge).x, tx)
+	var b := lerpf(column_f(ix, iz + 1, _main_detail, _main_ridge).x, column_f(ix + 1, iz + 1, _main_detail, _main_ridge).x, tx)
+	return lerpf(a, b, tz) + 1.0
 
 
 func in_bounds(x: int, z: int) -> bool:
@@ -273,35 +294,44 @@ func add_pad(center_xz: Vector2, radius: float, falloff: float, height: float) -
 func add_road(points: PackedVector2Array, width: float) -> void:
 	var detail := make_detail_noise()
 	var ridge := make_ridge_noise()
+	const BANK := 6.0  # metres over which the road blends back into the land
 	for i in points.size() - 1:
 		var a := points[i]
 		var b := points[i + 1]
 		var steps := int(a.distance_to(b))
 		for s in steps + 1:
 			var p := a.lerp(b, float(s) / maxf(1.0, steps))
-			var road_h := maxf(smooth_height(p.x, p.y) + 0.5, SEA_LEVEL + 1.0)
-			for dz in range(-int(width) - 2, int(width) + 3):
-				for dx in range(-int(width) - 2, int(width) + 3):
+			# The road follows the land, smoothed over ~10 m so it doesn't ripple.
+			var natural := 0.0
+			for o: Vector2 in [Vector2.ZERO, Vector2(5, 0), Vector2(-5, 0), Vector2(0, 5), Vector2(0, -5)]:
+				natural += raw_height(int(p.x + o.x), int(p.y + o.y), detail, ridge)
+			var road_h := maxf(natural / 5.0 + 0.15, SEA_LEVEL + 1.0)
+			var r := int(width + BANK) + 1
+			for dz in range(-r, r + 1):
+				for dx in range(-r, r + 1):
 					var x := int(p.x) + dx
 					var z := int(p.y) + dz
 					if not in_bounds(x, z):
 						continue
 					var d := Vector2(dx, dz).length()
+					if d > width + BANK:
+						continue
 					var key := x + z * size
 					var existing: Variant = _pads.get(key)
 					if d <= width:
 						if existing == null or (existing as Vector3).y < 0.999 or (existing as Vector3).z > 0.0:
 							_pads[key] = Vector3(road_h, 1.0, 1.0)
-					elif d <= width + 2.5 and existing == null:
-						var natural := raw_height(x, z, detail, ridge)
-						var w := 1.0 - (d - width) / 2.5
-						_pads[key] = Vector3(lerpf(natural, road_h, w), 1.0, 0.0)
+					else:
+						var w := 1.0 - smoothstep(width, width + BANK, d)
+						if existing == null or ((existing as Vector3).z == 0.0 and (existing as Vector3).y < w):
+							_pads[key] = Vector3(road_h, w, 0.0)
 
 
 func _rasterise_pads() -> void:
 	for loc in locations:
 		if loc.pad_radius > 0.0:
-			add_pad(Vector2(loc.center.x, loc.center.z), loc.pad_radius, loc.pad_falloff, loc.ground_y + 0.0)
+			# Wide, gentle shoulders so building sites never leave cut walls in the smooth land.
+			add_pad(Vector2(loc.center.x, loc.center.z), loc.pad_radius, maxf(loc.pad_falloff * 1.8, 10.0), loc.ground_y + 0.0)
 	for road: PackedVector2Array in LocationPlanner.roads(self):
 		add_road(road, 2.0)
 
@@ -309,6 +339,13 @@ func _rasterise_pads() -> void:
 # --- Chunk generation (worker threads) ----------------------------------------
 
 func generate_chunk(key: Vector3i) -> PackedByteArray:
+	return generate(key)[0]
+
+
+## Block ids and the matching density bytes for one chunk: [blocks, density].
+## Density is the smooth terrain field sampled at voxel centres (>= 128 inside
+## natural ground); an empty density array means "derive it from the blocks".
+func generate(key: Vector3i) -> Array:
 	if dimension == Dimension.HELL:
 		return _generate_hell(key)
 	return _generate_overworld(key)
@@ -324,16 +361,25 @@ static func _hash01(x: int, y: int, z: int, s: int) -> float:
 	return float(_hash3(x, y, z, s) & 0xffff) / 65535.0
 
 
-func _generate_overworld(key: Vector3i) -> PackedByteArray:
+## Density byte for a field value d (0.5 = surface), consistent with solidity.
+static func _dbyte(d: float, solid: bool) -> int:
+	var q := clampi(int(d * 255.0), 0, 255)
+	return maxi(q, 128) if solid else mini(q, 127)
+
+
+func _generate_overworld(key: Vector3i) -> Array:
 	var data := Chunk.empty()
+	var dens := Chunk.empty()
 	var o := key * Chunk.SIZE
 	if o.y > Y_MAX or o.y + Chunk.SIZE <= Y_MIN:
-		return data
+		return [data, PackedByteArray()]
 	var detail := make_detail_noise()
 	var ridge := make_ridge_noise()
 
 	var heights := PackedInt32Array()
 	heights.resize(Chunk.AREA)
+	var hf := PackedFloat32Array()
+	hf.resize(Chunk.AREA)
 	var roads := PackedByteArray()
 	roads.resize(Chunk.AREA)
 	var biomes := PackedByteArray()
@@ -343,12 +389,13 @@ func _generate_overworld(key: Vector3i) -> PackedByteArray:
 		for x in Chunk.SIZE:
 			var wx := o.x + x
 			var wz := o.z + z
-			var col := column(wx, wz, detail, ridge) if in_bounds(wx, wz) else Vector2(-20, 0)
+			var col := column_f(wx, wz, detail, ridge) if in_bounds(wx, wz) else Vector2(-20, 0)
 			var i := x + z * Chunk.SIZE
-			heights[i] = int(col.x)
+			hf[i] = col.x
+			heights[i] = int(floorf(col.x + 0.5))
 			roads[i] = int(col.y)
 			biomes[i] = biome_at(wx, wz)
-			max_h = maxi(max_h, int(col.x))
+			max_h = maxi(max_h, heights[i])
 
 	var touches_structure := false
 	for bp in _blueprints:
@@ -356,17 +403,19 @@ func _generate_overworld(key: Vector3i) -> PackedByteArray:
 			touches_structure = true
 			break
 
-	var top := maxi(max_h, SEA_LEVEL) + 14  # trees reach above the ground
+	var top := maxi(max_h, SEA_LEVEL) + 16  # trees reach above the ground
 	if o.y > top and not touches_structure:
-		return data
+		return [data, PackedByteArray()]
 
 	var caves := o.y < max_h - 3
 	var t1 := PackedByteArray()
 	var t2 := PackedByteArray()
 	var cav := PackedByteArray()
+	var strata := PackedByteArray()
 	if caves:
 		t1 = _noise_block(o, 0.024, 1, 31)
 		t2 = _noise_block(o, 0.024, 1, 32)
+		strata = _noise_block(o, 0.035, 2, 34)
 		if o.y < -12:
 			cav = _noise_block(o, 0.012, 2, 33)
 
@@ -376,33 +425,41 @@ func _generate_overworld(key: Vector3i) -> PackedByteArray:
 			for x in Chunk.SIZE:
 				var ci := x + z * Chunk.SIZE
 				var h := heights[ci]
+				var d := 0.5 + (hf[ci] + 0.5 - float(wy)) * 0.5
+				var ni := x + y * Chunk.SIZE + z * Chunk.AREA
+				if caves and wy < h - 2 and wy > Y_MIN + 3:
+					# Noise bytes map [-1, 1] to [0, 255]; 127.5 is zero.
+					var depth_factor := clampf(float(h - wy) / 40.0, 0.0, 1.0)
+					var tw := 9.0 + 6.0 * depth_factor
+					var m := maxf(absf(t1[ni] - 127.5), absf(t2[ni] - 127.5)) - tw
+					# Tunnels pinch shut just below the surface instead of ending in a flat roof.
+					var dc := 0.5 + m / 24.0 + maxf(0.0, float(wy - h + 7)) * 0.12
+					if wy < -12 and not cav.is_empty():
+						dc = minf(dc, 0.5 + ((198.0 - depth_factor * 19.0) - float(cav[ni])) / 30.0)
+					d = minf(d, dc)
+				var solid := d >= 0.5
 				var b := Blocks.AIR
-				if wy <= h:
-					b = _ground_block(o.x + x, wy, o.z + z, h, biomes[ci], roads[ci])
-					if caves and wy < h - 3 and wy > Y_MIN + 3:
-						# Noise bytes map [-1, 1] to [0, 255]; 127.5 is zero.
-						var ni := x + y * Chunk.SIZE + z * Chunk.AREA
-						var depth_factor := clampf(float(h - wy) / 40.0, 0.0, 1.0)
-						var tw := 9.0 + 6.0 * depth_factor
-						var carve := absf(t1[ni] - 127.5) < tw and absf(t2[ni] - 127.5) < tw
-						if not carve and wy < -12 and not cav.is_empty():
-							carve = cav[ni] > 198.0 - depth_factor * 19.0
-						if carve:
-							b = Blocks.LAVA if wy < -112 else Blocks.AIR
+				if solid:
+					var st := 128 if strata.is_empty() else int(strata[ni])
+					b = _ground_block(o.x + x, wy, o.z + z, h, biomes[ci], roads[ci], st)
+				elif wy <= h:
+					b = Blocks.LAVA if wy < -112 else Blocks.AIR  # carved by a cave
 				elif wy <= SEA_LEVEL:
 					b = Blocks.WATER
 					if biomes[ci] == Biome.PEAKS and wy == SEA_LEVEL:
 						b = Blocks.ICE
+				var di := x + z * Chunk.SIZE + y * Chunk.AREA
 				if b != Blocks.AIR:
-					data[x + z * Chunk.SIZE + y * Chunk.AREA] = b
+					data[di] = b
+				dens[di] = _dbyte(d, solid or b == Blocks.ICE)
 
 	var min_h := 100000
 	for hh in heights:
 		min_h = mini(min_h, hh)
-	if o.y <= max_h + 14 and o.y + Chunk.SIZE > min_h - 1:
-		_place_trees(data, o, detail, ridge)
-	_stamp_blueprints(data, key)
-	return data
+	if o.y <= max_h + 16 and o.y + Chunk.SIZE > min_h - 1:
+		_place_trees(data, dens, o, detail, ridge)
+	_stamp_blueprints(data, dens, key)
+	return [data, dens]
 
 
 ## Noise for one chunk via the native batch path: bytes indexed x + y*16 + z*256.
@@ -416,29 +473,31 @@ func _noise_block(o: Vector3i, freq: float, octaves: int, seed_offset: int) -> P
 	return out
 
 
-func _ground_block(x: int, y: int, z: int, h: int, biome: int, road: int) -> int:
+func _ground_block(x: int, y: int, z: int, h: int, biome: int, road: int, strata := 128) -> int:
 	if y <= Y_MIN + 1 + (_hash3(x, 0, z, 5) & 1):
 		return Blocks.BEDROCK
 	var depth := h - y
 	if depth == 0:
 		if road == 1:
-			return Blocks.GRAVEL if _hash3(x, y, z, 7) & 3 != 0 else Blocks.DIRT
+			return Blocks.GRAVEL if _vnoise(x, z, 5.0, 7) > 0.22 else Blocks.DIRT
 		if h <= SEA_LEVEL + 1 and h >= SEA_LEVEL - 2 and biome != Biome.MARSH:
 			return Blocks.SAND
 		match biome:
 			Biome.PLAINS:
-				return Blocks.DRY_GRASS if (_hash3(x >> 2, 0, z >> 2, 9) & 3) == 0 else Blocks.GRASS
+				return Blocks.DRY_GRASS if _vnoise(x, z, 9.0, 9) < 0.3 else Blocks.GRASS
 			Biome.FOREST:
 				return Blocks.GRASS
 			Biome.PEAKS:
 				if h > 64:
 					return Blocks.SNOW
-				return Blocks.STONE if h > 52 else Blocks.GRASS
+				if h > 52:
+					return Blocks.GRANITE if _vnoise(x, z, 11.0, 8) < 0.3 else Blocks.STONE
+				return Blocks.GRASS
 			Biome.MARSH:
 				return Blocks.MUD if h <= SEA_LEVEL else Blocks.GRASS
 			Biome.WASTES:
-				var r := _hash3(x >> 3, 0, z >> 3, 3) & 7
-				return Blocks.SAND if r == 0 else (Blocks.BASALT if r == 1 else Blocks.ASH)
+				var r := _vnoise(x, z, 13.0, 3)
+				return Blocks.SAND if r < 0.2 else (Blocks.BASALT if r > 0.8 else Blocks.ASH)
 			_:
 				return Blocks.SAND
 	if depth < 4:
@@ -448,46 +507,128 @@ func _ground_block(x: int, y: int, z: int, h: int, biome: int, road: int) -> int
 			Biome.PEAKS:
 				return Blocks.STONE if h > 52 else Blocks.DIRT
 			Biome.OCEAN:
-				return Blocks.SAND if depth < 3 else Blocks.GRAVEL
+				return Blocks.SAND if depth < 3 else Blocks.SANDSTONE
 			Biome.MARSH:
-				return Blocks.MUD
+				return Blocks.MUD if depth < 2 else Blocks.CLAY
 			_:
+				if h <= SEA_LEVEL + 2 and depth < 3:
+					return Blocks.SAND
 				return Blocks.DIRT
-	# Ores, deeper is richer.
-	var r := _hash01(x >> 1, y >> 1, z >> 1, 77)
-	var s := _hash01(x, y, z, 78)
-	if r < 0.035 and s < 0.7:
-		if y < -100 and r < 0.02:
-			return Blocks.OBSIDIAN
-		if y < -60 and r < 0.008:
-			return Blocks.EMBER_ORE
-		if y < -25 and r < 0.014:
-			return Blocks.GOLD_ORE
-		if y < 18 and r < 0.024:
-			return Blocks.IRON_ORE
-		if y < 50:
-			return Blocks.COAL_ORE
+	var ore := _ore(x, y, z)
+	if ore != Blocks.AIR:
+		return ore
+	# Rock strata: wavy sedimentary bands plus pockets of other rock.
+	var band := posmod(floori((float(y) + float(strata) * 0.09) / 7.0), 4)
+	var pocket := strata > 178
+	if y < -95:
+		return Blocks.BASALT if band < 2 or pocket else Blocks.DEEPSLATE
 	if y < -40:
-		return Blocks.DEEPSLATE
-	if biome == Biome.WASTES and depth < 12:
-		return Blocks.BASALT
-	return Blocks.STONE
+		if pocket:
+			return Blocks.AMETHYST if strata > 236 and y < -45 else Blocks.SLATE
+		return Blocks.SLATE if band == 3 else Blocks.DEEPSLATE
+	match biome:
+		Biome.PEAKS:
+			if pocket:
+				return Blocks.MARBLE
+			return Blocks.GRANITE if band == 0 else Blocks.STONE
+		Biome.WASTES:
+			if depth < 14:
+				return Blocks.SANDSTONE if band < 2 else Blocks.BASALT
+			return Blocks.BASALT if pocket else Blocks.STONE
+		Biome.MARSH:
+			if depth < 9:
+				return Blocks.CLAY if band != 1 else Blocks.MUD
+			return Blocks.SLATE if pocket else Blocks.STONE
+		Biome.OCEAN:
+			return Blocks.SANDSTONE if depth < 10 else (Blocks.LIMESTONE if pocket else Blocks.STONE)
+	if pocket:
+		return Blocks.GRANITE if band < 2 else Blocks.LIMESTONE
+	return Blocks.LIMESTONE if band == 2 else Blocks.STONE
 
 
-func _place_trees(data: PackedByteArray, o: Vector3i, detail: FastNoiseLite, ridge: FastNoiseLite) -> void:
-	# Trees are rooted on a 5 m jittered grid; check roots within reach of this chunk.
-	const GRID := 5
-	const REACH := 4
-	var gx0 := floori(float(o.x - REACH) / GRID)
-	var gx1 := floori(float(o.x + Chunk.SIZE + REACH) / GRID)
-	var gz0 := floori(float(o.z - REACH) / GRID)
-	var gz1 := floori(float(o.z + Chunk.SIZE + REACH) / GRID)
+## Smooth value noise 0..1 from the integer hash (organic patches, thread-safe).
+static func _vnoise(x: int, z: int, scale: float, s: int) -> float:
+	var fx := x / scale
+	var fz := z / scale
+	var ix := floori(fx)
+	var iz := floori(fz)
+	var tx := fx - ix
+	var tz := fz - iz
+	tx = tx * tx * (3.0 - 2.0 * tx)
+	tz = tz * tz * (3.0 - 2.0 * tz)
+	var a := lerpf(_hash01(ix, 0, iz, s), _hash01(ix + 1, 0, iz, s), tx)
+	var b := lerpf(_hash01(ix, 0, iz + 1, s), _hash01(ix + 1, 0, iz + 1, s), tx)
+	return lerpf(a, b, tz)
+
+
+## Ore veins: 2 m clusters, richer and rarer metals deeper down.
+func _ore(x: int, y: int, z: int) -> int:
+	var r := _hash01(x >> 1, y >> 1, z >> 1, 77)
+	if r >= 0.05:
+		return Blocks.AIR
+	if _hash01(x, y, z, 78) >= 0.72:
+		return Blocks.AIR
+	var t := _hash01(x >> 1, y >> 1, z >> 1, 79)
+	if y < -100 and t < 0.35:
+		return Blocks.OBSIDIAN
+	if y < -95 and t < 0.6:
+		return Blocks.ADAMANTITE_ORE
+	if y < -60 and t < 0.3:
+		return Blocks.MITHRIL_ORE if t < 0.16 else Blocks.EMBER_ORE
+	if y < -40 and t < 0.38:
+		return Blocks.RUBY_ORE if t < 0.19 else Blocks.SAPPHIRE_ORE
+	if y < -25 and t < 0.5:
+		return Blocks.GOLD_ORE
+	if y < -10 and t < 0.62:
+		return Blocks.SILVER_ORE
+	if y < 20 and t < 0.75:
+		return Blocks.IRON_ORE
+	if y < 40 and t < 0.86:
+		return Blocks.COPPER_ORE if t < 0.81 else Blocks.TIN_ORE
+	if y < 60:
+		return Blocks.COAL_ORE
+	return Blocks.AIR
+
+
+# --- Trees -------------------------------------------------------------------
+# Trees are a trunk column of a TREE-family block (collision, chopping); Flora
+# draws the actual tree. The visual height and variant come from tree_info().
+
+const TREE_GRID := 5
+
+
+## [kind (Flora.Tree), visual height m, seed] for a trunk rooted at root.
+static func tree_info(trunk_block: int, root: Vector3i) -> Array:
+	var hsh := _hash3(root.x, root.y, root.z, 211)
+	var kind := 0
+	var height := 0.0
+	match trunk_block:
+		Blocks.PINE_TRUNK:
+			kind = 2
+			height = 9.0 + float(hsh & 7) * 0.7
+		Blocks.DEAD_TRUNK:
+			kind = 3
+			height = 5.0 + float(hsh & 7) * 0.45
+		Blocks.CRIMSON_TRUNK:
+			kind = 1
+			height = 7.0 + float(hsh & 7) * 0.5
+		_:
+			kind = 0
+			height = 7.5 + float(hsh & 7) * 0.6
+	return [kind, height, hsh]
+
+
+func _place_trees(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, detail: FastNoiseLite, ridge: FastNoiseLite) -> void:
+	var gx0 := floori(float(o.x) / TREE_GRID)
+	var gx1 := floori(float(o.x + Chunk.SIZE - 1) / TREE_GRID)
+	var gz0 := floori(float(o.z) / TREE_GRID)
+	var gz1 := floori(float(o.z + Chunk.SIZE - 1) / TREE_GRID)
 	for gz in range(gz0, gz1 + 1):
 		for gx in range(gx0, gx1 + 1):
 			var hsh := _hash3(gx, 0, gz, 101)
-			var rx := gx * GRID + (hsh & 3)
-			var rz := gz * GRID + ((hsh >> 2) & 3)
-			if not in_bounds(rx, rz):
+			var rx := gx * TREE_GRID + (hsh & 3)
+			var rz := gz * TREE_GRID + ((hsh >> 2) & 3)
+			if rx < o.x or rz < o.z or rx >= o.x + Chunk.SIZE or rz >= o.z + Chunk.SIZE or not in_bounds(rx, rz):
 				continue
 			var biome := biome_at(rx, rz)
 			var chance := 0.0
@@ -499,60 +640,40 @@ func _place_trees(data: PackedByteArray, o: Vector3i, detail: FastNoiseLite, rid
 				Biome.WASTES: chance = 0.015
 			if float((hsh >> 4) & 0xff) / 255.0 >= chance:
 				continue
-			var key := rx + rz * size
-			if _pads.has(key):
+			if _pads.has(rx + rz * size):
 				continue
-			var col := column(rx, rz, detail, ridge)
-			var ground := int(col.x)
-			if ground + 14 < o.y or ground + 1 > o.y + Chunk.SIZE + 3:
+			var ground := int(column(rx, rz, detail, ridge).x)
+			if ground + 6 < o.y or ground + 1 >= o.y + Chunk.SIZE:
 				continue
 			if ground <= SEA_LEVEL and biome != Biome.MARSH:
 				continue
 			if biome == Biome.PEAKS and ground > 70:
 				continue
-			_tree(data, o, Vector3i(rx, ground + 1, rz), biome, hsh)
-
-
-func _tree(data: PackedByteArray, o: Vector3i, root: Vector3i, biome: int, hsh: int) -> void:
-	var trunk_h := 5 + ((hsh >> 12) & 3)
-	var log_block := Blocks.LOG
-	var leaf := Blocks.LEAVES
-	match biome:
-		Biome.PEAKS:
-			log_block = Blocks.PINE_LOG
-			leaf = Blocks.PINE_LEAVES
-			trunk_h += 3
-		Biome.MARSH:
-			leaf = Blocks.CRIMSON_LEAVES if (hsh >> 14) & 1 == 0 else Blocks.AIR
-		Biome.WASTES:
-			leaf = Blocks.AIR
-		Biome.PLAINS:
-			leaf = Blocks.LEAVES if (hsh >> 15) & 1 == 0 else Blocks.CRIMSON_LEAVES
-	for i in trunk_h:
-		_set_if(data, o, root + Vector3i(0, i, 0), log_block, true)
-	if leaf == Blocks.AIR:
-		# Dead tree: a couple of bare branches.
-		_set_if(data, o, root + Vector3i(1, trunk_h - 2, 0), log_block, true)
-		_set_if(data, o, root + Vector3i(-1, trunk_h - 1, 0), log_block, true)
-		return
-	var top := root + Vector3i(0, trunk_h, 0)
-	if biome == Biome.PEAKS:
-		for layer in 7:
-			var r := 3 - layer / 2
-			for dz in range(-r, r + 1):
-				for dx in range(-r, r + 1):
-					if absi(dx) + absi(dz) <= r + 1 and not (dx == 0 and dz == 0 and layer < 5):
-						_set_if(data, o, top + Vector3i(dx, layer - 4, dz), leaf, false)
-		_set_if(data, o, top + Vector3i(0, 3, 0), leaf, false)
-		return
-	# Broad autumn crown: a squashed, slightly ragged sphere.
-	var r := 3.2 + float((hsh >> 18) & 3) * 0.4
-	for dy in range(-3, 4):
-		for dz in range(-4, 5):
-			for dx in range(-4, 5):
-				var d := Vector3(dx, dy * 1.35, dz).length()
-				if d <= r and _hash01(root.x + dx, root.y + dy, root.z + dz, 55) > 0.12 * d / r:
-					_set_if(data, o, top + Vector3i(dx, dy, dz), leaf, false)
+			var trunk := Blocks.OAK_TRUNK
+			var trunk_h := 4
+			match biome:
+				Biome.PEAKS:
+					trunk = Blocks.PINE_TRUNK
+					trunk_h = 5
+				Biome.MARSH:
+					trunk = Blocks.CRIMSON_TRUNK if (hsh >> 14) & 1 == 0 else Blocks.DEAD_TRUNK
+				Biome.WASTES:
+					trunk = Blocks.DEAD_TRUNK
+					trunk_h = 3
+				Biome.PLAINS:
+					trunk = Blocks.OAK_TRUNK if (hsh >> 15) & 1 == 0 else Blocks.CRIMSON_TRUNK
+			var root := Vector3i(rx, ground + 1, rz)
+			# Only the root's own column matters: the whole trunk sits in this chunk column.
+			var lx := rx - o.x
+			var lz := rz - o.z
+			for i in trunk_h:
+				var ly := root.y + i - o.y
+				if ly < 0 or ly >= Chunk.SIZE:
+					continue
+				var di := lx + lz * Chunk.SIZE + ly * Chunk.AREA
+				if data[di] == Blocks.AIR or data[di] == Blocks.WATER:
+					data[di] = trunk
+					dens[di] = mini(dens[di], 127)
 
 
 static func _set_if(data: PackedByteArray, o: Vector3i, p: Vector3i, block: int, overwrite: bool) -> void:
@@ -566,8 +687,9 @@ static func _set_if(data: PackedByteArray, o: Vector3i, p: Vector3i, block: int,
 		data[i] = block
 
 
-func _stamp_blueprints(data: PackedByteArray, key: Vector3i) -> void:
+func _stamp_blueprints(data: PackedByteArray, dens: PackedByteArray, key: Vector3i) -> void:
 	var o := key * Chunk.SIZE
+	var smooth := Blocks.family_table()
 	for bp in _blueprints:
 		if not bp.intersects_chunk(key):
 			continue
@@ -587,47 +709,60 @@ func _stamp_blueprints(data: PackedByteArray, key: Vector3i) -> void:
 					var v := bp.data[row + x]
 					if v == Blueprint.KEEP:
 						continue
-					data[drow + x] = Blocks.AIR if v == Blueprint.CARVE else v
+					var di := drow + x
+					if v == Blueprint.CARVE:
+						data[di] = Blocks.AIR
+						dens[di] = 0
+					else:
+						data[di] = v
+						dens[di] = 230 if smooth[v] == Blocks.Family.SMOOTH else mini(dens[di], 100)
 
 
 # --- Hell --------------------------------------------------------------------
 
-func _generate_hell(key: Vector3i) -> PackedByteArray:
+func _generate_hell(key: Vector3i) -> Array:
 	var data := Chunk.empty()
+	var dens := Chunk.empty()
 	var o := key * Chunk.SIZE
 	if o.y > 63 or o.y + Chunk.SIZE <= -64:
-		return data
+		return [data, PackedByteArray()]
 	var detail := make_detail_noise()
 	var ridge := make_ridge_noise()
 	var max_h := -1000
 	var heights := PackedInt32Array()
 	heights.resize(Chunk.AREA)
+	var hf := PackedFloat32Array()
+	hf.resize(Chunk.AREA)
 	var biomes := PackedByteArray()
 	biomes.resize(Chunk.AREA)
 	for z in Chunk.SIZE:
 		for x in Chunk.SIZE:
 			var wx := o.x + x
 			var wz := o.z + z
-			var col := column(wx, wz, detail, ridge) if in_bounds(wx, wz) else Vector2(-30, 0)
-			heights[x + z * Chunk.SIZE] = int(col.x)
-			biomes[x + z * Chunk.SIZE] = biome_at(wx, wz)
-			max_h = maxi(max_h, int(col.x))
+			var col := column_f(wx, wz, detail, ridge) if in_bounds(wx, wz) else Vector2(-30, 0)
+			var i := x + z * Chunk.SIZE
+			hf[i] = col.x
+			heights[i] = int(floorf(col.x + 0.5))
+			biomes[i] = biome_at(wx, wz)
+			max_h = maxi(max_h, heights[i])
 	var touches := false
 	for bp in _blueprints:
 		if bp.intersects_chunk(key):
 			touches = true
 			break
-	if o.y > maxi(max_h, LAVA_LEVEL) + 10 and not touches:
-		return data
+	if o.y > maxi(max_h, LAVA_LEVEL) + 14 and not touches:
+		return [data, PackedByteArray()]
 	for y in Chunk.SIZE:
 		var wy := o.y + y
 		for z in Chunk.SIZE:
 			for x in Chunk.SIZE:
 				var ci := x + z * Chunk.SIZE
 				var h := heights[ci]
+				var d := 0.5 + (hf[ci] + 0.5 - float(wy)) * 0.5
 				var b := Blocks.AIR
 				if wy <= -62:
 					b = Blocks.BEDROCK
+					d = 1.0
 				elif wy <= h:
 					var depth := h - wy
 					if depth == 0:
@@ -642,15 +777,17 @@ func _generate_hell(key: Vector3i) -> PackedByteArray:
 						b = Blocks.HELLSTONE if r < 0.012 else (Blocks.OBSIDIAN if r < 0.02 else Blocks.BASALT)
 				elif wy <= LAVA_LEVEL:
 					b = Blocks.LAVA
+				var di := x + z * Chunk.SIZE + y * Chunk.AREA
 				if b != Blocks.AIR:
-					data[x + z * Chunk.SIZE + y * Chunk.AREA] = b
-	# Bone spires and soul-lantern trees.
-	_place_hell_features(data, o, detail, ridge)
-	_stamp_blueprints(data, key)
-	return data
+					data[di] = b
+				dens[di] = _dbyte(d, b != Blocks.AIR and b != Blocks.LAVA)
+	# Bone spires.
+	_place_hell_features(data, dens, o, detail, ridge)
+	_stamp_blueprints(data, dens, key)
+	return [data, dens]
 
 
-func _place_hell_features(data: PackedByteArray, o: Vector3i, detail: FastNoiseLite, ridge: FastNoiseLite) -> void:
+func _place_hell_features(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, detail: FastNoiseLite, ridge: FastNoiseLite) -> void:
 	const GRID := 9
 	for gz in range(floori(float(o.z - 3) / GRID), floori(float(o.z + 19) / GRID) + 1):
 		for gx in range(floori(float(o.x - 3) / GRID), floori(float(o.x + 19) / GRID) + 1):
@@ -665,9 +802,27 @@ func _place_hell_features(data: PackedByteArray, o: Vector3i, detail: FastNoiseL
 			if ground <= LAVA_LEVEL:
 				continue
 			var h := 4 + ((hsh >> 9) & 7)
+			# A tapering spire: a 3x3 base that narrows to a single column.
 			for i in h:
-				_set_if(data, o, Vector3i(rx, ground + 1 + i, rz), Blocks.BONE, true)
+				var r := 1 if i < h / 3 else 0
+				for dz in range(-r, r + 1):
+					for dx in range(-r, r + 1):
+						if r == 1 and absi(dx) + absi(dz) == 2:
+							continue
+						_set_dens(data, dens, o, Vector3i(rx + dx, ground + 1 + i, rz + dz), Blocks.BONE, 200 - i * 6)
 			if (hsh >> 12) & 1:
-				_set_if(data, o, Vector3i(rx + 1, ground + h - 1, rz), Blocks.BONE, false)
-				_set_if(data, o, Vector3i(rx - 1, ground + h - 2, rz), Blocks.BONE, false)
-				_set_if(data, o, Vector3i(rx, ground + h + 1, rz), Blocks.HELLSTONE, false)
+				_set_dens(data, dens, o, Vector3i(rx + 1, ground + h - 1, rz), Blocks.BONE, 170)
+				_set_dens(data, dens, o, Vector3i(rx - 1, ground + h - 2, rz), Blocks.BONE, 170)
+				_set_dens(data, dens, o, Vector3i(rx, ground + h, rz), Blocks.HELLSTONE, 200)
+
+
+static func _set_dens(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, p: Vector3i, block: int, density: int) -> void:
+	var lx := p.x - o.x
+	var ly := p.y - o.y
+	var lz := p.z - o.z
+	if lx < 0 or ly < 0 or lz < 0 or lx >= Chunk.SIZE or ly >= Chunk.SIZE or lz >= Chunk.SIZE:
+		return
+	var i := lx + lz * Chunk.SIZE + ly * Chunk.AREA
+	if data[i] == Blocks.AIR or data[i] == Blocks.LAVA:
+		data[i] = block
+		dens[i] = clampi(density, 128, 255)

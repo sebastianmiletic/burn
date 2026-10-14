@@ -64,6 +64,86 @@ func test_gate_cavern_is_carved() -> void:
 			check_eq(data[Chunk.index(l.x, l.y, l.z)], Blocks.AIR, "air inside the gate cavern")
 
 
+func _neighbours(g: WorldGen, k: Vector3i, cache: Dictionary) -> Array:
+	var blocks := []
+	var dens := []
+	blocks.resize(27)
+	dens.resize(27)
+	for dz in range(-1, 2):
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var n := k + Vector3i(dx, dy, dz)
+				if not cache.has(n):
+					cache[n] = g.generate(n)
+				var r: Array = cache[n]
+				blocks[(dx + 1) + (dy + 1) * 3 + (dz + 1) * 9] = r[0]
+				dens[(dx + 1) + (dy + 1) * 3 + (dz + 1) * 9] = r[1]
+	return [blocks, dens]
+
+
+func _smooth_mesh(g: WorldGen, k: Vector3i, cache: Dictionary) -> Dictionary:
+	var nb := _neighbours(g, k, cache)
+	var surface := PackedInt32Array()
+	surface.resize(256)
+	surface.fill(1000)
+	var biomes := PackedByteArray()
+	biomes.resize(256)
+	return SmoothMesher.build(nb[0], nb[1], surface, biomes, k * 16, 0)
+
+
+func test_smooth_terrain_mesh_and_seams() -> void:
+	var g := _world()
+	var c := Vector3i(64, 1, 64)
+	var k := Vector3i(c.x, floori((g.surface_height(c.x * 16 + 8, c.z * 16 + 8) + 1) / 16.0), c.z)
+	var cache := {}
+	var t0 := Time.get_ticks_usec()
+	var a := _smooth_mesh(g, k, cache)
+	var ms := (Time.get_ticks_usec() - t0) / 1000.0
+	check(a.has("terrain"), "surface chunk has a smooth surface")
+	if not a.has("terrain"):
+		return
+	var va: PackedVector3Array = a["terrain"][Mesh.ARRAY_VERTEX]
+	print("      smooth mesh: %.2f ms, %d triangles" % [ms, va.size() / 3])
+	check(va.size() % 3 == 0 and va.size() > 30, "valid triangles")
+	var inside := true
+	for v in va:
+		if v.x < -1.0 or v.x > 17.0 or v.z < -1.0 or v.z > 17.0:
+			inside = false
+	check(inside, "vertices stay within the chunk's cells")
+	# Seams: vertices on the shared border of two neighbouring chunks coincide.
+	var b := _smooth_mesh(g, k + Vector3i(1, 0, 0), cache)
+	if b.has("terrain"):
+		var vb: PackedVector3Array = b["terrain"][Mesh.ARRAY_VERTEX]
+		var border := {}
+		for v in vb:
+			if v.x < 0.5:
+				border[Vector3i((v + Vector3(16, 0, 0)) * 1000.0)] = true
+		var shared := 0
+		var matched := 0
+		for v in va:
+			if v.x > 15.5 and v.x < 16.5:
+				shared += 1
+				if border.has(Vector3i(v * 1000.0)):
+					matched += 1
+		check(shared == 0 or matched * 10 >= shared * 9, "border vertices shared (%d/%d)" % [matched, shared])
+
+
+func test_density_matches_blocks() -> void:
+	var g := _world()
+	var k := Vector3i(64, 1, 64)
+	var r := g.generate(k)
+	var blocks: PackedByteArray = r[0]
+	var dens: PackedByteArray = r[1]
+	if dens.is_empty():
+		return
+	var bad := 0
+	for i in Chunk.VOLUME:
+		var smooth := Blocks.is_smooth(blocks[i])
+		if smooth and dens[i] < 128:
+			bad += 1
+	check_eq(bad, 0, "smooth solid voxels have density >= 128")
+
+
 func test_mesher_produces_faces_and_timing() -> void:
 	var g := _world()
 	var c := Vector3i(64, 1, 64)

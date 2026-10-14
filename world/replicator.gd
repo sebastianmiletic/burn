@@ -492,6 +492,9 @@ func _resolve_block(peer: int, pos: Vector3i, block: int, dim: int) -> void:
 	if block == Blocks.AIR:
 		if not Blocks.is_breakable(current):
 			return
+		if Blocks.is_trunk(current):
+			_fell_tree(p, pos, current, dim)
+			return
 		broadcast_block(pos, Blocks.AIR, dim)
 		var drop := Blocks.drop(current)
 		if drop != "":
@@ -503,6 +506,34 @@ func _resolve_block(peer: int, pos: Vector3i, block: int, dim: int) -> void:
 			if e.body.overlaps_block(e.global_position, pos):
 				return
 		broadcast_block(pos, block, dim)
+
+
+## Chopping any trunk block brings the whole tree down.
+func _fell_tree(p: Player, pos: Vector3i, trunk: int, dim: int) -> void:
+	var w := gw()
+	var vw := w.world_for(dim)
+	var bottom := pos
+	while vw.get_block(bottom - Vector3i(0, 1, 0)) == trunk:
+		bottom.y -= 1
+	var cells: Array[Vector3i] = []
+	var q := bottom
+	while vw.get_block(q) == trunk and cells.size() < 16:
+		cells.append(q)
+		q.y += 1
+	var dir := Vector3(bottom) + Vector3(0.5, 0, 0.5) - p.global_position
+	dir.y = 0.0
+	dir = dir.normalized() if dir.length() > 0.1 else Vector3.FORWARD
+	_broadcast(&"_fell", [bottom, trunk, dim, dir])
+	for c in cells:
+		broadcast_block(c, Blocks.AIR, dim)
+	var info := WorldGen.tree_info(trunk, bottom)
+	var logs := 2 + int(float(info[1]) / 2.5)
+	w.drop_item(Vector3(bottom) + Vector3(0.5, 0.6, 0.5) + dir * 2.5, Blocks.drop(trunk), logs, dim)
+
+
+@rpc("authority", "reliable", "call_local")
+func _fell(root: Vector3i, trunk: int, dim: int, dir: Vector3) -> void:
+	gw().fell_tree_fx(root, trunk, dim, dir)
 
 
 func broadcast_block(pos: Vector3i, block: int, dim: int) -> void:

@@ -7,7 +7,7 @@ extends RefCounted
 ## occlusion can look one block outside.
 ## Output: up to two surfaces, opaque blocks and liquids.
 ##
-## Per vertex: COLOR.rgb = block colour * ambient occlusion, COLOR.a = ASCII
+## Per vertex: COLOR.rgb = ambient occlusion (cube faces) or colour (torches, liquids), COLOR.a = ASCII
 ## material class / 7, UV = position on the face (for edge shading),
 ## UV2 = (block id, skylight).
 
@@ -64,8 +64,9 @@ static func _delta(o: Vector3i) -> int:
 ## neighbours: Array of 27 PackedByteArray (index (dx+1) + (dy+1)*3 + (dz+1)*9),
 ## empty arrays meaning all air. surface: 256 column heights for skylight.
 static func build(neighbours: Array, surface: PackedInt32Array, origin_y: int) -> Dictionary:
-	var pad := _pad(neighbours)
-	var opaque := Blocks.opaque_table()
+	var pad := pad_blocks(neighbours)
+	var opaque := _occluders()
+	var family := Blocks.family_table()
 	var liquid := Blocks.liquid_table()
 	var classes := Blocks.class_table()
 	var colors := Blocks.color_table()
@@ -107,6 +108,10 @@ static func build(neighbours: Array, surface: PackedInt32Array, origin_y: int) -
 				var pi := base + x
 				var b := pad[pi]
 				if b == 0:
+					continue
+				# Smooth terrain and trees are drawn elsewhere.
+				var fam := family[b]
+				if fam != Blocks.Family.CUBE and fam != Blocks.Family.SMALL and fam != Blocks.Family.LIQUID:
 					continue
 				# Fully buried opaque blocks are the common case: skip fast.
 				if opaque[b] == 1 and opaque[pad[pi + 1]] == 1 and opaque[pad[pi - 1]] == 1 and opaque[pad[pi + P2]] == 1 \
@@ -186,10 +191,11 @@ static func build(neighbours: Array, surface: PackedInt32Array, origin_y: int) -
 					norms.append(nrm)
 					norms.append(nrm)
 					norms.append(nrm)
-					cols.append(Color(col.r * a0, col.g * a0, col.b * a0, cls))
-					cols.append(Color(col.r * a1, col.g * a1, col.b * a1, cls))
-					cols.append(Color(col.r * a2, col.g * a2, col.b * a2, cls))
-					cols.append(Color(col.r * a3, col.g * a3, col.b * a3, cls))
+					# Textured faces: COLOR.rgb carries only the ambient occlusion.
+					cols.append(Color(a0, a0, a0, cls))
+					cols.append(Color(a1, a1, a1, cls))
+					cols.append(Color(a2, a2, a2, cls))
+					cols.append(Color(a3, a3, a3, cls))
 					uvs.append(uv0)
 					uvs.append(uv1)
 					uvs.append(uv2)
@@ -222,6 +228,23 @@ static func _arrays(v: PackedVector3Array, n: PackedVector3Array, c: PackedColor
 	return arrays
 
 
+## Faces are hidden only behind other crisp cubes: smooth terrain may not
+## reach a voxel's face, so cubes next to it keep their faces.
+static var _occl := PackedByteArray()
+
+
+static func _occluders() -> PackedByteArray:
+	if _occl.is_empty():
+		var t := PackedByteArray()
+		t.resize(256)
+		var opaque := Blocks.opaque_table()
+		var family := Blocks.family_table()
+		for i in 256:
+			t[i] = 1 if opaque[i] == 1 and family[i] == Blocks.Family.CUBE else 0
+		_occl = t
+	return _occl
+
+
 ## Torches and lanterns: a small box in the middle of the block.
 static func _small(b: int, p: Vector3, col: Color, cls: float, sky: float, verts: PackedVector3Array, norms: PackedVector3Array,
 		cols: PackedColorArray, uvs: PackedVector2Array, uv2s: PackedVector2Array, idx: PackedInt32Array) -> void:
@@ -240,7 +263,7 @@ static func _small(b: int, p: Vector3, col: Color, cls: float, sky: float, verts
 		idx.append_array([start, start + 1, start + 2, start, start + 2, start + 3])
 
 
-static func _pad(neighbours: Array) -> PackedByteArray:
+static func pad_blocks(neighbours: Array) -> PackedByteArray:
 	var pad := PackedByteArray()
 	pad.resize(P * P * P)
 	for dz in range(-1, 2):

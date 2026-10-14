@@ -142,7 +142,7 @@ const DATA := [
 const SMOOTH_BLOCKS := [STONE, DIRT, GRASS, SAND, SNOW, ICE, GRAVEL, COAL_ORE, IRON_ORE, GOLD_ORE, EMBER_ORE,
 		OBSIDIAN, BEDROCK, BASALT, ASH, BONE, HELLSTONE, DRY_GRASS, CRYSTAL, DEEPSLATE, MUD, SOUL_SAND,
 		GRANITE, SANDSTONE, MARBLE, SLATE, CLAY, LIMESTONE, COPPER_ORE, TIN_ORE, SILVER_ORE, MITHRIL_ORE,
-		ADAMANTITE_ORE, RUBY_ORE, SAPPHIRE_ORE, AMETHYST]
+		ADAMANTITE_ORE, RUBY_ORE, SAPPHIRE_ORE, AMETHYST, THATCH]
 
 static var _solid := PackedByteArray()
 static var _opaque := PackedByteArray()
@@ -240,6 +240,24 @@ static func is_smooth(id: int) -> bool:
 
 static func is_trunk(id: int) -> bool:
 	return id >= OAK_TRUNK and id <= DEAD_TRUNK
+
+
+## Material family for sounds and debris: "stone", "dirt", "sand", "snow", "wood", "crystal", "metal".
+static func sound_family(id: int) -> String:
+	match id:
+		DIRT, GRASS, DRY_GRASS, MUD, CLAY, ASH, SOUL_SAND, THATCH, LEAVES, PINE_LEAVES, CRIMSON_LEAVES:
+			return "dirt"
+		SAND, GRAVEL:
+			return "sand"
+		SNOW:
+			return "snow"
+		LOG, PINE_LOG, PLANKS, CHEST, OAK_TRUNK, CRIMSON_TRUNK, PINE_TRUNK, DEAD_TRUNK:
+			return "wood"
+		ICE, CRYSTAL, AMETHYST, EMBER_ORE, RUBY_ORE, SAPPHIRE_ORE:
+			return "crystal"
+		IRON_BARS, GOLD_BLOCK:
+			return "metal"
+	return "stone"
 
 
 static func family_table() -> PackedByteArray:

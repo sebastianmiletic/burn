@@ -65,10 +65,12 @@ func _run() -> void:
 		while (not vw.is_area_loaded(p.global_position) or vw.loading_progress() < 0.95) and Time.get_ticks_msec() - t0 < 20000:
 			await get_tree().process_frame
 		if spec.size() > 3 or vw.is_solid(Vector3i(p.global_position.floor())) or not vw.is_solid(Vector3i((p.global_position - Vector3(0, 3, 0)).floor())):
-			var y := vw.surface_y(int(p.global_position.x), int(p.global_position.z))
+			var gp := p.global_position
+			var g := vw.ground_below(gp.x, gp.y + 30.0, gp.z, 60.0)
+			var y := g if absf(g) < 1e6 else float(vw.surface_y(int(gp.x), int(gp.z)) + 1)
 			if loc.half_height > 0.0:
-				y = int(loc.center.y) - 1
-			p.global_position.y = y + 1.05
+				y = loc.center.y
+			p.global_position.y = y + 0.05
 		p.body.velocity = Vector3.ZERO
 		if stop.ends_with("fight"):
 			var kind := "dragon" if stop == "dragonfight" else "mountain_king"

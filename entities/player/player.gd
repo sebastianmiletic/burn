@@ -41,12 +41,17 @@ var _highlight: BlockHighlight
 var _light: OmniLight3D
 var _interact_target: Node = null
 var _prev_remote_pos := Vector3.ZERO
+var _remote_velocity := Vector3.ZERO
 var _remote_held := ""
 var _remote_anim := -1
 var _air_time := 0.0
 var _fall_speed := 0.0
 var _lava_tick := 0.0
 var _footstep := 0.0
+var _sprinting := false
+var _was_on_floor := true
+var _rustle := 0.0
+var _model_steps := false   # the model reports foot plants (footstep signal)
 
 
 func _init() -> void:
@@ -62,6 +67,9 @@ func _init() -> void:
 func _ready() -> void:
 	model = _make_model()
 	add_child(model)
+	if model.has_signal("footstep"):
+		_model_steps = true
+		model.connect("footstep", _on_model_footstep)
 	_light = OmniLight3D.new()
 	_light.position = Vector3(0.35, 1.5, 0.2)
 	_light.light_color = Color(1.0, 0.68, 0.36)
@@ -176,6 +184,7 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	var cam_basis := Basis(Vector3.UP, camera.yaw)
 	var wish := cam_basis * Vector3(input.x, 0, input.y)
 	var sprint := _input_enabled and Input.is_action_pressed("sprint") and input.y < 0.0
+	_sprinting = sprint and body.on_floor
 	var speed := SPRINT_SPEED if sprint else WALK_SPEED
 	if _action == "attack" or _action == "attack2" or _action == "cast":
 		speed *= 0.45
@@ -198,6 +207,8 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 		if body.on_floor:
 			body.velocity.y = JUMP_VELOCITY
 			_start_action("jump", 0.4)
+			_model_call("on_jump")
+			Audio.play("jump", global_position, -6.0, randf_range(0.92, 1.08))
 		elif body.in_liquid != 0:
 			body.velocity.y = 4.0  # swim up
 	var falling := body.velocity.y
@@ -212,10 +223,13 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 		_air_time += delta
 		_fall_speed = minf(_fall_speed, falling)
 	else:
+		if not _was_on_floor and _air_time > 0.12:
+			_land(-_fall_speed, vw)
 		if _fall_speed < -17.0 and body.in_liquid == 0:
 			receive_damage((-_fall_speed - 17.0) * 4.5, Vector3.INF, "fall", "the fall")
 		_fall_speed = 0.0
 		_air_time = 0.0
+	_was_on_floor = body.on_floor
 	_move_speed = hv.length()
 	# Face where we're going; face the camera while fighting or mining.
 	var face_dir := hv
@@ -224,24 +238,64 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	if face_dir.length() > 0.3:
 		yaw = lerp_angle(yaw, atan2(face_dir.x, face_dir.z), 1.0 - exp(-delta * 12.0))
 	rotation.y = yaw
-	# Footsteps.
+	# Footsteps (timed by the model's feet when it reports them).
 	if body.on_floor and _move_speed > 1.0:
-		_footstep -= delta * _move_speed
-		if _footstep <= 0.0:
-			_footstep = 2.1
-			Audio.play(_step_sound(vw), global_position, -8.0)
+		if not _model_steps:
+			_footstep -= delta * _move_speed
+			if _footstep <= 0.0:
+				_footstep = 2.1
+				_on_model_footstep(0.9 if _sprinting else 0.5)
+		# Brushing through tall grass.
+		_rustle -= delta * _move_speed
+		if _rustle <= 0.0:
+			_rustle = 3.5
+			var under := ground_block(vw)
+			if under == Blocks.GRASS or under == Blocks.DRY_GRASS:
+				Audio.play("rustle", global_position, -16.0 + minf(_move_speed, 7.0), randf_range(0.85, 1.15))
+
+
+func _on_model_footstep(strength: float) -> void:
+	var vw := voxels()
+	if vw == null or not body.on_floor:
+		return
+	var vol := lerpf(-15.0, -5.0, clampf(strength, 0.0, 1.0))
+	Audio.play(_step_sound(vw), global_position, vol, randf_range(0.92, 1.08))
+	if _sprinting and strength > 0.7:
+		Audio.play("step_run", global_position, vol - 6.0, randf_range(0.9, 1.1))
+
+
+## Block under the feet (the smooth surface can sit up to half a block above its voxel).
+func ground_block(vw: VoxelWorld) -> int:
+	var b := vw.get_block(Vector3i((global_position - Vector3(0, 0.2, 0)).floor()))
+	if b <= 0 or not Blocks.is_solid(b):
+		b = vw.get_block(Vector3i((global_position - Vector3(0, 0.75, 0)).floor()))
+	return b
+
+
+func _land(impact: float, vw: VoxelWorld) -> void:
+	_model_call("on_land", [impact])
+	if impact > 12.0:
+		Audio.play("land_heavy", global_position, -2.0)
+		camera.add_trauma(clampf((impact - 12.0) * 0.03, 0.05, 0.4))
+	elif impact > 4.0:
+		Audio.play("land", global_position, -9.0 + minf(impact, 12.0) * 0.4, randf_range(0.92, 1.08))
+		Audio.play(_step_sound(vw), global_position, -8.0)
+	if camera.has_method("land"):
+		camera.call("land", impact)
 
 
 func _step_sound(vw: VoxelWorld) -> String:
-	var b := vw.get_block(Vector3i((global_position - Vector3(0, 0.2, 0)).floor()))
-	match b:
-		Blocks.GRASS, Blocks.DIRT, Blocks.DRY_GRASS, Blocks.MUD, Blocks.LEAVES:
-			return "step_grass"
-		Blocks.PLANKS, Blocks.LOG, Blocks.THATCH:
+	var b := ground_block(vw)
+	if body.in_liquid == Blocks.WATER:
+		return "water_wade"
+	match Blocks.sound_family(b):
+		"dirt":
+			return "step_grass" if b == Blocks.GRASS or b == Blocks.DRY_GRASS else "step_grass"
+		"wood":
 			return "step_wood"
-		Blocks.SNOW, Blocks.ICE:
+		"snow":
 			return "step_snow"
-		Blocks.SAND, Blocks.ASH, Blocks.GRAVEL, Blocks.SOUL_SAND:
+		"sand":
 			return "step_sand"
 	return "step_stone"
 
@@ -298,7 +352,9 @@ func _swing(info: Dictionary) -> void:
 	var speed := float(info.get("speed", 1.0))
 	_combo = (_combo + 1) % 2
 	_start_action("attack" if _combo == 0 else "attack2", 0.5 / speed)
-	Audio.play("swing", global_position, -4.0, randf_range(0.9, 1.1))
+	var heavy := speed < 0.9 or float(info.get("damage", 3.0)) >= 14.0
+	var blunt := String(info.get("weapon", "")) in ["hammer", "mace", "club"]
+	Audio.play("swing_blunt" if blunt else ("swing_heavy" if heavy else "swing_light"), global_position, -4.0, randf_range(0.9, 1.1))
 
 
 func _resolve_swing(info: Dictionary) -> void:
@@ -373,7 +429,13 @@ func _mining_update(delta: float, vw: VoxelWorld) -> void:
 	var break_time := maxf(0.08, Blocks.hardness(block) / float(info.get("mine_speed", 1.0)))
 	if _action == "":
 		_start_action("mine", 0.42)
-		Audio.play("block_hit", Vector3(pos) + Vector3(0.5, 0.5, 0.5), -3.0, randf_range(0.85, 1.15))
+		var fam := Blocks.sound_family(block)
+		var snd := "pick_wood" if fam == "wood" else ("pick_dirt" if fam in ["dirt", "sand", "snow"] else "pick_stone")
+		var point: Vector3 = target.get("point", Vector3(pos) + Vector3(0.5, 0.5, 0.5))
+		Audio.play(snd, point, -3.0, randf_range(0.85, 1.15))
+		var w := world()
+		if w.fx != null:
+			w.fx.debris(point, target.get("surface_normal", Vector3.UP), Blocks.color(block), false)
 	_mine_progress += delta / break_time
 	_highlight.set_crack(_mine_progress)
 	Events.mining_progress.emit(_mine_progress)
@@ -448,7 +510,7 @@ func _dodge() -> void:
 	yaw = atan2(_dodge_dir.x, _dodge_dir.z)
 	invulnerable_until = Time.get_ticks_msec() / 1000.0 + 0.38
 	_start_action("dodge", 0.5)
-	Audio.play("swing", global_position, -6.0, 0.7)
+	Audio.play("roll", global_position, -5.0, randf_range(0.92, 1.08))
 
 
 func _drink_best_potion() -> void:
@@ -718,6 +780,13 @@ func _animate(_delta: float) -> void:
 		model.set("move_speed", _move_speed)
 	if "grounded" in model:
 		model.set("grounded", body.on_floor)
+	if "velocity" in model:
+		model.set("velocity", body.velocity if is_local else _remote_velocity)
+	if "sprinting" in model:
+		model.set("sprinting", _sprinting if is_local else _move_speed > 6.0)
+	if "ground_block" in model and is_local:
+		var vw := voxels()
+		model.set("ground_block", ground_block(vw) if vw != null else -1)
 
 
 # --- Remote players -------------------------------------------------------------------------------------
@@ -748,7 +817,8 @@ func apply_remote_state(state: Array, time: float) -> void:
 func _process_remote(delta: float) -> void:
 	var now: float = Net.server_time() if Net.has_method("server_time") else Time.get_ticks_msec() / 1000.0
 	interpolate(now)
-	_move_speed = lerpf(_move_speed, (global_position - _prev_remote_pos).length() / maxf(delta, 0.001), 1.0 - exp(-delta * 10.0))
+	_remote_velocity = _remote_velocity.lerp((global_position - _prev_remote_pos) / maxf(delta, 0.001), 1.0 - exp(-delta * 10.0))
+	_move_speed = Vector2(_remote_velocity.x, _remote_velocity.z).length()
 	_prev_remote_pos = global_position
 	_update_light(delta)
 	_animate(delta)
