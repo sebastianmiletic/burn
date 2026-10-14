@@ -3,4 +3,4 @@ extends Node
 
 
 func _ready() -> void:
-	Game.boot()
+	Game.boot.call_deferred()

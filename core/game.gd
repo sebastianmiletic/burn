@@ -166,6 +166,9 @@ func start_solo(slot: int, new_game: bool) -> void:
 func start_campaign() -> void:
 	var save := SaveSystem.read(PARTY_SLOT)
 	var seed_value := int(save.get("seed", randi()))
+	# Players who join mid-campaign get the live world state, not the start state.
+	Net.late_join_info = func() -> Dictionary:
+		return {"seed": seed_value, "join_state": join_state()}
 	Net.start_campaign({"seed": seed_value, "host_save": save.has("seed")})
 
 
