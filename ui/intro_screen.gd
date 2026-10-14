@@ -19,6 +19,8 @@ var _done := false
 
 func _ready() -> void:
 	layer = 90
+	add_to_group(MenuBackdrop.USER_GROUP)
+	MenuBackdrop.ensure()  # the menu's live world streams in behind the intro
 	_root = Control.new()
 	_root.theme = UiTheme.theme()
 	_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -91,5 +93,29 @@ func _finish() -> void:
 	if _done:
 		return
 	_done = true
+	# The menu appears under a dark veil that lifts, instead of a hard cut.
+	if is_inside_tree():
+		var fader := _Fader.new()
+		get_tree().root.add_child.call_deferred(fader)
 	finished.emit()
 	queue_free()
+
+
+## A black layer over everything that fades out, then frees itself.
+class _Fader extends CanvasLayer:
+	var _rect: ColorRect
+	var _t := 0.0
+
+	func _ready() -> void:
+		layer = 95
+		_rect = ColorRect.new()
+		_rect.color = Color(0.0, 0.0, 0.0, 1.0)
+		_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		add_child(_rect)
+
+	func _process(delta: float) -> void:
+		_t += delta
+		_rect.color.a = 1.0 - smoothstep(0.05, 0.9, _t)
+		if _t >= 0.9:
+			queue_free()

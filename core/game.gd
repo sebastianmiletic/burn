@@ -208,6 +208,7 @@ func _load_world(info: Dictionary) -> void:
 	state = State.LOADING
 	session = info
 	_set_screen(null)
+	MenuBackdrop.release()  # the title-screen world goes before the real one is built
 	if world != null and is_instance_valid(world):
 		world.get_parent().remove_child(world)
 		world.queue_free()

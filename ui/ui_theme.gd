@@ -29,6 +29,7 @@ const SIZE_LARGE := 18
 
 static var _theme: Theme
 static var _title_fonts := {}
+static var _spaced_fonts := {}
 
 
 static func theme() -> Theme:
@@ -45,6 +46,18 @@ static func title_font(weight := 700) -> Font:
 		f.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): weight}
 		_title_fonts[weight] = f
 	return _title_fonts[weight]
+
+
+## Cinzel with extra tracking between letters (menu items, headings).
+static func title_font_spaced(weight := 600, spacing := 3) -> Font:
+	var key := Vector2i(weight, spacing)
+	if not _spaced_fonts.has(key):
+		var f := FontVariation.new()
+		f.base_font = CINZEL
+		f.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): weight}
+		f.spacing_glyph = spacing
+		_spaced_fonts[key] = f
+	return _spaced_fonts[key]
 
 
 static func panel_box(bg := BG, border := BORDER, width := 1) -> StyleBoxFlat:
@@ -266,6 +279,15 @@ static func scrim(alpha := 0.6) -> ColorRect:
 	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	r.mouse_filter = Control.MOUSE_FILTER_STOP
 	return r
+
+
+## Shrinks `c` (about its centre) just enough that its minimum size fits
+## `avail`, so centred screens stay whole in small windows. Never enlarges.
+static func fit_scale(c: Control, avail: Vector2) -> void:
+	var m := c.get_combined_minimum_size()
+	var k := minf(1.0, minf(avail.x / maxf(m.x, 1.0), avail.y / maxf(m.y, 1.0)))
+	c.pivot_offset = c.size * 0.5
+	c.scale = Vector2(k, k)
 
 
 ## Physical pixels per logical UI pixel for `node`'s viewport.
