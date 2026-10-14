@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dxwofgueo64tq"
+path="res://.godot/imported/ascii_edges.glsl-acc4979a0a0098c77f2c1ce29ed22499.res"
+
+[deps]
+
+source_file="res://rendering/ascii/shaders/ascii_edges.glsl"
+dest_files=["res://.godot/imported/ascii_edges.glsl-acc4979a0a0098c77f2c1ce29ed22499.res"]
+
+[params]
+
