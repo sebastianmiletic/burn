@@ -715,7 +715,10 @@ func _stamp_blueprints(data: PackedByteArray, dens: PackedByteArray, key: Vector
 						dens[di] = 0
 					else:
 						data[di] = v
-						dens[di] = 230 if smooth[v] == Blocks.Family.SMOOTH else mini(dens[di], 100)
+						# Built blocks keep the ground's density: below ground they read as
+						# ground for the smooth surface, above it as air.
+						if smooth[v] == Blocks.Family.SMOOTH:
+							dens[di] = 230
 
 
 # --- Hell --------------------------------------------------------------------

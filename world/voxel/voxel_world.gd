@@ -278,7 +278,7 @@ static func _edit_density(block: int, old: int) -> int:
 		return 255
 	if block == Blocks.AIR or Blocks.is_liquid(block):
 		return 0
-	return mini(old, 100)
+	return mini(old, 127)
 
 
 func _set_density(key: Vector3i, i: int, block: int, blocks: PackedByteArray) -> void:
@@ -323,6 +323,8 @@ func voxel_field(p: Vector3i) -> float:
 	var d := (255 if smooth else 0) if _fd.is_empty() else int(_fd[i])
 	if smooth:
 		return maxf(d, 128) / 255.0
+	if d >= 128 and Blocks.family(b) == Blocks.Family.CUBE:
+		return 0.52  # built block sunk into the ground (see SmoothMesher)
 	return minf(d, 127) / 255.0
 
 

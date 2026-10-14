@@ -4,8 +4,9 @@ extends RefCounted
 ##
 ## Naive Surface Nets over the density field: one vertex per cell that the
 ## surface crosses (placed at the average of its edge crossings), one quad
-## per sign-changing edge. Solidity comes from the block ids (SMOOTH family
-## only), the sub-voxel position from the per-voxel density bytes, so the
+## per sign-changing edge. Solidity comes from the block ids (SMOOTH family,
+## plus built blocks sunk into the ground), the sub-voxel position from the
+## per-voxel density bytes, so the
 ## surface is exactly consistent with mining, physics and saves.
 ##
 ## Samples sit at voxel centres. The chunk owns the cells whose minimum
@@ -50,11 +51,19 @@ static func build(neighbours: Array, densities: Array, surface: PackedInt32Array
 	sol.resize(n)
 	var any_solid := false
 	var any_air := false
+	var cube_fam := Blocks.Family.CUBE
 	for i in n:
 		var d := pd[i]
-		if fam[pb[i]] == smooth_fam:
+		var fb := fam[pb[i]]
+		if fb == smooth_fam:
 			sol[i] = 1
 			f[i] = float(maxi(d, 128)) / 255.0
+			any_solid = true
+		elif fb == cube_fam and d >= 128:
+			# A built block set into the ground (floors, foundations): the ground
+			# continues just under it so there are no pits around it.
+			sol[i] = 1
+			f[i] = 0.52
 			any_solid = true
 		else:
 			f[i] = float(mini(d, 127)) / 255.0
