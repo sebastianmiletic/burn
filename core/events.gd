@@ -33,6 +33,7 @@ signal mining_progress(fraction: float)                        ## <0 hides
 signal boss_engaged(boss: Node, display_name: String)
 signal boss_health_changed(boss: Node, health: float, max_health: float, phase: int)
 signal boss_defeated(kind: String, display_name: String)
+signal boss_disengaged(boss: Node)                             ## fight abandoned / reset
 signal enemy_killed(kind: String, by_local_player: bool)
 signal block_mined(block: int, by_local_player: bool)
 signal item_picked_up(item_id: String, count: int)

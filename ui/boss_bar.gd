@@ -25,6 +25,9 @@ func _ready() -> void:
 	UiContext.on("boss_engaged", _on_engaged)
 	UiContext.on("boss_health_changed", _on_health)
 	UiContext.on("boss_defeated", _on_defeated)
+	UiContext.on("boss_disengaged", func(_b: Node) -> void:
+		_visible_target = false
+		_boss = null)
 
 
 func _on_engaged(boss: Node, display_name: String) -> void:

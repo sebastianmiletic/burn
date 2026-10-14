@@ -50,6 +50,9 @@ void fragment() {
 		emit += albedo * r * rim;
 	}
 
+	// A little self-illumination keeps characters readable as glyphs even when
+	// back-lit against bright ground (they would otherwise become blank holes).
+	emit += col * 0.16;
 	ALBEDO = mix(col, flash_color, hit_flash);
 	EMISSION = emit + flash_color * hit_flash * 1.6;
 	ROUGHNESS = ascii_roughness(roughness, ascii_id);

@@ -388,6 +388,8 @@ func _boss_state(id: int, engaged: bool, kind: String, defeated: bool) -> void:
 			Events.boss_engaged.emit(boss, boss.display_name)
 			Audio.set_music("boss")
 	else:
+		if not defeated:
+			Events.boss_disengaged.emit(boss)
 		if defeated:
 			w.bosses_defeated[kind] = true
 			Events.boss_defeated.emit(kind, boss.display_name if boss != null else kind)

@@ -397,8 +397,9 @@ func _create_entity(id: int, kind: String, pos: Vector3, dim: int, data: Diction
 		return null
 	e.net_id = id
 	e.dimension = dim
+	# Position before entering the tree: entities record their spawn point in _ready.
+	e.position = pos
 	_add_entity(e)
-	e.global_position = pos
 	if e.has_method("on_spawned"):
 		e.call("on_spawned", data)
 	e.visible = dim == local_dimension

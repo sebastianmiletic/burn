@@ -19,6 +19,8 @@ const STOPS := {
 	"gates": [&"gates_of_hades", 12.0, 0.0],
 	"hell": [&"asphodel", 12.0, 0.0],
 	"player": [&"emberfall", 11.0, 0.4, Vector3(-50, 2, 50), -0.3],
+	"dragonfight": [&"dragons_keep", 15.0, 3.14, Vector3(0, 2, 12), -0.25],
+	"kingfight": [&"mountain_hall", 12.0, 0.0, Vector3(0, 0, 8), -0.2],
 	"vista": [&"emberfall", 15.5, 0.0, Vector3(0, 6, 46), -0.2],
 	"road": [&"emberfall", 17.0, 2.2, Vector3(60, 2, -40), -0.1],
 	"woods": [&"thornwick", 16.0, 1.0, Vector3(-40, 2, 30), -0.1],
@@ -68,6 +70,21 @@ func _run() -> void:
 				y = int(loc.center.y) - 1
 			p.global_position.y = y + 1.05
 		p.body.velocity = Vector3.ZERO
+		if stop.ends_with("fight"):
+			var kind := "dragon" if stop == "dragonfight" else "mountain_king"
+			var fwd := -p.camera.global_basis.z
+			fwd.y = 0.0
+			var boss := w.spawn_entity(kind, p.global_position + fwd.normalized() * 14.0 + Vector3(0, 0.5, 0), loc.dimension, {"home": String(loc.id)})
+			if boss != null:
+				boss.set("home_location", String(loc.id))
+			p.invulnerable_until = Time.get_ticks_msec() / 1000.0 + 600.0
+			await _frames(60)
+			for i in 6:
+				if boss != null and not boss.dead:
+					w.request_attack([boss.net_id], 30.0, "hit")
+				await get_tree().create_timer(1.0).timeout
+			await _shot(stop + "_a")
+			await get_tree().create_timer(2.5).timeout
 		await _frames(90)
 		var stats := await _measure(1.5)
 		report.append("%-8s %-28s load %5d ms  avg %.2f ms (%.0f fps) worst %.2f ms  process %.2f ms  draws %d  prims %d" % [stop, loc.name, Time.get_ticks_msec() - t0, stats.x, 1000.0 / stats.x, stats.y,
