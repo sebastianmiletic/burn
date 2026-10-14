@@ -16,8 +16,8 @@ func _ember_extents() -> Vector3:
 
 
 func _build() -> void:
-	var robe := ModelKit.cloth(Color(0.12, 0.13, 0.16))
-	var robe2 := ModelKit.cloth(Color(0.2, 0.22, 0.26))
+	var robe := ModelKit.mat(Color(0.2, 0.22, 0.27), AsciiMaterialId.CLOTH, 0.95, 0.3, 0.7)
+	var robe2 := ModelKit.mat(Color(0.3, 0.33, 0.38), AsciiMaterialId.CLOTH, 0.95, 0.3, 0.7)
 	body = ModelKit.joint(self, "Body", Vector3(0, 0.5, 0))
 	ModelKit.part(body, ModelKit.cylinder(0.26, 0.5, 1.4, 9), robe, Vector3(0, 0.7, 0))
 	ModelKit.part(body, ModelKit.box(Vector3(0.6, 0.3, 0.4)), robe2, Vector3(0, 1.35, 0))

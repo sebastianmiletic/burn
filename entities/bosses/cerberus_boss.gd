@@ -36,7 +36,7 @@ func _begin_attack(name: String) -> void:
 	match name:
 		"bite":
 			_play("bite", 1.0)
-			_tele("cone", global_position + _fwd() * 2.0, _fwd(), Vector3(7.0, 48.0, 0), 0.7, 36.0, "hit", 6.0,
+			_tele("cone", global_position + _fwd() * 0.5, _fwd(), Vector3(8.5, 48.0, 0), 0.7, 36.0, "hit", 6.0,
 				func() -> void: Audio.play("growl", center(), 4.0, 0.7))
 		"pounce":
 			_start_pounce()
@@ -49,7 +49,7 @@ func _begin_attack(name: String) -> void:
 			var dir_l := (_fwd() - right * 0.45).normalized()
 			var dir_r := (_fwd() + right * 0.45).normalized()
 			_attack_data["cones"] = [[o - right * 0.8, dir_l], [o + right * 0.8, dir_r]]
-			var w := world()
+			var w = _w()
 			if w != null:
 				w.telegraph("cone", o - right * 0.8, dir_l, Vector3(12.0, 20.0, 0), 0.9, dimension)
 				w.telegraph("cone", o + right * 0.8, dir_r, Vector3(12.0, 20.0, 0), 0.9, dimension)
@@ -67,8 +67,11 @@ func _begin_attack(name: String) -> void:
 
 func _start_pounce() -> void:
 	var target := _target.global_position if _target != null else global_position + _fwd() * 10.0
+	var approach := target - global_position
+	approach.y = 0.0
 	_attack_data["from"] = global_position
-	_attack_data["to"] = target
+	# Land just short of the target: the impact circle still covers it.
+	_attack_data["to"] = target - approach.normalized() * minf(2.5, approach.length() * 0.5)
 	_face(target, 1.0, 60.0)
 	_play("pounce", 1.2)
 	_tele("circle", target, _fwd(), Vector3(4.6, 0, 0), 1.0, 42.0, "hit", 10.0,

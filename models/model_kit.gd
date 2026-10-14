@@ -12,7 +12,7 @@ static var _meshes := {}
 
 
 ## Creature / character surface. ascii_id: AsciiMaterialId.SOLID or CLOTH.
-static func mat(color: Color, ascii_id := AsciiMaterialId.SOLID, roughness := 0.8, detail := 0.22, rim := 0.0) -> ShaderMaterial:
+static func mat(color: Color, ascii_id := AsciiMaterialId.SOLID, roughness := 0.8, detail := 0.22, rim := 0.35) -> ShaderMaterial:
 	var key := "%s|%d|%.2f|%.2f|%.2f" % [color.to_html(), ascii_id, roughness, detail, rim]
 	if not _mats.has(key):
 		var m := ShaderMaterial.new()
@@ -27,7 +27,7 @@ static func mat(color: Color, ascii_id := AsciiMaterialId.SOLID, roughness := 0.
 
 
 static func cloth(color: Color) -> ShaderMaterial:
-	return mat(color, AsciiMaterialId.CLOTH, 0.95, 0.3)
+	return mat(color, AsciiMaterialId.CLOTH, 0.95, 0.3, 0.3)
 
 
 static func metal(color: Color) -> ShaderMaterial:

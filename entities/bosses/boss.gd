@@ -50,6 +50,13 @@ var _vis_speed := 0.0
 var _last_health := -1.0
 var _last_engaged := false
 var _last_yaw := 0.0
+## Headless simulation hook (tests): when set, used instead of GameWorld.instance.
+var sim_world: Object = null
+
+
+## The world this creature acts in (duck-typed so tests can stand in for GameWorld).
+func _w() -> Variant:
+	return sim_world if sim_world != null else world()
 
 
 static func create(boss_kind: String) -> Boss:
@@ -139,7 +146,7 @@ func _on_died() -> void:
 		for s in summons:
 			if is_instance_valid(s) and not s.dead:
 				s.take_damage(s.health + 1.0, net_id, "hit")
-		var w := world()
+		var w = _w()
 		if w != null:
 			w.boss_finished(self)
 
@@ -167,7 +174,7 @@ func server_tick(delta: float) -> void:
 		_dead_t += delta
 		if _dead_t > 12.0:
 			_dead_t = -INF
-			var w := world()
+			var w = _w()
 			if w != null:
 				w.despawn_entity(self)
 		return
@@ -227,10 +234,10 @@ func _idle(delta: float) -> void:
 
 
 func _check_engage() -> bool:
-	var w := world()
+	var w = _w()
 	if w == null:
 		return false
-	var p := w.nearest_player(spawn_point, dimension, aggro_radius)
+	var p: Entity = w.nearest_player(spawn_point, dimension, aggro_radius)
 	return p != null and not p.dead
 
 
@@ -240,7 +247,7 @@ func _engage() -> void:
 	engaged = true
 	fight_time = 0.0
 	threat.clear()
-	var w := world()
+	var w = _w()
 	var party := 1
 	if w != null:
 		party = maxi(1, _players().size())
@@ -269,11 +276,11 @@ func _reset() -> void:
 	global_position = spawn_point
 	for s in summons:
 		if is_instance_valid(s) and not s.dead:
-			var w0 := world()
+			var w0 = _w()
 			if w0 != null:
 				w0.despawn_entity(s)
 	summons.clear()
-	var w := world()
+	var w = _w()
 	if w != null and w.has_method("boss_reset"):
 		w.call("boss_reset", self)
 	Events.boss_health_changed.emit(self, health, max_health, phase)
@@ -281,7 +288,7 @@ func _reset() -> void:
 
 func _players() -> Array[Entity]:
 	var out: Array[Entity] = []
-	var w := world()
+	var w = _w()
 	if w == null:
 		return out
 	for p in w.players_in(dimension):
@@ -392,7 +399,7 @@ func _play(action: String, duration := -1.0) -> void:
 ## on_land (optional) runs at that moment for effects (bursts, summons...).
 func _tele(shape: String, pos: Vector3, dir: Vector3, size: Vector3, duration: float, base_damage: float,
 		damage_kind := "hit", knockback := 0.0, on_land: Callable = Callable()) -> void:
-	var w := world()
+	var w = _w()
 	if w != null:
 		w.telegraph(shape, pos, dir, size, duration, dimension)
 	_pending.append({"t": duration, "shape": shape, "pos": pos, "dir": dir, "size": size,
@@ -412,7 +419,7 @@ func _tick_pending(delta: float) -> void:
 
 
 func _hit_shape(shape: String, pos: Vector3, dir: Vector3, size: Vector3, amount: float, damage_kind: String, knockback: float) -> void:
-	var w := world()
+	var w = _w()
 	if w == null:
 		return
 	for p in _players():
@@ -427,7 +434,7 @@ func _hit_shape(shape: String, pos: Vector3, dir: Vector3, size: Vector3, amount
 
 
 func _knockback(p: Entity, impulse: Vector3) -> void:
-	var w := world()
+	var w = _w()
 	if w != null and w.has_method("knockback"):
 		w.call("knockback", p, impulse)
 	else:
@@ -435,13 +442,13 @@ func _knockback(p: Entity, impulse: Vector3) -> void:
 
 
 func _summon(summon_kind: String, count: int, radius: float) -> void:
-	var w := world()
+	var w = _w()
 	if w == null:
 		return
 	for i in count:
 		var a := TAU * float(i) / count + _rng.randf() * 0.5
 		var pos := global_position + Vector3(cos(a), 0, sin(a)) * radius + Vector3(0, 0.5, 0)
-		var e := w.spawn_entity(summon_kind, pos, dimension, {"summoned": true})
+		var e: Entity = w.spawn_entity(summon_kind, pos, dimension, {"summoned": true})
 		if e != null:
 			summons.append(e)
 			_fx_burst(pos, false)
@@ -464,13 +471,13 @@ func _tick_burn(delta: float) -> void:
 	_burn_acc += delta
 	if _burn_acc >= Damage.BURN_TICK:
 		_burn_acc -= Damage.BURN_TICK
-		var w := world()
+		var w = _w()
 		if w != null:
 			w.damage(self, Damage.burn_tick(8.0), last_hit_by, "burn")
 
 
 func _shake_near(pos: Vector3, strength: float) -> void:
-	var w := world()
+	var w = _w()
 	if w != null:
 		w.shake(strength)
 	elif strength > 0.0:

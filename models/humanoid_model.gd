@@ -222,8 +222,14 @@ func _build() -> void:
 		var segments := 4 if st("tattered", false) else 3
 		for i in segments:
 			var j := ModelKit.joint(parent, "CloakSeg%d" % i, Vector3(0, 0, 0))
-			var w := (0.56 + i * 0.07) * b * s
-			ModelKit.part(j, ModelKit.box(Vector3(w, seg_len, 0.035 * s)), cloak_mat, Vector3(0, -seg_len * 0.5, 0))
+			# Two tapered panels per segment, angled to wrap around the back.
+			var top_w := (0.26 + i * 0.05) * b * s
+			var bot_w := (0.31 + i * 0.05) * b * s
+			var ragged := 0.06 * s if (st("tattered", false) and i == segments - 1) else 0.0
+			for side: float in [-1.0, 1.0]:
+				var pts := PackedVector2Array([Vector2(0, 0), Vector2(side * top_w, 0), Vector2(side * bot_w, -seg_len - ragged),
+						Vector2(side * bot_w * 0.5, -seg_len + ragged), Vector2(0, -seg_len - ragged * 0.5)])
+				ModelKit.part(j, ModelKit.slab(pts, 0.03 * s), cloak_mat, Vector3(side * 0.01 * s, 0, 0), Vector3(0, side * 16.0, 0))
 			cloak.append(j)
 			parent = j
 			var next := ModelKit.joint(j, "CloakJoint%d" % i, Vector3(0, -seg_len, 0))
@@ -389,7 +395,8 @@ func _animate(delta: float) -> void:
 		_cloak_swing = damp(_cloak_swing, clampf(move_speed * 0.12 - accel * 0.01, -0.2, 0.9), 4.0, delta)
 		for i in cloak.size():
 			var flutter := sin(_time * (3.0 + _run * 4.0) - i * 0.9) * (0.03 + 0.08 * _run)
-			var target := Vector3(0.06 + _cloak_swing * (0.35 + i * 0.25) + flutter - (0.06 if i > 0 else 0.0) + _air * 0.4, 0, 0)
+			var sway := sin(_time * (1.7 + _run * 3.0) - i * 1.1) * (0.03 + 0.06 * _run) - turn_rate * 0.02
+			var target := Vector3(0.06 + _cloak_swing * (0.35 + i * 0.25) + flutter - (0.06 if i > 0 else 0.0) + _air * 0.4, 0, sway)
 			if _dead:
 				target = Vector3(-0.4, 0, 0)
 			pose(cloak[i], target, 10.0 - i * 2.0, delta)

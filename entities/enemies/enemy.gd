@@ -75,6 +75,13 @@ var _lunge_dir := Vector3.ZERO
 var _hazard_t := 0.0
 var _hazard := false
 var _hover_ground := 0.0
+## Headless simulation hook (tests): when set, used instead of GameWorld.instance.
+var sim_world: Object = null
+
+
+## The world this creature acts in (duck-typed so tests can stand in for GameWorld).
+func _w() -> Variant:
+	return sim_world if sim_world != null else world()
 
 
 static func create(enemy_kind: String) -> Enemy:
@@ -124,7 +131,7 @@ func _on_damaged(amount: float, source_id: int, damage_kind: String) -> void:
 		model.flash(Color(1.0, 0.6, 0.35) if damage_kind in ["fire", "burn"] else Color(1, 1, 1))
 	# Getting hit wakes you up and points you at the attacker.
 	if state in [State.IDLE, State.PATROL, State.RETURN] and source_id != 0:
-		var w := world()
+		var w = _w()
 		if w != null:
 			for p in w.players_in(dimension):
 				if p.net_id == source_id:
@@ -157,7 +164,7 @@ func server_tick(delta: float) -> void:
 		_dead_t += delta
 		if _dead_t > 3.6 and not _despawned:
 			_despawned = true
-			var w := world()
+			var w = _w()
 			if w != null:
 				w.despawn_entity(self)
 		return
@@ -182,7 +189,7 @@ func _tick_burn(delta: float) -> void:
 	_burn_acc += delta
 	if _burn_acc >= Damage.BURN_TICK:
 		_burn_acc -= Damage.BURN_TICK
-		var w := world()
+		var w = _w()
 		if w != null:
 			w.damage(self, Damage.burn_tick(_burn_dps), last_hit_by, "burn")
 
@@ -203,7 +210,7 @@ func _start_anim(code: int) -> void:
 
 
 func _think(delta: float) -> void:
-	var w := world()
+	var w = _w()
 	if w == null:
 		return
 	var aggro := float(stats["aggro"])
@@ -265,8 +272,8 @@ func _think(delta: float) -> void:
 				_set_state(State.IDLE, 2.0)
 
 
-func _scan(w: GameWorld, aggro: float) -> bool:
-	var p := w.nearest_player(global_position, dimension, aggro)
+func _scan(w: Variant, aggro: float) -> bool:
+	var p: Entity = w.nearest_player(global_position, dimension, aggro)
 	if p != null and not p.dead:
 		_target = p
 		_set_state(State.CHASE)
@@ -318,7 +325,7 @@ func _chase(dist: float, delta: float) -> void:
 			_start_anim(int(stats["attack"]))
 			_set_state(State.ATTACK, float(stats["windup"]) + 0.4)
 			if stats.get("heavy", false):
-				var w := world()
+				var w = _w()
 				var center_pos := global_position + _forward() * 1.8
 				w.telegraph("circle", center_pos, _forward(), Vector3(float(stats["slam_radius"]), 0, 0), float(stats["windup"]), dimension)
 
@@ -348,7 +355,7 @@ func _attack(delta: float) -> void:
 
 
 func _strike() -> void:
-	var w := world()
+	var w = _w()
 	if w == null:
 		return
 	var dmg := Damage.monster(float(stats["damage"]), false, w.players_in(dimension).size())
@@ -378,7 +385,7 @@ func _strike() -> void:
 
 
 func _hit_target(dmg: float) -> void:
-	var w := world()
+	var w = _w()
 	if w == null or _target == null or _target.dead:
 		return
 	var to := _target.global_position - global_position

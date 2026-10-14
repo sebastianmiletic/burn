@@ -29,8 +29,8 @@ func _ember_extents() -> Vector3:
 
 
 func _build() -> void:
-	var fur := ModelKit.mat(Color(0.12, 0.09, 0.09), AsciiMaterialId.SOLID, 0.85, 0.4)
-	var flesh := ModelKit.mat(Color(0.35, 0.12, 0.1), AsciiMaterialId.SOLID, 0.6, 0.3)
+	var fur := ModelKit.mat(Color(0.26, 0.17, 0.15), AsciiMaterialId.SOLID, 0.85, 0.4, 0.45)
+	var flesh := ModelKit.mat(Color(0.5, 0.16, 0.12), AsciiMaterialId.SOLID, 0.6, 0.3)
 	var bone := ModelKit.mat(Color(0.82, 0.76, 0.62), AsciiMaterialId.SOLID, 0.5, 0.2)
 	body = ModelKit.joint(self, "Body", Vector3(0, _body_y, 0))
 	ModelKit.part(body, ModelKit.capsule(1.05, 2.8, 10), fur, Vector3(0, 0.1, -0.5), Vector3(90, 0, 0))
@@ -45,10 +45,11 @@ func _build() -> void:
 	mane.emitting = true
 
 	for k in 3:
-		var x := (k - 1) * 0.72
-		var nb := ModelKit.joint(body, "Neck%d" % k, Vector3(x, 0.55, -1.75))
-		ModelKit.part(nb, ModelKit.capsule(0.42, 1.3, 8), fur, Vector3(0, 0, -0.45), Vector3(90, 0, 0))
+		var x := (k - 1) * 0.85
+		var nb := ModelKit.joint(body, "Neck%d" % k, Vector3(x, 0.45, -1.75))
+		ModelKit.part(nb, ModelKit.capsule(0.48, 1.3, 8), fur, Vector3(0, 0, -0.45), Vector3(90, 0, 0))
 		var hd := ModelKit.joint(nb, "Head%d" % k, Vector3(0, 0, -1.0))
+		hd.scale = Vector3.ONE * 1.25
 		ModelKit.part(hd, ModelKit.box(Vector3(0.72, 0.62, 0.78)), fur, Vector3(0, 0.1, -0.25))
 		ModelKit.part(hd, ModelKit.box(Vector3(0.46, 0.34, 0.72)), fur, Vector3(0, 0.0, -0.9))
 		ModelKit.part(hd, ModelKit.box(Vector3(0.2, 0.12, 0.12)), ModelKit.mat(Color(0.05, 0.03, 0.03)), Vector3(0, 0.13, -1.27))
@@ -74,9 +75,9 @@ func _build() -> void:
 		var side: float = spec[0]
 		var front: bool = spec[1]
 		var hip := ModelKit.joint(body, "Hip", Vector3(side * 0.72, -0.3, -1.0 if front else 1.75))
-		ModelKit.part(hip, ModelKit.capsule(0.36, 1.3, 8), fur, Vector3(0, -0.5, 0))
+		ModelKit.part(hip, ModelKit.capsule(0.44, 1.3, 8), fur, Vector3(0, -0.5, 0))
 		var knee := ModelKit.joint(hip, "Knee", Vector3(0, -1.05, 0))
-		ModelKit.part(knee, ModelKit.capsule(0.24, 1.15, 8), fur, Vector3(0, -0.45, 0))
+		ModelKit.part(knee, ModelKit.capsule(0.3, 1.15, 8), fur, Vector3(0, -0.45, 0))
 		var ankle := ModelKit.joint(knee, "Ankle", Vector3(0, -0.95, 0))
 		ModelKit.part(ankle, ModelKit.box(Vector3(0.45, 0.2, 0.55)), fur, Vector3(0, -0.08, -0.12))
 		for c in 3:
@@ -119,9 +120,9 @@ func _animate(delta: float) -> void:
 	var head_t: Array[Vector3] = []
 	var jaw_t: Array[float] = []
 	for k in 3:
-		var spread := (k - 1) * 0.32
-		neck_t.append(Vector3(0.45 + sin(_time * 0.9 + k * 2.0) * 0.06, spread + sin(_time * 0.6 + k) * 0.1, 0))
-		head_t.append(Vector3(-0.45, sin(_time * 0.8 + k * 1.3) * 0.15, 0))
+		var spread := -(k - 1) * 0.42
+		neck_t.append(Vector3(0.22 + sin(_time * 0.9 + k * 2.0) * 0.06, spread + sin(_time * 0.6 + k) * 0.1, (k - 1) * -0.15))
+		head_t.append(Vector3(-0.25, -spread * 0.4 + sin(_time * 0.8 + k * 1.3) * 0.15, 0))
 		jaw_t.append(0.05 + maxf(0.0, sin(_time * 2.6 + k * 2.0)) * 0.15)
 	var tail_wag := 0.25 + 0.2 * _walk
 

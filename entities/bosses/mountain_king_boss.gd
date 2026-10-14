@@ -113,7 +113,7 @@ func _ice_line(from: Vector3, dir: Vector3) -> void:
 
 
 func _throw_boulder(target: Vector3) -> void:
-	var w := world()
+	var w = _w()
 	if w == null:
 		return
 	var origin := global_position + Vector3(0, hit_height * 0.95, 0) + _fwd() * 1.5

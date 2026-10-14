@@ -74,7 +74,7 @@ func _begin_attack(name: String) -> void:
 			_attack_data["origin"] = global_position + _fwd() * 5.0
 			_attack_data["dir"] = _fwd()
 			_play("roar", 1.0)
-			var w := world()
+			var w = _w()
 			if w != null:
 				w.telegraph("cone", _attack_data["origin"], _fwd(), Vector3(17.0, 42.0, 0), 1.0, dimension)
 		"barrage":
@@ -124,7 +124,7 @@ func _update_attack(name: String, t: float, delta: float) -> bool:
 
 
 func _fireball_at_player() -> void:
-	var w := world()
+	var w = _w()
 	var p := _random_player()
 	if w == null or p == null:
 		return

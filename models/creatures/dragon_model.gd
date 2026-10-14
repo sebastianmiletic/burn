@@ -45,12 +45,12 @@ func mouth_node() -> Node3D:
 
 
 func _build() -> void:
-	var scale_c := Color(0.32, 0.11, 0.07)
-	var scales := ModelKit.mat(scale_c, AsciiMaterialId.SOLID, 0.55, 0.35)
-	var belly := ModelKit.mat(Color(0.62, 0.42, 0.24), AsciiMaterialId.SOLID, 0.7, 0.3)
+	var scale_c := Color(0.46, 0.17, 0.1)
+	var scales := ModelKit.mat(scale_c, AsciiMaterialId.SOLID, 0.55, 0.35, 0.45)
+	var belly := ModelKit.mat(Color(0.75, 0.52, 0.3), AsciiMaterialId.SOLID, 0.7, 0.3)
 	var horn := ModelKit.mat(Color(0.85, 0.78, 0.62), AsciiMaterialId.SOLID, 0.5, 0.2)
 	var dark := ModelKit.mat(Color(0.13, 0.05, 0.04), AsciiMaterialId.SOLID, 0.5, 0.2)
-	var membrane := ModelKit.mat(Color(0.4, 0.12, 0.07), AsciiMaterialId.CLOTH, 0.9, 0.4)
+	var membrane := ModelKit.mat(Color(0.55, 0.18, 0.1), AsciiMaterialId.CLOTH, 0.9, 0.4, 0.4)
 
 	body = ModelKit.joint(self, "Body", Vector3(0, _body_y, 0))
 	ModelKit.part(body, ModelKit.capsule(1.25, 4.6, 10), scales, Vector3(0, 0, -0.3), Vector3(90, 0, 0))

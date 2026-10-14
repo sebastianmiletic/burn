@@ -117,7 +117,7 @@ func _target_forward() -> Vector3:
 
 
 func _soul_bolt(i: int) -> void:
-	var w := world()
+	var w = _w()
 	var p := _random_player()
 	if w == null or p == null:
 		return
