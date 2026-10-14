@@ -1,0 +1,138 @@
+class_name QuestDB
+extends RefCounted
+## Quest definitions. Objectives are matched against game events:
+##   talk(role)  interact(kind @ location)  mine(block)  collect(item)
+##   kill(enemy kind)  boss(kind)  reach(location id)  have(item)
+## The main campaign is a chain (`next`); side quests come from villages.
+
+const MAIN := [
+	{
+		"id": "kindling", "title": "Kindling", "giver": "elder",
+		"description": "Elder Maren asks you to rekindle the Emberfall Shrine, the last warm light of the Ashen Plains. Shrines are where the fallen wake again.",
+		"objectives": [{"type": "interact", "key": "shrine@emberfall_shrine", "count": 1, "text": "Rekindle the Emberfall Shrine"}],
+		"rewards": {"xp": 60, "gold": 10, "items": {"potion_health": 2}}, "next": "iron_in_the_deep",
+	},
+	{
+		"id": "iron_in_the_deep", "title": "Iron in the Deep", "giver": "blacksmith",
+		"description": "Brannoc the smith can't forge with ash. Dig beneath the plains and bring iron ore and coal.",
+		"objectives": [
+			{"type": "collect", "key": "iron_ore", "count": 5, "text": "Mine iron ore"},
+			{"type": "collect", "key": "coal", "count": 3, "text": "Mine coal"},
+		],
+		"rewards": {"xp": 120, "gold": 15, "items": {"sword_iron": 1}, "take": {"iron_ore": 5, "coal": 3}}, "next": "silent_crypt",
+	},
+	{
+		"id": "silent_crypt", "title": "The Silent Crypt", "giver": "elder",
+		"description": "Something old wakes beneath the Blackmarsh to the west. The Warden of the Silent Crypt holds the first of the three seals.",
+		"objectives": [
+			{"type": "reach", "key": "silent_crypt", "count": 1, "text": "Find the Silent Crypt in the Blackmarsh"},
+			{"type": "boss", "key": "warden", "count": 1, "text": "Defeat the Warden"},
+		],
+		"rewards": {"xp": 250, "gold": 60, "items": {"potion_greater": 1}}, "next": "mountain_king",
+	},
+	{
+		"id": "mountain_king", "title": "Hall of the Mountain King", "giver": "elder",
+		"description": "North, beyond Frosthold, a king of trolls sits on a stolen throne inside the mountain. His crown is the second seal.",
+		"objectives": [
+			{"type": "reach", "key": "mountain_hall", "count": 1, "text": "Enter the Hall of the Mountain King"},
+			{"type": "boss", "key": "mountain_king", "count": 1, "text": "Defeat the Mountain King"},
+		],
+		"rewards": {"xp": 350, "gold": 90}, "next": "ashvane",
+	},
+	{
+		"id": "ashvane", "title": "Ashvane", "giver": "elder",
+		"description": "The dragon Ashvane nests in the Dragon's Keep across the Cinder Wastes. Its heart, still burning, is the last seal.",
+		"objectives": [
+			{"type": "reach", "key": "dragons_keep", "count": 1, "text": "Reach the Dragon's Keep"},
+			{"type": "boss", "key": "dragon", "count": 1, "text": "Slay Ashvane"},
+		],
+		"rewards": {"xp": 500, "gold": 150}, "next": "into_the_deep",
+	},
+	{
+		"id": "into_the_deep", "title": "Into the Deep", "giver": "elder",
+		"description": "With the three seals, the Gates of Hades will open. They lie far below the Cinder Crater. Take a pickaxe and dig — deeper than anyone has dared.",
+		"objectives": [
+			{"type": "have", "key": "warden_sigil", "count": 1, "text": "Carry the Warden's Sigil"},
+			{"type": "have", "key": "frost_crown", "count": 1, "text": "Carry the Frost Crown"},
+			{"type": "have", "key": "dragonheart", "count": 1, "text": "Carry the Dragonheart"},
+			{"type": "reach", "key": "gates_of_hades", "count": 1, "text": "Dig down to the Gates of Hades"},
+			{"type": "dimension", "key": "1", "count": 1, "text": "Pass through the Gates"},
+		],
+		"rewards": {"xp": 400, "gold": 100}, "next": "hound",
+	},
+	{
+		"id": "hound", "title": "Hound of the Underworld", "giver": "",
+		"description": "Cerberus guards the road to the throne from Tartarus. Its fang will open the way.",
+		"objectives": [
+			{"type": "reach", "key": "tartarus", "count": 1, "text": "Find Tartarus"},
+			{"type": "boss", "key": "cerberus", "count": 1, "text": "Defeat Cerberus"},
+		],
+		"rewards": {"xp": 700, "gold": 200}, "next": "throne",
+	},
+	{
+		"id": "throne", "title": "The Throne of Hades", "giver": "",
+		"description": "End it. Climb to the Throne of Hades and take his crown.",
+		"objectives": [
+			{"type": "reach", "key": "throne_of_hades", "count": 1, "text": "Approach the Throne of Hades"},
+			{"type": "boss", "key": "hades", "count": 1, "text": "Defeat Hades"},
+		],
+		"rewards": {"xp": 1500, "gold": 500}, "next": "",
+	},
+]
+
+## Village side quests: picked deterministically per village.
+const SIDE_TEMPLATES := [
+	{"title": "Bones in the Fields", "description": "Skeletons have been seen near %s. Put them back in the ground.",
+		"objectives": [{"type": "kill", "key": "skeleton", "count": 6, "text": "Destroy skeletons"}], "rewards": {"xp": 90, "gold": 25}},
+	{"title": "Ghoul Hunt", "description": "Ghouls dig at the graves around %s at night.",
+		"objectives": [{"type": "kill", "key": "ghoul", "count": 4, "text": "Slay ghouls"}], "rewards": {"xp": 100, "gold": 30, "items": {"potion_health": 1}}},
+	{"title": "Fuel for the Hearth", "description": "Winter comes early to %s. Bring coal.",
+		"objectives": [{"type": "collect", "key": "coal", "count": 10, "text": "Gather coal"}], "rewards": {"xp": 70, "gold": 20, "items": {"bread": 4}, "take": {"coal": 10}}},
+	{"title": "A Glint of Gold", "description": "The merchant of %s wants gold ore and asks no questions.",
+		"objectives": [{"type": "collect", "key": "gold_ore", "count": 4, "text": "Bring gold ore"}], "rewards": {"xp": 120, "gold": 80, "take": {"gold_ore": 4}}},
+	{"title": "Embers Below", "description": "A scholar in %s pays for ember crystals from the deep caves.",
+		"objectives": [{"type": "collect", "key": "ember_crystal", "count": 3, "text": "Bring ember crystals"}], "rewards": {"xp": 180, "gold": 90, "take": {"ember_crystal": 3}}},
+	{"title": "Archers on the Road", "description": "Skeleton archers shoot at travellers outside %s.",
+		"objectives": [{"type": "kill", "key": "archer", "count": 4, "text": "Defeat skeleton archers"}], "rewards": {"xp": 110, "gold": 35}},
+	{"title": "The Troll Bridge", "description": "Trolls came down from the peaks near %s.",
+		"objectives": [{"type": "kill", "key": "troll", "count": 2, "text": "Kill trolls"}], "rewards": {"xp": 160, "gold": 50, "items": {"potion_greater": 1}}},
+	{"title": "Old Stones", "description": "Visit the forgotten places the people of %s still whisper about.",
+		"objectives": [{"type": "discover", "key": "ruin", "count": 3, "text": "Discover ruins"}], "rewards": {"xp": 130, "gold": 40}},
+]
+
+const VILLAGES := ["emberfall", "ashford", "thornwick", "frosthold", "mirewatch", "cinderreach"]
+const VILLAGE_NAMES := {"emberfall": "Emberfall", "ashford": "Ashford", "thornwick": "Thornwick",
+		"frosthold": "Frosthold", "mirewatch": "Mirewatch", "cinderreach": "Cinderreach"}
+
+
+static func main_quest(id: String) -> Dictionary:
+	for q: Dictionary in MAIN:
+		if q["id"] == id:
+			return q
+	return {}
+
+
+static func side_quests_for(village: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var vi := VILLAGES.find(village)
+	if vi < 0:
+		return out
+	for n in 2:
+		var t: Dictionary = SIDE_TEMPLATES[(vi * 3 + n * 5) % SIDE_TEMPLATES.size()].duplicate(true)
+		t["id"] = "side_%s_%d" % [village, n]
+		t["giver"] = "villager@" + village
+		t["description"] = String(t["description"]) % VILLAGE_NAMES[village]
+		t["next"] = ""
+		out.append(t)
+	return out
+
+
+static func any(id: String) -> Dictionary:
+	var q := main_quest(id)
+	if not q.is_empty():
+		return q
+	for v: String in VILLAGES:
+		for s in side_quests_for(v):
+			if s["id"] == id:
+				return s
+	return {}
