@@ -52,7 +52,23 @@ const OAK_TRUNK := 41
 const CRIMSON_TRUNK := 42
 const PINE_TRUNK := 43
 const DEAD_TRUNK := 44
-const COUNT := 45
+# Rock strata
+const GRANITE := 45
+const SANDSTONE := 46
+const MARBLE := 47
+const SLATE := 48
+const CLAY := 49
+const LIMESTONE := 50
+# Ores and gems (deeper is richer)
+const COPPER_ORE := 51
+const TIN_ORE := 52
+const SILVER_ORE := 53
+const MITHRIL_ORE := 54
+const ADAMANTITE_ORE := 55
+const RUBY_ORE := 56
+const SAPPHIRE_ORE := 57
+const AMETHYST := 58
+const COUNT := 59
 
 ## Block shape families used by the mesher.
 enum Shape { CUBE, NONE, SMALL }
@@ -106,11 +122,27 @@ const DATA := [
 	["Crimson oak", Color(0.3, 0.2, 0.13), AsciiMaterialId.SOLID, 0.9, 0, "wood", 0.0, true, true, false, Shape.NONE],
 	["Pine", Color(0.24, 0.17, 0.11), AsciiMaterialId.SOLID, 0.9, 0, "wood", 0.0, true, true, false, Shape.NONE],
 	["Dead tree", Color(0.28, 0.24, 0.2), AsciiMaterialId.SOLID, 0.7, 0, "wood", 0.0, true, true, false, Shape.NONE],
+	["Granite", Color(0.52, 0.45, 0.43), AsciiMaterialId.SOLID, 1.6, 1, "granite", 0.0, true, true, false, Shape.CUBE],
+	["Sandstone", Color(0.74, 0.6, 0.42), AsciiMaterialId.SOLID, 0.9, 1, "sandstone", 0.0, true, true, false, Shape.CUBE],
+	["Marble", Color(0.85, 0.84, 0.8), AsciiMaterialId.SOLID, 1.5, 1, "marble", 0.0, true, true, false, Shape.CUBE],
+	["Slate", Color(0.27, 0.29, 0.32), AsciiMaterialId.SOLID, 1.4, 1, "slate", 0.0, true, true, false, Shape.CUBE],
+	["Clay", Color(0.62, 0.45, 0.36), AsciiMaterialId.GROUND, 0.5, 0, "clay", 0.0, true, true, false, Shape.CUBE],
+	["Limestone", Color(0.7, 0.68, 0.6), AsciiMaterialId.SOLID, 1.0, 1, "limestone", 0.0, true, true, false, Shape.CUBE],
+	["Copper ore", Color(0.62, 0.42, 0.3), AsciiMaterialId.SOLID, 1.3, 1, "copper_ore", 0.0, true, true, false, Shape.CUBE],
+	["Tin ore", Color(0.6, 0.6, 0.58), AsciiMaterialId.SOLID, 1.3, 1, "tin_ore", 0.0, true, true, false, Shape.CUBE],
+	["Silver ore", Color(0.72, 0.74, 0.78), AsciiMaterialId.SOLID, 2.0, 2, "silver_ore", 0.0, true, true, false, Shape.CUBE],
+	["Mithril ore", Color(0.55, 0.75, 0.85), AsciiMaterialId.SOLID, 3.0, 3, "mithril_ore", 0.4, true, true, false, Shape.CUBE],
+	["Adamantite ore", Color(0.35, 0.65, 0.4), AsciiMaterialId.SOLID, 4.5, 4, "adamantite_ore", 0.4, true, true, false, Shape.CUBE],
+	["Ruby ore", Color(0.7, 0.15, 0.18), AsciiMaterialId.SOLID, 2.4, 2, "ruby", 0.3, true, true, false, Shape.CUBE],
+	["Sapphire ore", Color(0.2, 0.3, 0.75), AsciiMaterialId.SOLID, 2.4, 2, "sapphire", 0.3, true, true, false, Shape.CUBE],
+	["Amethyst", Color(0.6, 0.35, 0.85), AsciiMaterialId.EMISSIVE, 1.8, 2, "amethyst", 1.0, true, true, false, Shape.CUBE],
 ]
 
 ## Blocks drawn as the smooth terrain surface.
 const SMOOTH_BLOCKS := [STONE, DIRT, GRASS, SAND, SNOW, ICE, GRAVEL, COAL_ORE, IRON_ORE, GOLD_ORE, EMBER_ORE,
-		OBSIDIAN, BEDROCK, BASALT, ASH, BONE, HELLSTONE, DRY_GRASS, CRYSTAL, DEEPSLATE, MUD, SOUL_SAND]
+		OBSIDIAN, BEDROCK, BASALT, ASH, BONE, HELLSTONE, DRY_GRASS, CRYSTAL, DEEPSLATE, MUD, SOUL_SAND,
+		GRANITE, SANDSTONE, MARBLE, SLATE, CLAY, LIMESTONE, COPPER_ORE, TIN_ORE, SILVER_ORE, MITHRIL_ORE,
+		ADAMANTITE_ORE, RUBY_ORE, SAPPHIRE_ORE, AMETHYST]
 
 static var _solid := PackedByteArray()
 static var _opaque := PackedByteArray()

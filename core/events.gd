@@ -16,6 +16,7 @@ signal dialog_open(npc: Node, title: String, lines: PackedStringArray, options: 
 signal dialog_choice(npc: Node, option_id: String)
 signal dialog_close
 signal shop_open(kind: String)                                 ## "blacksmith", "merchant"
+signal station_open(kind: String, station: Node)                ## crafting station UI: "workbench", "furnace", "anvil", ... (station may be null)
 signal chat_message(from_name: String, text: String, channel: String)
 
 # --- Player ---
