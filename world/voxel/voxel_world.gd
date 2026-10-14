@@ -52,6 +52,10 @@ var _area_ready_emitted := false
 var _light_nodes: Array[OmniLight3D] = []
 var _light_timer := 0.0
 var _max_in_flight := 8
+var _gen_in_flight := 0
+var _mesh_in_flight := 0
+var _max_gen := 6
+var _max_mesh := 4
 
 
 func setup(world_gen: WorldGen, dim: int) -> void:
@@ -59,7 +63,11 @@ func setup(world_gen: WorldGen, dim: int) -> void:
 	dimension = dim
 	opaque_material.shader = OPAQUE_SHADER
 	liquid_material.shader = LIQUID_SHADER
-	_max_in_flight = maxi(2, OS.get_processor_count() - 1)
+	var cores := maxi(2, OS.get_processor_count() - 1)
+	_max_in_flight = cores
+	# Separate budgets: meshing must never wait behind a long generation queue.
+	_max_mesh = maxi(1, cores / 3)
+	_max_gen = maxi(1, cores - _max_mesh)
 
 
 func _exit_tree() -> void:
@@ -301,8 +309,24 @@ func _rebuild_wanted(fkey: Vector3i) -> void:
 func _schedule() -> void:
 	# Cursors walk the (distance-sorted) wanted lists a bounded amount per
 	# frame, so streaming cost stays flat no matter how much is loaded.
+	if meshing_enabled:
+		# Edited chunks first: the player is looking at them.
+		for k: Vector3i in _dirty.keys():
+			if _mesh_in_flight >= _max_mesh:
+				break
+			_try_mesh(k)
+		var mchecks := 0
+		var i := 0
+		while i < _mesh_todo.size() and _mesh_in_flight < _max_mesh and mchecks < 96:
+			mchecks += 1
+			var k := _mesh_todo[i]
+			var state := _try_mesh(k)
+			if state != 0:
+				_mesh_todo.remove_at(i)  # dispatched or nothing to do
+			else:
+				i += 1
 	var checks := 0
-	while _data_cursor < _wanted_data.size() and _in_flight < _max_in_flight and checks < 512:
+	while _data_cursor < _wanted_data.size() and _gen_in_flight < _max_gen and checks < 512:
 		var k := _wanted_data[_data_cursor]
 		_data_cursor += 1
 		checks += 1
@@ -310,24 +334,8 @@ func _schedule() -> void:
 			continue
 		_gen_pending[k] = true
 		_in_flight += 1
+		_gen_in_flight += 1
 		WorkerThreadPool.add_task(_task_generate.bind(k), false, "chunk gen")
-	if not meshing_enabled:
-		return
-	# Edited chunks first: the player is looking at them.
-	for k: Vector3i in _dirty.keys():
-		if _in_flight >= _max_in_flight:
-			return
-		_try_mesh(k)
-	checks = 0
-	var i := 0
-	while i < _mesh_todo.size() and _in_flight < _max_in_flight and checks < 96:
-		checks += 1
-		var k := _mesh_todo[i]
-		var state := _try_mesh(k)
-		if state != 0:
-			_mesh_todo.remove_at(i)  # dispatched or nothing to do
-		else:
-			i += 1
 
 
 ## 1 = dispatched or empty, 2 = already meshed, 0 = not ready yet.
@@ -347,6 +355,7 @@ func _try_mesh(k: Vector3i) -> int:
 		return 1
 	_mesh_pending[k] = true
 	_in_flight += 1
+	_mesh_in_flight += 1
 	var version := int(_mesh_version.get(k, 0))
 	WorkerThreadPool.add_task(_task_mesh.bind(k, neighbours, version), false, "chunk mesh")
 	return 1
@@ -425,6 +434,7 @@ func _consume_results() -> void:
 
 	for r: Array in gens:
 		_in_flight -= 1
+		_gen_in_flight -= 1
 		var k: Vector3i = r[0]
 		var data: PackedByteArray = r[1]
 		_gen_pending.erase(k)
@@ -445,6 +455,7 @@ func _consume_results() -> void:
 			deferred.append(r)
 			continue
 		_in_flight -= 1
+		_mesh_in_flight -= 1
 		var k: Vector3i = r[0]
 		_mesh_pending.erase(k)
 		if int(_mesh_version.get(k, 0)) != int(r[1]):
@@ -473,6 +484,12 @@ func _near_area_meshed() -> bool:
 		if not _meshes.has(k):
 			return false
 	return checked > 0
+
+
+func debug_stats() -> String:
+	return "chunks %d meshes %d in_flight %d gen_pending %d mesh_pending %d wanted %d/%d todo %d cursor %d progress %.2f" % [
+		_chunks.size(), _meshes.size(), _in_flight, _gen_pending.size(), _mesh_pending.size(),
+		_wanted_mesh.size(), _wanted_data.size(), _mesh_todo.size(), _data_cursor, loading_progress()]
 
 
 func loading_progress() -> float:

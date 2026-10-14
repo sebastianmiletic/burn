@@ -69,9 +69,12 @@ func setup(info: Dictionary) -> void:
 	replicator.name = "Replicator"
 	add_child(replicator)
 
+	var t0 := Time.get_ticks_msec()
 	loading.emit(0.02, "Reading the ashes")
 	await _prepare_dimension(0, seed_value, 0.02, 0.45)
+	_log_time("overworld prepared", t0)
 	await _prepare_dimension(1, seed_value ^ 0x5eed, 0.45, 0.6)
+	_log_time("underworld prepared", t0)
 
 	sky = SkyController.new()
 	add_child(sky)
@@ -113,9 +116,14 @@ func setup(info: Dictionary) -> void:
 	loading.emit(0.62, "Raising the land")
 	var world := world_for(local_dimension)
 	world.focus = local_player.global_position
+	var last_log := 0
 	while not world.is_area_loaded(local_player.global_position) or world.loading_progress() < 0.98:
 		loading.emit(0.62 + 0.35 * world.loading_progress(), "Raising the land")
+		if "--load-timing" in OS.get_cmdline_user_args() and Time.get_ticks_msec() - last_log > 1000:
+			last_log = Time.get_ticks_msec()
+			print("[load]   ", world.debug_stats())
 		await get_tree().process_frame
+	_log_time("spawn area streamed", t0)
 	# Make sure we stand on solid ground (saves can predate edits).
 	if world.is_solid(Vector3i(local_player.global_position.floor())):
 		var p := local_player.global_position
@@ -154,6 +162,11 @@ func _apply_gfx_flags() -> void:
 						(worlds[d] as VoxelWorld).view_radius = 4
 				"noascii":
 					Ascii.effect.enabled = false
+
+
+func _log_time(what: String, t0: int) -> void:
+	if OS.is_debug_build() and "--load-timing" in OS.get_cmdline_user_args():
+		print("[load] %-22s %6d ms" % [what, Time.get_ticks_msec() - t0])
 
 
 func _prepare_dimension(dim: int, seed_value: int, p0: float, p1: float) -> void:

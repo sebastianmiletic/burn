@@ -65,17 +65,22 @@ func center() -> Vector2:
 # --- Preparation --------------------------------------------------------------
 
 func prepare(progress: Callable = Callable()) -> void:
+	var t := Time.get_ticks_msec()
 	_setup_biome_seeds()
 	_report(progress, 0.05, "Shaping the land")
 	_build_coarse_maps()
+	var t_coarse := Time.get_ticks_msec() - t
 	_report(progress, 0.45, "Raising the ruins")
 	var planner := LocationPlanner.new(self)
 	locations = planner.plan()
 	for loc in locations:
 		_blueprints.append_array(loc.blueprints)
+	var t_plan := Time.get_ticks_msec() - t - t_coarse
 	_report(progress, 0.75, "Laying the old roads")
 	_rasterise_pads()
 	_report(progress, 1.0, "Done")
+	if "--load-timing" in OS.get_cmdline_user_args():
+		print("[load]   dim %d: coarse %d ms, plan %d ms, pads/roads %d ms" % [dimension, t_coarse, t_plan, Time.get_ticks_msec() - t - t_coarse - t_plan])
 
 
 func _report(progress: Callable, value: float, text: String) -> void:
