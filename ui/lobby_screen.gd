@@ -2,6 +2,8 @@ class_name LobbyScreen
 extends Control
 ## Multiplayer lobby. Host mode shows the party's four runes and who has
 ## joined; join mode is a rune keypad (click or type the rune keys).
+## Drawn like the title screen: the live world behind (MenuStage), one
+## centred framed panel in front.
 
 signal closed
 
@@ -19,6 +21,7 @@ var _join_button: Button
 var _keys: Array[RuneGlyph] = []
 var _joining := false
 var _ready_box: CheckBox
+var _frame: Control
 
 
 func _init(is_host := true) -> void:
@@ -32,25 +35,24 @@ static func create(lobby_mode: Mode) -> LobbyScreen:
 func _ready() -> void:
 	theme = UiTheme.theme()
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(EmberBackground.new())
-	add_child(UiTheme.scrim(0.35))
+	var stage := MenuStage.new()
+	stage.focus_dim = 0.25
+	add_child(stage)
 
-	var frame := TermFrame.new()
-	frame.title = "HOST A WARBAND" if mode == Mode.HOST else "JOIN A WARBAND"
-	frame.anchor_left = 0.5
-	frame.anchor_right = 0.5
-	frame.anchor_top = 0.5
-	frame.anchor_bottom = 0.5
-	frame.offset_left = -440
-	frame.offset_right = 440
-	frame.offset_top = -310
-	frame.offset_bottom = 310
-	add_child(frame)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(center)
+	var frame := MenuPanel.new("HOST A WARBAND" if mode == Mode.HOST else "JOIN A WARBAND")
+	frame.subtitle = "your companions see these runes on their screen" if mode == Mode.HOST else "carve the four runes your host is showing"
+	frame.custom_minimum_size = Vector2(820, 0)
+	center.add_child(frame)
+	_frame = frame
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
 	frame.add_child(box)
 
 	var name_row := HBoxContainer.new()
+	name_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	name_row.add_child(UiTheme.label("Your name", UiTheme.SIZE_BODY, UiTheme.TEXT_DIM))
 	var name_edit := LineEdit.new()
 	name_edit.text = str(UiContext.setting("gameplay", "player_name"))
@@ -61,7 +63,6 @@ func _ready() -> void:
 			UiContext.set_setting("gameplay", "player_name", t.strip_edges()))
 	name_row.add_child(name_edit)
 	box.add_child(name_row)
-	box.add_child(UiTheme.hsep())
 
 	if mode == Mode.HOST:
 		_build_host(box)
@@ -74,21 +75,25 @@ func _ready() -> void:
 
 	var actions := HBoxContainer.new()
 	actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	actions.add_theme_constant_override("separation", 12)
 	if mode == Mode.HOST:
-		_begin = UiTheme.button("Begin the campaign", func() -> void: UiContext.game_call("start_campaign"), 18)
-		_begin.add_theme_font_override("font", UiTheme.title_font(700))
+		_begin = MenuOption.new("BEGIN THE CAMPAIGN", func() -> void: UiContext.game_call("start_campaign"), 18)
+		_begin.custom_minimum_size = Vector2(340, 46)
 		actions.add_child(_begin)
 	else:
-		_join_button = UiTheme.button("Join", _try_join, 18)
-		_join_button.add_theme_font_override("font", UiTheme.title_font(700))
+		_join_button = MenuOption.new("JOIN", _try_join, 18)
+		_join_button.custom_minimum_size = Vector2(200, 46)
 		actions.add_child(_join_button)
 		_ready_box = CheckBox.new()
 		_ready_box.text = "Ready"
 		_ready_box.visible = false
 		_ready_box.toggled.connect(func(on: bool) -> void: UiContext.call_on(UiContext.net(), "set_ready", [on]))
 		actions.add_child(_ready_box)
-	actions.add_child(UiTheme.button("Leave", _leave, 18))
+	var leave := MenuOption.new("LEAVE", _leave, 16)
+	leave.custom_minimum_size = Vector2(170, 46)
+	actions.add_child(leave)
 	box.add_child(actions)
+	(_begin if _begin != null else _join_button).grab_focus.call_deferred()
 
 	var net := UiContext.net()
 	if net != null:
@@ -122,11 +127,12 @@ func _build_host(box: VBoxContainer) -> void:
 		g.custom_minimum_size = Vector2(96, 140)
 		_code_row.add_child(g)
 	box.add_child(_code_row)
-	box.add_child(UiTheme.hsep())
-	box.add_child(UiTheme.label("WARBAND", UiTheme.SIZE_SMALL, UiTheme.ACCENT_DIM))
+	box.add_child(_section("WARBAND"))
 	_players = VBoxContainer.new()
-	_players.custom_minimum_size = Vector2(0, 120)
-	box.add_child(_players)
+	_players.custom_minimum_size = Vector2(0, 110)
+	var pc := CenterContainer.new()
+	pc.add_child(_players)
+	box.add_child(pc)
 
 
 func _build_join(box: VBoxContainer) -> void:
@@ -162,7 +168,29 @@ func _build_join(box: VBoxContainer) -> void:
 	var hint := UiTheme.label("Backspace removes a rune  ·  Enter joins", UiTheme.SIZE_SMALL, UiTheme.TEXT_FAINT, HORIZONTAL_ALIGNMENT_CENTER)
 	box.add_child(hint)
 	_players = VBoxContainer.new()
-	box.add_child(_players)
+	var pc := CenterContainer.new()
+	pc.add_child(_players)
+	box.add_child(pc)
+
+
+## A small spaced heading with the panel's ornament under it.
+func _section(text: String) -> Control:
+	var c := VBoxContainer.new()
+	c.add_theme_constant_override("separation", 0)
+	var l := UiTheme.title(text, 13, UiTheme.ACCENT_DIM, 700)
+	l.add_theme_font_override("font", UiTheme.title_font_spaced(700, 3))
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	c.add_child(l)
+	var orn := Control.new()
+	orn.custom_minimum_size = Vector2(0, 14)
+	orn.draw.connect(func() -> void: MenuPanel.draw_divider(orn, Vector2(orn.size.x * 0.5, 7), 90.0, 0.7))
+	c.add_child(orn)
+	return c
+
+
+func _process(_delta: float) -> void:
+	if _frame != null:
+		UiTheme.fit_scale(_frame, size - Vector2(40, 60))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -252,6 +280,8 @@ func _leave() -> void:
 	closed.emit()
 	if UiContext.game_has("open_main_menu"):
 		UiContext.game_call("open_main_menu")
+	elif UiContext.game_has("show_menu") and get_parent() == get_tree().root:
+		UiContext.game_call("show_menu")   # back to the title screen (frees this one)
 	else:
 		queue_free()
 
@@ -281,7 +311,7 @@ func _refresh() -> void:
 	if mode == Mode.JOIN and players.is_empty():
 		return
 	if mode == Mode.JOIN:
-		_players.add_child(UiTheme.label("WARBAND", UiTheme.SIZE_SMALL, UiTheme.ACCENT_DIM))
+		_players.add_child(_section("WARBAND"))
 		if _ready_box != null:
 			_ready_box.visible = true
 	var ids := players.keys()
@@ -289,6 +319,7 @@ func _refresh() -> void:
 	for id: int in ids:
 		var p: Dictionary = players[id]
 		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 12)
 		var color: Color = p.get("color", UiContext.call_on(net, "player_color", [id], UiTheme.ACCENT))
 		var dot := UiTheme.label("●", UiTheme.SIZE_BODY, color)
 		row.add_child(dot)
