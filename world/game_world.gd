@@ -48,6 +48,7 @@ var _arena_gate_blocks: Array = []   # [dim, Vector3i] set during a boss fight
 func _enter_tree() -> void:
 	instance = self
 	name = "GameWorld"
+	add_to_group("game_world")
 
 
 func _exit_tree() -> void:
@@ -320,6 +321,19 @@ func default_spawn(dim: int) -> Vector3:
 		for s in loc.spawns_of("shrine"):
 			p = s["pos"] + Vector3(0, 0, 3)
 	return Vector3(p.x, g.surface_height(int(p.x), int(p.z)) + 1.05, p.z)
+
+
+func map_metres_per_pixel(_dim: int) -> float:
+	return float(WorldGen.COARSE)
+
+
+func surface_height_at(x: float, z: float) -> float:
+	var g := gen_for(local_dimension)
+	return float(g.surface_height(int(x), int(z))) if g != null else 0.0
+
+
+func camera_yaw() -> float:
+	return local_player.camera.yaw if local_player != null and local_player.camera != null else 0.0
 
 
 func time_of_day() -> float:

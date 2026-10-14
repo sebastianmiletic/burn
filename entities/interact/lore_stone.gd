@@ -38,6 +38,6 @@ func local_interact(_p: Player) -> void:
 		Events.dialog_choice.connect(_on_choice)
 
 
-func _on_choice(npc: Node, _id: String) -> void:
+func _on_choice(npc: Node, _id: String) -> void:  # "bye" or "leave"
 	if npc == self:
 		Events.dialog_close.emit()

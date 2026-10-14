@@ -55,6 +55,10 @@ var sim_world: Object = null
 
 
 ## The world this creature acts in (duck-typed so tests can stand in for GameWorld).
+
+func is_boss() -> bool:
+	return true
+
 func _w() -> Variant:
 	return sim_world if sim_world != null else world()
 

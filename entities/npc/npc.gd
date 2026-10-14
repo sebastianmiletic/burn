@@ -220,7 +220,7 @@ func _on_choice(npc: Node, option_id: String) -> void:
 	if npc != self:
 		return
 	var w := world()
-	if option_id == "bye":
+	if option_id == "bye" or option_id == "leave":
 		Events.dialog_close.emit()
 		return
 	if option_id.begins_with("turnin:"):

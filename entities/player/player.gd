@@ -603,7 +603,7 @@ func sell_slot(i: int) -> bool:
 	var value := int(ItemDB.info(s["id"]).get("value", 0))
 	if value <= 0 or ItemDB.category(s["id"]) == "key":
 		return false
-	inventory.gold += value
+	inventory.gold += maxi(1, value / 2)
 	inventory.remove_from_slot(i, 1)
 	Audio.play_ui("coin")
 	return true
