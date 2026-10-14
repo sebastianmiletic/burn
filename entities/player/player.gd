@@ -205,8 +205,10 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	if body.stepped > 0.0:
 		_visual_offset -= body.stepped
 	_visual_offset = lerpf(_visual_offset, 0.0, 1.0 - exp(-delta * 14.0))
-	# Fall damage.
-	if not body.on_floor:
+	# Fall damage (not while waiting for the world to stream in).
+	if not vw.is_area_loaded(global_position):
+		_fall_speed = 0.0
+	elif not body.on_floor:
 		_air_time += delta
 		_fall_speed = minf(_fall_speed, falling)
 	else:

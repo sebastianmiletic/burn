@@ -22,6 +22,10 @@ func step(owner: Node3D, world: VoxelWorld, delta: float) -> void:
 	stepped = 0.0
 	hit_wall = false
 	var pos := owner.global_position
+	if world != null and collides and not world.is_area_loaded(pos):
+		# The ground isn't streamed in yet: hold still instead of free-falling.
+		velocity = Vector3.ZERO
+		return
 	in_liquid = 0
 	if world != null:
 		var mid := world.get_block(Vector3i((pos + Vector3(0, half_extents.y, 0)).floor()))
@@ -36,8 +40,6 @@ func step(owner: Node3D, world: VoxelWorld, delta: float) -> void:
 	if world == null or not collides:
 		owner.global_position = pos + velocity * delta
 		return
-	if not world.is_area_loaded(pos):
-		return  # wait for the ground to exist
 	var motion := velocity * delta
 	var steps := maxi(1, ceili(motion.length() / 0.4))
 	var part := motion / steps

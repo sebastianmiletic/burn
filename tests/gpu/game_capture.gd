@@ -18,6 +18,7 @@ const STOPS := {
 	"crypt": [&"silent_crypt", 21.0, 2.0],
 	"gates": [&"gates_of_hades", 12.0, 0.0],
 	"hell": [&"asphodel", 12.0, 0.0],
+	"player": [&"emberfall", 11.0, 0.4, Vector3(-50, 2, 50), -0.3],
 	"vista": [&"emberfall", 15.5, 0.0, Vector3(0, 6, 46), -0.2],
 	"road": [&"emberfall", 17.0, 2.2, Vector3(60, 2, -40), -0.1],
 	"woods": [&"thornwick", 16.0, 1.0, Vector3(-40, 2, 30), -0.1],
@@ -71,6 +72,29 @@ func _run() -> void:
 		var stats := await _measure(1.5)
 		report.append("%-8s %-28s load %5d ms  avg %.2f ms (%.0f fps) worst %.2f ms" % [stop, loc.name, Time.get_ticks_msec() - t0, stats.x, 1000.0 / stats.x, stats.y])
 		await _shot(stop)
+		if "--raw" in OS.get_cmdline_user_args():
+			Ascii.effect.enabled = false
+			await _frames(3)
+			await _shot(stop + "_raw")
+			Ascii.effect.enabled = true
+		var meshes := p.model.find_children("*", "GeometryInstance3D", true, false)
+		var first: Node3D = null
+		var nvis := 0
+		for m: Node3D in meshes:
+			if m.is_visible_in_tree():
+				nvis += 1
+				if first == null:
+					first = m
+		for m: Node3D in meshes:
+			if not m.is_visible_in_tree():
+				var n: Node = m
+				while n != null and n is Node3D and (n as Node3D).visible:
+					n = n.get_parent()
+				printerr("[game-capture] hidden mesh ", p.model.get_path_to(m), " hidden ancestor ", p.model.get_path_to(n) if n != null else "?", " dead ", p.dead, " model_dead ", p.model.get("_dead"))
+				break
+		printerr("[game-capture] visible meshes ", nvis, " entity root vis ", w.get_node("Entities").visible, " gw vis ", w.visible)
+		printerr("[game-capture] model meshes ", meshes.size(), " first ", first.global_position if first else Vector3.ZERO, " in tree vis ", first.is_visible_in_tree() if first else false, " layers ", (first as VisualInstance3D).layers if first else 0, " cam mask ", w.view.camera.cull_mask, " cam pos ", w.view.camera.global_position)
+		printerr("[game-capture] player at ", p.global_position, " cam ", p.camera.global_position, " model ", p.model, " vis ", p.visible, " model vis ", p.model.visible if p.model else false)
 	for line in report:
 		printerr("[game-capture] ", line)
 	var f := FileAccess.open(out_dir.path_join("report.txt"), FileAccess.WRITE)
