@@ -465,6 +465,27 @@ func _give_item(item: String, count: int) -> void:
 
 # --- Blocks ------------------------------------------------------------------------------
 
+## A player places a crafting station (workbench, furnace, anvil...).
+func request_station(kind: String, pos: Vector3, yaw: float, dim: int) -> void:
+	if Net.is_server():
+		_request_station_on_server(Net.my_id(), kind, pos, yaw, dim)
+	else:
+		_request_station.rpc_id(1, kind, pos, yaw, dim)
+
+
+@rpc("any_peer", "reliable")
+func _request_station(kind: String, pos: Vector3, yaw: float, dim: int) -> void:
+	_request_station_on_server(multiplayer.get_remote_sender_id(), kind, pos, yaw, dim)
+
+
+func _request_station_on_server(peer: int, kind: String, pos: Vector3, yaw: float, dim: int) -> void:
+	var w := gw()
+	var p := w.entity(player_net_id(peer)) as Player
+	if p == null or p.dimension != dim or pos.distance_to(p.global_position) > MAX_REACH + 1.0:
+		return
+	w.place_station(kind, pos, yaw, dim)
+
+
 func request_block(pos: Vector3i, block: int, dim: int) -> void:
 	if Net.is_server():
 		_resolve_block(multiplayer.get_unique_id(), pos, block, dim)

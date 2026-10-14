@@ -628,6 +628,25 @@ func active_boss() -> Node:
 
 # --- Blocks -----------------------------------------------------------------------------
 
+## Crafting stations players have placed: [{kind, pos, yaw, dim}] (saved).
+var placed_stations: Array = []
+
+
+func request_place_station(kind: String, pos: Vector3, yaw: float, dim: int) -> void:
+	replicator.request_station(kind, pos, yaw, dim)
+
+
+## Server: spawn a station and remember it for the save.
+func place_station(kind: String, pos: Vector3, yaw: float, dim: int, remember := true) -> Entity:
+	var e := spawn_entity("station", pos, dim, {"station": kind, "yaw": yaw})
+	if e != null:
+		e.yaw = yaw
+		e.rotation.y = yaw
+		if remember:
+			placed_stations.append({"kind": kind, "pos": pos, "yaw": yaw, "dim": dim})
+	return e
+
+
 func request_set_block(pos: Vector3i, block: int, dim: int) -> void:
 	replicator.request_block(pos, block, dim)
 
@@ -731,6 +750,7 @@ func save_data() -> Dictionary:
 		"opened_chests": opened_chests.keys(),
 		"lit_shrines": lit_shrines.keys(),
 		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits()},
+		"stations": placed_stations,
 		"time_of_day": sky.time_of_day,
 		"day": sky.day,
 		"location_name": here.name if here != null else GameWorld.biome_name(self, local_player.global_position, local_dimension),
@@ -755,6 +775,9 @@ func _load_world_state(save: Dictionary) -> void:
 	if save.has("time_of_day"):
 		sky.time_of_day = float(save["time_of_day"])
 		sky.day = int(save.get("day", 1))
+	if Net.is_server() and ResourceLoader.exists("res://entities/interact/station.gd"):
+		for st: Dictionary in save.get("stations", []):
+			place_station(String(st["kind"]), st["pos"], float(st.get("yaw", 0.0)), int(st.get("dim", 0)))
 
 
 func is_ready_for_join() -> bool:

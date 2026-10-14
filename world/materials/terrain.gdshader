@@ -137,10 +137,16 @@ void fragment() {
 	vec3 p = v_world;
 	vec3 nw = normalize(v_wn);
 	// Sharp triplanar weights, small planes skipped.
+	float dist = length(VERTEX);
 	vec3 bw = pow(abs(nw), vec3(6.0));
 	bw /= (bw.x + bw.y + bw.z);
-	bw = max(bw - 0.03, 0.0);
-	bw /= (bw.x + bw.y + bw.z);
+	if (dist > 55.0) {
+		// Far away a single projection is indistinguishable and a third of the cost.
+		bw = (bw.y >= bw.x && bw.y >= bw.z) ? vec3(0, 1, 0) : (bw.x >= bw.z ? vec3(1, 0, 0) : vec3(0, 0, 1));
+	} else {
+		bw = max(bw - 0.03, 0.0);
+		bw /= (bw.x + bw.y + bw.z);
+	}
 	float macro = n_fbm2(p.xz * 0.018) * 0.7 + n_value2(p.xz * 0.11) * 0.3;
 
 	int c0 = int(v_codes.x + 0.5);
@@ -153,7 +159,7 @@ void fragment() {
 	float w2 = (c2 == c0 || c2 == c1) ? 0.0 : bary.z;
 
 	Mat m = sample_mat(c0, p, nw, bw, macro);
-	if (w1 > 0.01 || w2 > 0.01) {
+	if ((w1 > 0.01 || w2 > 0.01) && dist < 90.0) {
 		// Height-based blend: material with the taller texture wins at the transition.
 		Mat m1 = m;
 		Mat m2 = m;
