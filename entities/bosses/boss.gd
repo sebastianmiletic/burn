@@ -59,6 +59,12 @@ var sim_world: Object = null
 func is_boss() -> bool:
 	return true
 
+
+## GameWorld keeps ticking an engaged boss even when nobody is near, so an
+## abandoned fight times out and resets (reopening the arena).
+func is_engaged() -> bool:
+	return engaged
+
 func _w() -> Variant:
 	return sim_world if sim_world != null else world()
 

@@ -107,7 +107,7 @@ void fragment() {
 			t = clamp((t - 0.45) * 1.45 + 0.47, 0.0, 1.0);
 			float warm = clamp((mapped.r - max(mapped.g, mapped.b)) * 2.5, 0.0, 1.0);
 			vec3 hue = to_srgb(mapped);
-			fg = mix(ember(clamp(t * 1.18 + 0.06, 0.2, 1.0)), hue * 1.1, warm * 0.35);
+			fg = mix(ember(clamp(t * 1.18 + 0.06, 0.3, 1.0)), hue * 1.1, warm * 0.35);
 			bg = ember(t * 0.6) * bg_fill * 2.0 * t;
 			fg = to_linear(fg);
 			bg = to_linear(bg);
