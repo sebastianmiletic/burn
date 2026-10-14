@@ -242,7 +242,7 @@ void main() {
 			if (x > 0.55 && h < 0.12) {
 				glyph = ramp_glyph(R_FOLIAGE, h < 0.06 ? F_COMMA : F_DOT);
 			} else {
-				glyph = ramp_glyph(R_LEAF, int(x * float(len) + dither * 0.9));
+				glyph = ramp_glyph(R_LEAF, max(1, int(x * float(len) + dither * 0.9)));
 			}
 		}
 	} else if (dom == M_LIQUID) {
@@ -271,6 +271,9 @@ void main() {
 		} else {
 			float fi = x * float(len) + dither * 0.9;
 			int idx = clamp(int(fi), 0, len - 1);
+			if (scene_lum > 0.0005) {
+				idx = max(idx, 1);  // shadows keep a faint texture instead of going blank
+			}
 			if ((flags & FLAG_FLICKER) != 0u && x < 0.3 && idx > 0) {
 				float f = hash12(vec2(cell) + floor(time * 9.0) * 1.37);
 				if (f < pc.p3.z * 0.2) {
