@@ -7,10 +7,10 @@ extends RefCounted
 ##   Medium  the default: half-res SSAO, soft 2-split sun shadows, height fog
 ##           and aerial perspective (no volumetrics). Budgeted to cost no more
 ##           than the old Medium.
-##   High    + SDFGI (bounced light), half-res SSIL, SSR (reflections in water), filtered
+##   High    + SDFGI (bounced light), SSR (reflections in water), filtered
 ##           volumetric fog (god rays at dawn/dusk, in forests, in storms),
 ##           4-split shadows.
-##   Ultra   lavish: finer SSIL, 5 SDFGI cascades, finer volumetric fog, 8k shadows
+##   Ultra   lavish: SSIL (screen-space bounce), 5 SDFGI cascades, finer volumetric fog, 8k shadows
 ##           to 160 m with a softer filter, longer SSR.
 
 
@@ -33,7 +33,7 @@ static func apply_environment(env: Environment) -> void:
 	env.ssao_ao_channel_affect = 0.4
 	# Screen-space indirect light: colour bleeding and bounce between nearby
 	# surfaces (torch-lit walls, sunlit ground under eaves) on top of SDFGI.
-	env.ssil_enabled = q >= Settings.Quality.HIGH
+	env.ssil_enabled = q >= Settings.Quality.ULTRA
 	env.ssil_radius = 3.0 if q == Settings.Quality.HIGH else 4.0
 	env.ssil_intensity = 0.8
 	env.ssr_enabled = q >= Settings.Quality.HIGH

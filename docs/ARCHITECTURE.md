@@ -15,8 +15,8 @@ Godot 4.7, GDScript, Forward+. Everything is built in code; scenes are thin.
 ## Rendering
 
 `WorldView` (rendering/world_view.gd) renders the world straight to the window through the gameplay camera; the
-3D resolution follows the quality preset and adaptive resolution, and MetalFX temporal (Metal) or FSR 2 (Vulkan /
-D3D12) upscales it to the window. UI is ordinary Control nodes in CanvasLayers above it.
+3D resolution follows the quality preset and adaptive resolution, and MetalFX spatial (Metal) or AMD FSR (Vulkan /
+D3D12) upscales it to the window (`--upscaler=metalfx_temporal|fsr2|fsr|bilinear` to compare). UI is ordinary Control nodes in CanvasLayers above it.
 Legacy: many materials still call `ascii_roughness(r, ASCII_<CLASS>)` (rendering/materials/ascii_material.gdshaderinc); it now returns `r` unchanged
 or use `MaterialLibrary` / `ModelKit` helpers. FX (fire, magic, telegraphs) use transparent additive materials
 (`MaterialLibrary.fx(...)`), so they are drawn over the glyphs and bloom.

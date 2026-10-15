@@ -186,7 +186,7 @@ func _build_graphics() -> void:
 			"Low and Medium skip global illumination and reflections. High and Ultra add them.")
 	var scale_names: Array = ["Follow preset", "50%", "62%", "75%", "85%", "100%"]
 	_option_values(p, "graphics", "render_scale", "3D resolution", scale_names, RENDER_SCALES,
-			"Resolution the 3D scene renders at before temporal upscaling (MetalFX / FSR 2) to the full window. The UI is always native.")
+			"Resolution the 3D scene renders at before it is upscaled (MetalFX / FSR) to the full window. The UI is always native.")
 	_check(p, "graphics", "adaptive_resolution", "Adaptive resolution", "With Follow preset selected, adjusts 3D resolution toward 60 FPS. Does not guarantee a minimum frame rate.")
 	_check(p, "graphics", "altitude_blur", "Mountain distance blur", "Softens distant scenery as altitude increases. Turn off for a clearer view; snow remains.")
 	_slider(p, "graphics", "fov", "Field of view", 55, 100, 1, "%d°", 1.0, "How wide the camera sees.")

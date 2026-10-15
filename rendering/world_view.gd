@@ -1,9 +1,9 @@
 class_name WorldView
 extends Node
 ## The game's 3D view. The world is rendered straight to the window through
-## `source_camera` (made current here) at full quality: Godot's temporal
-## upscaler (MetalFX on Metal, FSR 2 on Vulkan / D3D12) reconstructs the window
-## resolution from the 3D render resolution and doubles as anti-aliasing.
+## `source_camera` (made current here) at full quality: an edge-aware upscaler
+## (MetalFX spatial on Metal, AMD FSR on Vulkan / D3D12) with FXAA brings the
+## 3D render resolution up to the window resolution.
 ## Adaptive resolution trades render resolution for frame rate only when the
 ## GPU is the bottleneck. A thin overlay adds the screen effects gameplay asks
 ## for: `tint` (damage, underworld), `flash` (lightning, big hits), vignette
@@ -13,7 +13,7 @@ extends Node
 const HORIZON_FAR := 4200.0
 ## Render-resolution presets per quality, as a fraction of the logical
 ## (UI-point) window size; on a 2x display High renders at half the physical
-## resolution per axis and the upscaler fills in the rest.
+## resolution per axis and the upscaler (MetalFX spatial / FSR) fills in the rest.
 const PRESET_SCALE := [0.65, 0.8, 1.0, 1.25]
 const ADAPT_MIN := 0.55
 const ADAPT_WINDOW := 0.5
@@ -70,13 +70,16 @@ var _adaptive_scale := 1.0
 var _frame_average := 1.0 / 60.0
 var _scale_timer := 0.0
 var _window_time := 0.0
-var _window_cpu := 0.0
 var _window_frames := 0
 var _ceiling := 1.0
 var _probe_timer := 0.0
 var _probe_wait := ADAPT_PROBE
+var _verify_avg := 0.0
+var _verify_scale := 1.0
+var _cpu_hold := 0.0
 var _window := Vector2i.ZERO
 var _vignette := 0.3
+var _no_horizon := "--no-horizon" in OS.get_cmdline_user_args()   # profiling aid
 
 
 func _ready() -> void:
@@ -129,7 +132,8 @@ func _process(delta: float) -> void:
 	if source_camera != null and is_instance_valid(source_camera) and source_camera.is_inside_tree():
 		if not source_camera.current:
 			source_camera.make_current()
-		source_camera.far = maxf(source_camera.far, HORIZON_FAR)
+		if not _no_horizon:
+			source_camera.far = maxf(source_camera.far, HORIZON_FAR)
 	if DisplayServer.get_name() != "headless" and DisplayServer.window_get_size() != _window:
 		_resize()
 	var tinted := not tint.is_equal_approx(Color.WHITE)
@@ -168,8 +172,11 @@ func _resize() -> void:
 	var upscaler := _upscaler()
 	viewport.scaling_3d_mode = upscaler
 	viewport.scaling_3d_scale = scale
-	# FXAA only when nothing temporal is smoothing edges.
-	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if upscaler == Viewport.SCALING_3D_MODE_BILINEAR else Viewport.SCREEN_SPACE_AA_DISABLED
+	# FXAA unless a temporal upscaler is smoothing edges already.
+	var temporal := upscaler == Viewport.SCALING_3D_MODE_FSR2 or upscaler == Viewport.SCALING_3D_MODE_METALFX_TEMPORAL
+	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if temporal else Viewport.SCREEN_SPACE_AA_FXAA
+	# Spatial upscalers sharpen; keep textures crisp at the output size.
+	viewport.fsr_sharpness = 0.35
 
 
 ## The resolution the 3D scene is actually rendered at (before upscaling).
@@ -184,20 +191,32 @@ func internal_size() -> Vector2i:
 static func _upscaler() -> Viewport.Scaling3DMode:
 	if "--no-upscaler" in OS.get_cmdline_user_args() or RenderingServer.get_current_rendering_method() != "forward_plus":
 		return Viewport.SCALING_3D_MODE_BILINEAR
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--upscaler="):
+			var named := {"bilinear": Viewport.SCALING_3D_MODE_BILINEAR, "fsr": Viewport.SCALING_3D_MODE_FSR,
+				"fsr2": Viewport.SCALING_3D_MODE_FSR2, "metalfx_spatial": Viewport.SCALING_3D_MODE_METALFX_SPATIAL,
+				"metalfx_temporal": Viewport.SCALING_3D_MODE_METALFX_TEMPORAL}
+			return named.get(arg.trim_prefix("--upscaler="), Viewport.SCALING_3D_MODE_BILINEAR)
 	if DisplayServer.get_name() == "headless":
 		return Viewport.SCALING_3D_MODE_BILINEAR
+	# Spatial upscalers: measured on the M4 at 2940x1652 output, MetalFX
+	# temporal cost ~15 ms a frame more than MetalFX spatial / FSR 1 for the
+	# same render resolution, which no amount of saved pixels pays back.
+	# (--upscaler=metalfx_temporal / fsr2 still selects the temporal ones.)
 	if RenderingServer.get_current_rendering_driver_name() == "metal":
-		return Viewport.SCALING_3D_MODE_METALFX_TEMPORAL
-	return Viewport.SCALING_3D_MODE_FSR2
+		return Viewport.SCALING_3D_MODE_METALFX_SPATIAL
+	return Viewport.SCALING_3D_MODE_FSR
 
 
-## Adaptive resolution. It only trades pixels when pixels are the problem:
-## frames over budget whose time is mostly spent outside the CPU (GPU-bound)
-## drop the scale in one step sized to the overshoot; CPU-bound frames (where a
-## smaller image would not help) never lower it. With vsync a frame on budget
-## looks the same at any load, so the scale climbs straight back to the last
-## level that held 60 fps and probes above it every few seconds, backing off
-## after a failed probe.
+## Adaptive resolution. It only trades pixels when pixels are the problem.
+## A window of frames over budget drops the scale in one step sized to the
+## overshoot; the next window checks the drop helped. If it did not (the
+## frame is CPU-bound - on Metal the driver's GPU wait shows up as CPU time, so
+## this has to be measured, not read), the old resolution comes back and no
+## drop is tried again for a while. With vsync a frame on budget looks the
+## same at any load, so the scale climbs straight back to the last level that
+## held 60 fps and probes above it every few seconds, backing off after a
+## failed probe.
 func _update_adaptive_resolution(delta: float) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
@@ -211,25 +230,32 @@ func _update_adaptive_resolution(delta: float) -> void:
 		return
 	# Loading stalls and hitches are not a resolution problem.
 	_window_time += minf(delta, 0.05)
-	_window_cpu += _cpu_frame_time()
 	_window_frames += 1
 	_scale_timer += delta
 	if _scale_timer < ADAPT_WINDOW:
 		return
 	var avg := _window_time / _window_frames
-	var cpu := _window_cpu / _window_frames
 	_window_time = 0.0
-	_window_cpu = 0.0
 	_window_frames = 0
 	_scale_timer = 0.0
 	_frame_average = avg
 	var budget := 1.0 / 60.0
 	var old := _adaptive_scale
 	_probe_timer += ADAPT_WINDOW
-	if avg > budget * 1.07:
-		if 1.0 - cpu / avg > 0.2:
+	_cpu_hold = maxf(0.0, _cpu_hold - ADAPT_WINDOW)
+	if _verify_avg > 0.0:
+		# The window after a drop: did fewer pixels buy frame time?
+		if avg > _verify_avg * 0.93 and avg > budget * 1.07:
+			_adaptive_scale = _verify_scale
+			_ceiling = maxf(_ceiling, _verify_scale)
+			_cpu_hold = 20.0
+		_verify_avg = 0.0
+	elif avg > budget * 1.07:
+		if _cpu_hold <= 0.0 and _adaptive_scale > ADAPT_MIN + 0.001:
 			# Pixel cost scales with the square of the scale.
 			var want := _adaptive_scale * sqrt(budget / avg) * 0.97
+			_verify_scale = _adaptive_scale
+			_verify_avg = avg
 			_adaptive_scale = clampf(minf(want, _adaptive_scale - 0.04), ADAPT_MIN, 1.0)
 			if _probe_timer < _probe_wait * 1.5:
 				_probe_wait = minf(_probe_wait * 2.0, 40.0)   # a probe just failed: wait longer
@@ -246,16 +272,6 @@ func _update_adaptive_resolution(delta: float) -> void:
 			_probe_wait = maxf(ADAPT_PROBE, _probe_wait * 0.5)   # stable: probe sooner again
 	if not is_equal_approx(old, _adaptive_scale):
 		_resize()
-
-
-## Main-thread CPU time of the last frame: scripts, physics, render setup and
-## the view's render submission (s).
-func _cpu_frame_time() -> float:
-	var t := Performance.get_monitor(Performance.TIME_PROCESS) + Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)
-	t += RenderingServer.get_frame_setup_time_cpu() / 1000.0
-	if viewport != null:
-		t += RenderingServer.viewport_get_measured_render_time_cpu(viewport.get_viewport_rid()) / 1000.0
-	return t
 
 
 ## Adaptive scale (1 = the preset's resolution) and average frame time (ms), for F3 and reports.

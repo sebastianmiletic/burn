@@ -39,6 +39,7 @@ const SUN_WEST := Vector2(-0.925, 0.381)
 var gen: WorldGen
 var _mat: ShaderMaterial
 var _tiles: Array[MeshInstance3D] = []
+var _profile_off := "--no-horizon" in OS.get_cmdline_user_args()
 
 
 ## Heavy part (loading worker thread): heights, materials, horizons, arrays.
@@ -530,7 +531,7 @@ func _process(_delta: float) -> void:
 		return
 	# Deep underground the horizon cannot be seen; skip drawing it.
 	var buried := w.tracker != null and w.tracker.underground and w.tracker.depth > 14.0
-	visible = w.local_dimension == gen.dimension and not buried
+	visible = w.local_dimension == gen.dimension and not buried and not _profile_off
 	if not visible:
 		return
 	var pos := w.local_player.global_position

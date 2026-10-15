@@ -25,7 +25,7 @@
 - `MapImage` uses actual column heights, contours, bathymetry, roads and roof footprints. `Minimap` only
   uploads an immutable world image once. Underground slices sample loaded cells once per second.
 - The first-person camera is mandatory for gameplay. Old third-person preferences do not override it.
-  The ASCII renderer has been removed; the 3D world renders directly with temporal upscaling. Grain is off by default.
+  The ASCII renderer has been removed; the 3D world renders directly with MetalFX / FSR upscaling. Grain is off by default.
 - Hades death synchronizes `ryft_unlocked`; the final quest grants the unique bound sword and mithril axe.
   The next quest directs the player to Emberfall's Ryft gateway. Old completed campaigns gain that quest.
 - `RuntimePaths.file()` routes settings, saves and procedural sound caches through `--data-dir` for tests.

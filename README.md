@@ -120,8 +120,8 @@ Allow the game through your firewall only on networks you trust.
 
 The world renders in full 3D with filmic (AgX) tonemapping, SDFGI and screen-space indirect light at High, volumetric
 fog and soft shadows. The 3D resolution follows the quality preset (or the 3D resolution setting) and is upscaled to
-the window with MetalFX temporal on macOS or FSR 2 elsewhere; adaptive resolution only lowers it when the GPU is the
-bottleneck and climbs straight back when there is headroom. F3 shows the render resolution and upscaler.
+the window with MetalFX on macOS or AMD FSR elsewhere; adaptive resolution only lowers it when that measurably speeds
+the frame up and climbs straight back when there is headroom. F3 shows the render resolution and upscaler.
 
 ## Saves, updates and privacy
 
