@@ -83,24 +83,33 @@ func _run() -> void:
 			_check(_w.quests.is_active("iron_in_the_deep"), "blacksmith gives the next main quest")
 
 	# --- Mining and building ---------------------------------------------------
-	var below := Vector3i((p.global_position - Vector3(0, 0.5, 0)).floor()) + Vector3i(2, 0, 0)
-	var before := vw.get_block(below)
-	_w.request_set_block(below, Blocks.AIR, 0)
-	await _frames(3)
-	_check(Blocks.is_solid(before) and vw.get_block(below) == Blocks.AIR, "mined %s" % Blocks.name_of(before))
+	# Mining sculpts: strike the ground a few times beside the player.
+	var dig_at := p.global_position + Vector3(2.5, -0.3, 0)
+	var g := vw.ground_below(dig_at.x, dig_at.y + 3.0, dig_at.z, 8.0)
+	if absf(g) < 1e6:
+		dig_at.y = g - 0.2
+	var before := vw.get_block(Vector3i(dig_at.floor()))
+	var dropped_before := _count("drop")
+	for i in 8:
+		_w.replicator.request_dig(dig_at, 0.9, 0.42, "pickaxe_stone", 0)
+		await _frames(2)
+	var after := vw.ground_below(dig_at.x, dig_at.y + 3.0, dig_at.z, 8.0)
+	_check(absf(g) < 1e6 and after < g - 0.4, "dug a hole into %s (ground %.2f -> %.2f)" % [Blocks.name_of(before), g, after])
 	var drop := _find("drop")
-	_check(drop != null, "mined block dropped an item")
+	_check(_count("drop") > dropped_before and drop != null, "digging dropped material")
 	if drop != null:
 		var item := String(drop.get("item_id"))
 		var had := p.inventory.count_of(item)
 		p.global_position = drop.global_position + Vector3(0, 0.2, 0)
 		await _wait_for(func() -> bool: return p.inventory.count_of(item) > had, 5.0)
 		_check(p.inventory.count_of(item) > had, "picked up %s" % item)
-	p.global_position += Vector3(-4, 0, 0)
+	p.global_position += Vector3(-5, 0, 0)
 	await _frames(2)
-	_w.request_set_block(below, Blocks.COBBLE, 0)
-	await _frames(3)
-	_check(vw.get_block(below) == Blocks.COBBLE, "placed a block")
+	for i in 4:
+		_w.replicator.request_fill(Vector3(dig_at.x, after + 0.3, dig_at.z), 0.75, Blocks.DIRT, 0)
+		await _frames(2)
+	var refilled := vw.ground_below(dig_at.x, dig_at.y + 4.0, dig_at.z, 8.0)
+	_check(refilled > after + 0.3, "packed earth back into the hole (%.2f -> %.2f)" % [after, refilled])
 
 	# Mining through the real tool path: iron ore with a stone pickaxe works, gold doesn't.
 	_check(Blocks.tier(Blocks.IRON_ORE) <= int(ItemDB.info("pickaxe_stone")["mine_tier"]), "stone pickaxe can mine iron")
@@ -193,3 +202,11 @@ func _dump_entities() -> void:
 	for e in _w.all_entities():
 		if (e as Entity).kind in ["shrine", "portal"]:
 			print("      ", (e as Entity).kind, " at ", (e as Entity).global_position, " loc ", e.get("location_id"))
+
+
+func _count(kind: String) -> int:
+	var n := 0
+	for e in _w.all_entities():
+		if e is Entity and (e as Entity).kind == kind:
+			n += 1
+	return n

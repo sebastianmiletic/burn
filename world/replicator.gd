@@ -486,6 +486,93 @@ func _request_station_on_server(peer: int, kind: String, pos: Vector3, yaw: floa
 	w.place_station(kind, pos, yaw, dim)
 
 
+# --- Sculpting ---------------------------------------------------------------------------
+
+## A pickaxe strike: carve the ground around `point` (server decides what comes off).
+func request_dig(point: Vector3, radius: float, seconds: float, item_id: String, dim: int) -> void:
+	if Net.is_server():
+		_resolve_dig(multiplayer.get_unique_id(), point, radius, seconds, item_id, dim)
+	else:
+		_request_dig.rpc_id(1, point, radius, seconds, item_id, dim)
+
+
+@rpc("any_peer", "reliable")
+func _request_dig(point: Vector3, radius: float, seconds: float, item_id: String, dim: int) -> void:
+	if multiplayer.is_server():
+		_resolve_dig(multiplayer.get_remote_sender_id(), point, radius, seconds, item_id, dim)
+
+
+func _resolve_dig(peer: int, point: Vector3, radius: float, seconds: float, item_id: String, dim: int) -> void:
+	var w := gw()
+	var p := w.entity(player_net_id(peer)) as Player
+	if p == null or p.dimension != dim or point.distance_to(p.global_position + Vector3(0, 1.4, 0)) > MAX_REACH:
+		return
+	var vw := w.world_for(dim)
+	var plan := vw.plan_dig(point, clampf(radius, 0.3, 1.6), clampf(seconds, 0.0, 1.0), item_id)
+	var changes: PackedInt32Array = plan["changes"]
+	if changes.is_empty():
+		return
+	_broadcast(&"_voxels", [changes, dim])
+	var removed: Dictionary = plan["removed"]
+	for b: int in removed:
+		var drop := Blocks.drop(b)
+		if drop != "":
+			w.drop_item(point, drop, int(removed[b]), dim)
+		w.replicator.notify_mined(peer, b, int(removed[b]))
+
+
+## Building up the ground with dirt, stone, sand...
+func request_fill(point: Vector3, radius: float, block: int, dim: int) -> void:
+	if Net.is_server():
+		_resolve_fill(multiplayer.get_unique_id(), point, radius, block, dim)
+	else:
+		_request_fill.rpc_id(1, point, radius, block, dim)
+
+
+@rpc("any_peer", "reliable")
+func _request_fill(point: Vector3, radius: float, block: int, dim: int) -> void:
+	if multiplayer.is_server():
+		_resolve_fill(multiplayer.get_remote_sender_id(), point, radius, block, dim)
+
+
+func _resolve_fill(peer: int, point: Vector3, radius: float, block: int, dim: int) -> void:
+	var w := gw()
+	var p := w.entity(player_net_id(peer)) as Player
+	if p == null or p.dimension != dim or not Blocks.is_smooth(block):
+		return
+	if point.distance_to(p.global_position + Vector3(0, 1.4, 0)) > MAX_REACH:
+		return
+	# Never bury anyone.
+	for e in w.entities_near(point, radius + 1.2, dim):
+		if e.global_position.distance_to(point) < radius + 0.6 or e.center().distance_to(point) < radius + 0.6:
+			return
+	var changes := w.world_for(dim).plan_fill(point, clampf(radius, 0.3, 1.2), block)
+	if not changes.is_empty():
+		_broadcast(&"_voxels", [changes, dim])
+
+
+@rpc("authority", "reliable", "call_local")
+func _voxels(changes: PackedInt32Array, dim: int) -> void:
+	var vw := gw().world_for(dim)
+	if vw != null:
+		vw.set_voxels(changes)
+
+
+## Tell the miner what they got (quests count mined materials).
+func notify_mined(peer: int, block: int, count: int) -> void:
+	if peer == multiplayer.get_unique_id():
+		_mined(block, count)
+	else:
+		_mined.rpc_id(peer, block, count)
+
+
+@rpc("authority", "reliable")
+func _mined(block: int, count: int) -> void:
+	for i in count:
+		Events.block_mined.emit(block, true)
+		gw().quests.on_event("mine", Blocks.name_of(block).to_lower())
+
+
 func request_block(pos: Vector3i, block: int, dim: int) -> void:
 	if Net.is_server():
 		_resolve_block(multiplayer.get_unique_id(), pos, block, dim)

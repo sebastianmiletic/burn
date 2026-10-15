@@ -38,6 +38,7 @@ var weather: Weather
 var fx: MiningFx
 ## Set when Hades falls: the portal to the Ryft Island opens (saved).
 var ryft_unlocked := false
+var _last_break_frame := -1
 var hud: CanvasLayer
 var ui_open := false
 
@@ -676,6 +677,11 @@ func _on_block_changed(pos: Vector3i, old_block: int, new_block: int, dim: int) 
 	if dim != local_dimension or Blocks.is_trunk(old_block):
 		return
 	var c := Vector3(pos) + Vector3(0.5, 0.5, 0.5)
+	# Sculpting changes many voxels at once: one sound and one burst per frame.
+	var frame := Engine.get_process_frames()
+	if frame == _last_break_frame:
+		return
+	_last_break_frame = frame
 	if old_block != Blocks.AIR and new_block == Blocks.AIR:
 		var fam := Blocks.sound_family(old_block)
 		var snd := "break_" + ("dirt" if fam in ["dirt", "sand", "snow"] else ("wood" if fam == "wood" else ("crystal" if fam == "crystal" else "stone")))

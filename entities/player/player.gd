@@ -431,6 +431,9 @@ func _mining_update(delta: float, vw: VoxelWorld) -> void:
 			Audio.play("pick_stone", Vector3(pos), -2.0, 0.7)
 		return
 	break_time = maxf(0.08, break_time)
+	if Blocks.is_smooth(block):
+		_sculpt_strike(target, block)
+		return
 	if _action == "":
 		_start_action("mine", 0.42)
 		var fam := Blocks.sound_family(block)
@@ -451,6 +454,43 @@ func _mining_update(delta: float, vw: VoxelWorld) -> void:
 		Events.block_mined.emit(block, true)
 		world().quests.on_event("mine", Blocks.name_of(block).to_lower())
 		camera.add_trauma(0.05)
+	elif Blocks.is_trunk(block) and _action == "mine" and _action_time < delta * 1.5:
+		# Each axe bite shakes leaves out of the crown.
+		var vw2 := voxels()
+		if vw2.flora != null and vw2.flora.has_method("shake"):
+			var bottom := pos
+			while vw2.get_block(bottom - Vector3i(0, 1, 0)) == block:
+				bottom.y -= 1
+			var info2 := WorldGen.tree_info(block, bottom)
+			vw2.flora.call("shake", world(), Vector3(bottom) + Vector3(0.5, 0, 0.5), int(info2[0]), int(info2[2]))
+
+
+const STRIKE_TIME := 0.42
+
+
+## Natural ground is carved, not broken: every pickaxe swing takes a rounded
+## bite out of the surface where it lands (the server decides what comes off).
+func _sculpt_strike(target: Dictionary, block: int) -> void:
+	if _mine_progress > 0.0:
+		_mine_progress = 0.0
+		_highlight.set_crack(0.0)
+		Events.mining_progress.emit(-1.0)
+	if _action != "":
+		return
+	_start_action("mine", STRIKE_TIME)
+	var item := inventory.selected_item()
+	var tier := int(ItemDB.info(item).get("mine_tier", 1))
+	var point: Vector3 = target.get("point", Vector3(target["pos"]) + Vector3(0.5, 0.5, 0.5))
+	var n: Vector3 = target.get("surface_normal", Vector3.UP)
+	var fam := Blocks.sound_family(block)
+	var snd := "pick_dirt" if fam in ["dirt", "sand", "snow"] else "pick_stone"
+	Audio.play(snd, point, -3.0, randf_range(0.85, 1.15))
+	var w := world()
+	if w.fx != null:
+		w.fx.debris(point, n, Blocks.color(block), false)
+	# Bite centre sits just inside the surface so each strike digs in.
+	w.replicator.request_dig(point - n * 0.25, 0.8 + tier * 0.06, STRIKE_TIME, item, dimension)
+	camera.add_trauma(0.035)
 
 
 func _use() -> void:
@@ -477,10 +517,24 @@ func _use() -> void:
 		var target := _block_target()
 		if target.is_empty():
 			return
+		var block := int(info["place_block"])
+		if Blocks.is_smooth(block):
+			# Ground materials are packed onto the surface, not stacked as cubes.
+			var n: Vector3 = target.get("surface_normal", Vector3(target["normal"]))
+			var point: Vector3 = target.get("point", Vector3(target["pos"]) + Vector3(0.5, 0.5, 0.5)) + n * 0.45
+			if point.distance_to(center()) < 1.4:
+				return
+			world().replicator.request_fill(point, 0.75, block, dimension)
+			inventory.remove_from_slot(inventory.selected, 1)
+			Audio.play("pick_dirt", point, -4.0, 0.8)
+			_start_action("interact", 0.3)
+			return
+		if Blocks.family(block) != Blocks.Family.SMALL:
+			return  # crisp building blocks are no longer placed by hand
 		var pos: Vector3i = target["pos"] + target["normal"]
 		if body.overlaps_block(global_position, pos):
 			return
-		world().request_set_block(pos, int(info["place_block"]), dimension)
+		world().request_set_block(pos, block, dimension)
 		inventory.remove_from_slot(inventory.selected, 1)
 		Audio.play("block_place", Vector3(pos) + Vector3(0.5, 0.5, 0.5))
 		_start_action("interact", 0.25)

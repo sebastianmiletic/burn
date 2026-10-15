@@ -232,29 +232,58 @@ func field_normal(p: Vector3) -> Vector3:
 # --- Edits ----------------------------------------------------------------------
 
 func set_block(p: Vector3i, block: int) -> void:
-	var key := Chunk.key_of(p)
-	var l := Chunk.local(p)
-	var i := Chunk.index(l.x, l.y, l.z)
-	if not _edits.has(key):
-		_edits[key] = {}
-	_edits[key][i] = block
-	var data: Variant = _chunks.get(key)
-	if data == null:
-		return
-	var arr: PackedByteArray = data
-	# Copy before writing: worker threads may still be reading the old buffer.
-	arr = Chunk.empty() if arr.is_empty() else arr.duplicate()
-	var old := arr[i]
-	arr[i] = block
-	_chunks[key] = arr
-	_solid_uniform.erase(key)
-	_set_density(key, i, block, arr)
+	set_voxels(PackedInt32Array([p.x, p.y, p.z, block, -1]))
+
+
+## Batch edit. `changes` is flat: x, y, z, block, density (0..255, or -1 to derive
+## it from the block). Each touched chunk is copied once and remeshed once.
+## Edits are remembered as `block | (density + 1) << 8` (plain block ids from old
+## saves still load: their density is derived).
+func set_voxels(changes: PackedInt32Array) -> void:
+	var touched := {}
+	var copied := {}
+	var events: Array = []
+	var n := changes.size() / 5
+	for c in n:
+		var p := Vector3i(changes[c * 5], changes[c * 5 + 1], changes[c * 5 + 2])
+		var block := changes[c * 5 + 3]
+		var dens := changes[c * 5 + 4]
+		var key := Chunk.key_of(p)
+		var l := Chunk.local(p)
+		var i := Chunk.index(l.x, l.y, l.z)
+		if not _edits.has(key):
+			_edits[key] = {}
+		var data: Variant = _chunks.get(key)
+		if data == null:
+			# Not loaded here: remember it for when the chunk streams in.
+			_edits[key][i] = block | ((dens + 1) << 8) if dens >= 0 else block
+			continue
+		if not copied.has(key):
+			# Copy before writing: worker threads may still be reading the old buffers.
+			var arr0: PackedByteArray = data
+			_chunks[key] = Chunk.empty() if arr0.is_empty() else arr0.duplicate()
+			var d0: PackedByteArray = _density.get(key, PackedByteArray())
+			d0 = SmoothMesher.derive_density(arr0) if d0.is_empty() else d0.duplicate()
+			_density[key] = d0 if not d0.is_empty() else Chunk.empty()
+			copied[key] = true
+			_solid_uniform.erase(key)
+		var arr: PackedByteArray = _chunks[key]
+		var dn: PackedByteArray = _density[key]
+		var old := arr[i]
+		arr[i] = block
+		dn[i] = dens if dens >= 0 else _edit_density(block, dn[i])
+		_edits[key][i] = block | ((dn[i] + 1) << 8)
+		for dz in range(-1 if l.z == 0 else 0, 2 if l.z == 15 else 1):
+			for dy in range(-1 if l.y == 0 else 0, 2 if l.y == 15 else 1):
+				for dx in range(-1 if l.x == 0 else 0, 2 if l.x == 15 else 1):
+					touched[key + Vector3i(dx, dy, dz)] = true
+		if old != block:
+			events.append([p, old, block])
 	_fk = Vector3i(1 << 20, 0, 0)
-	for dz in range(-1 if l.z == 0 else 0, 2 if l.z == 15 else 1):
-		for dy in range(-1 if l.y == 0 else 0, 2 if l.y == 15 else 1):
-			for dx in range(-1 if l.x == 0 else 0, 2 if l.x == 15 else 1):
-				_mark_dirty(key + Vector3i(dx, dy, dz))
-	block_changed.emit(p, old, block)
+	for k: Vector3i in touched:
+		_mark_dirty(k)
+	for e: Array in events:
+		block_changed.emit(e[0], e[1], e[2])
 
 
 func get_edits() -> Dictionary:
@@ -262,13 +291,97 @@ func get_edits() -> Dictionary:
 
 
 func apply_edits(edits: Dictionary) -> void:
+	var batch := PackedInt32Array()
 	for key: Vector3i in edits:
 		var entries: Dictionary = edits[key]
 		for i: int in entries:
 			var y := i / Chunk.AREA
 			var z := (i % Chunk.AREA) / Chunk.SIZE
 			var x := i % Chunk.SIZE
-			set_block(key * Chunk.SIZE + Vector3i(x, y, z), entries[i])
+			var v: int = entries[i]
+			var p := key * Chunk.SIZE + Vector3i(x, y, z)
+			batch.append_array([p.x, p.y, p.z, v & 255, (v >> 8) - 1 if v >= 256 else -1])
+	set_voxels(batch)
+
+
+# --- Sculpting ---------------------------------------------------------------------
+
+## Server: carve a sphere out of the ground with the given tool for `seconds`
+## of work. Each voxel loses density in proportion to how long the tool needs
+## for its material (ItemDB.mine_time); voxels that fall below the surface
+## become empty and are counted in the result. Built blocks, trees and
+## anything too hard for the tool are untouched.
+## Returns {"changes": PackedInt32Array (for set_voxels), "removed": {block: voxels}}.
+func plan_dig(center: Vector3, radius: float, seconds: float, item_id: String) -> Dictionary:
+	var changes := PackedInt32Array()
+	var removed := {}
+	var r := ceili(radius + 0.5)
+	var c := Vector3i(center.floor())
+	var cache := {}
+	for dz in range(-r, r + 1):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var p := c + Vector3i(dx, dy, dz)
+				var dist := (Vector3(p) + Vector3(0.5, 0.5, 0.5)).distance_to(center)
+				if dist > radius:
+					continue
+				var b := get_block(p)
+				if b < 0:
+					continue
+				var smooth := Blocks.is_smooth(b)
+				var empty := b == Blocks.AIR or Blocks.is_liquid(b)
+				if not smooth and not empty:
+					continue
+				var d := int(round(voxel_field(p) * 255.0))
+				if d <= 0:
+					continue
+				var falloff := 1.0 - smoothstep(radius * 0.35, radius, dist)
+				var work := 1.0
+				if smooth:
+					if not cache.has(b):
+						cache[b] = ItemDB.mine_time(item_id, b)
+					var t: float = cache[b]
+					if t < 0.0:
+						continue
+					work = seconds / maxf(0.05, t)
+				else:
+					work = seconds * 2.0  # loosening the empty space around the surface
+				var nd := d - int(work * falloff * 300.0)
+				if nd >= d:
+					continue
+				if smooth and nd < 128:
+					removed[b] = int(removed.get(b, 0)) + 1
+					changes.append_array([p.x, p.y, p.z, Blocks.AIR, maxi(nd, 0)])
+				else:
+					changes.append_array([p.x, p.y, p.z, b, maxi(nd, 128 if smooth else 0)])
+	return {"changes": changes, "removed": removed}
+
+
+## Server: add ground of `block` in a sphere (building up / filling holes).
+func plan_fill(center: Vector3, radius: float, block: int) -> PackedInt32Array:
+	var changes := PackedInt32Array()
+	var r := ceili(radius + 0.5)
+	var c := Vector3i(center.floor())
+	for dz in range(-r, r + 1):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				var p := c + Vector3i(dx, dy, dz)
+				var dist := (Vector3(p) + Vector3(0.5, 0.5, 0.5)).distance_to(center)
+				if dist > radius:
+					continue
+				var b := get_block(p)
+				if b < 0 or not (b == Blocks.AIR or Blocks.is_liquid(b) or Blocks.is_smooth(b)):
+					continue
+				var d := int(round(voxel_field(p) * 255.0))
+				var add := int((1.0 - smoothstep(radius * 0.4, radius, dist)) * 260.0)
+				var nd := mini(255, d + add)
+				if nd <= d:
+					continue
+				if nd >= 128 and not Blocks.is_smooth(b):
+					changes.append_array([p.x, p.y, p.z, block, nd])
+				else:
+					changes.append_array([p.x, p.y, p.z, b, nd])
+	return changes
 
 
 ## Density byte an edit leaves behind: placed ground is fully solid, dug
@@ -279,15 +392,6 @@ static func _edit_density(block: int, old: int) -> int:
 	if block == Blocks.AIR or Blocks.is_liquid(block):
 		return 0
 	return mini(old, 127)
-
-
-func _set_density(key: Vector3i, i: int, block: int, blocks: PackedByteArray) -> void:
-	var d: PackedByteArray = _density.get(key, PackedByteArray())
-	d = SmoothMesher.derive_density(blocks) if d.is_empty() else d.duplicate()
-	if d.is_empty():
-		d = Chunk.empty()
-	d[i] = _edit_density(block, d[i])
-	_density[key] = d
 
 
 # --- Smooth field -------------------------------------------------------------------
@@ -651,10 +755,12 @@ func _consume_results() -> void:
 			var entries: Dictionary = _edits[k]
 			if dens.is_empty():
 				dens = SmoothMesher.derive_density(data)
+			if dens.is_empty():
+				dens = Chunk.empty()
 			for i: int in entries:
-				data[i] = entries[i]
-				if not dens.is_empty():
-					dens[i] = _edit_density(entries[i], dens[i])
+				var v: int = entries[i]
+				data[i] = v & 255
+				dens[i] = (v >> 8) - 1 if v >= 256 else _edit_density(v & 255, dens[i])
 		# Density only matters near a surface: drop it when it says nothing.
 		if not dens.is_empty() and (dens.count(0) == Chunk.VOLUME or dens.count(255) == Chunk.VOLUME):
 			dens = PackedByteArray()
