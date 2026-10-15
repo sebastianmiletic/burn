@@ -4,7 +4,8 @@ render_mode cull_back;
 // material table as terrain.gdshader, reduced to what reads at a distance:
 //   COLOR, CUSTOM0  blend weights of the 8 surface material classes
 //   CUSTOM1         tree canopy colour (rgb) and cover (a)
-//   UV              (mountain snow allowed, sea)
+//   CUSTOM3         blend weights of classes 9..12 (revision 3 rock and red sand)
+//   UV              (snow cover the terrain has there, sea / lake: 1, lava: 2)
 //   UV2             horizon tangents towards the rising / setting sun
 //   CUSTOM2         softened height and normal the far fine LOD morphs to
 // Lighting is custom so ridges can shadow valleys at low sun; the fog is
@@ -18,7 +19,7 @@ global uniform float snow_cover;
 uniform sampler2DArray albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 mat_a[128];
 uniform vec4 mat_tint[128];
-uniform int class_codes[8];
+uniform int class_codes[12];
 uniform int snow_code = 5;
 
 uniform sampler2D coverage : filter_nearest, repeat_disable;   // VoxelWorld.horizon_coverage
@@ -47,6 +48,7 @@ varying vec3 v_world;
 varying vec3 v_wn;
 varying vec4 v_w0;
 varying vec4 v_w1;
+varying vec4 v_w2;
 varying vec4 v_canopy;
 varying vec2 v_flags;
 varying vec2 v_hz;
@@ -70,6 +72,7 @@ void vertex() {
 	v_wn = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	v_w0 = COLOR;
 	v_w1 = CUSTOM0;
+	v_w2 = CUSTOM3;
 	v_canopy = CUSTOM1;
 	v_flags = UV;
 	v_hz = UV2;
@@ -88,13 +91,14 @@ void fragment() {
 		discard;
 	}
 	vec3 nw = normalize(v_wn);
-	float sea = smoothstep(0.45, 0.55, v_flags.y);
+	float lava = smoothstep(1.4, 1.6, v_flags.y);
+	float sea = smoothstep(0.45, 0.55, v_flags.y) * (1.0 - lava);
 
 	// Ground: blend of the surface materials, as the streamed terrain has them.
-	float w[8] = float[8](v_w0.x, v_w0.y, v_w0.z, v_w0.w, v_w1.x, v_w1.y, v_w1.z, v_w1.w);
+	float w[12] = float[12](v_w0.x, v_w0.y, v_w0.z, v_w0.w, v_w1.x, v_w1.y, v_w1.z, v_w1.w, v_w2.x, v_w2.y, v_w2.z, v_w2.w);
 	vec3 ground = vec3(0.0);
 	float wsum = 0.0;
-	for (int k = 0; k < 8; k++) {
+	for (int k = 0; k < 12; k++) {
 		if (w[k] > 0.04) {
 			ground += layer_top(class_codes[k], p.xz) * w[k];
 			wsum += w[k];
@@ -111,9 +115,21 @@ void fragment() {
 
 	// Cliffs: the rock under every material on steep faces (the 8 m mesh is
 	// smoother than the real terrain, so the threshold is a little lower).
-	vec4 ra = mat_a[class_codes[7]];
+	// The rock that dominates here (grey stone, red canyon rock, basalt, alpine rock).
+	int rock_k = 7;
+	float rock_w = w[7] + 0.001;
+	for (int k = 8; k < 11; k++) {
+		if (w[k] > rock_w) {
+			rock_w = w[k];
+			rock_k = k;
+		}
+	}
+	if (w[11] > rock_w) {
+		rock_k = 8;   // red sand country: red cliffs
+	}
+	vec4 ra = mat_a[class_codes[rock_k]];
 	vec2 side_uv = (abs(nw.x) > abs(nw.z) ? p.zy : p.xy) * ra.z * 0.8;
-	vec3 rock = texture(albedo_tex, vec3(side_uv, ra.y)).rgb * mat_tint[class_codes[7]].rgb * (0.62 + macro * 0.3);
+	vec3 rock = texture(albedo_tex, vec3(side_uv, ra.y)).rgb * mat_tint[class_codes[rock_k]].rgb * (0.62 + macro * 0.3);
 	float cliff = smoothstep(0.84, 0.6, nw.y + (macro - 0.5) * 0.12);
 
 	vec3 alb = mix(ground, crowns, cover * (1.0 - cliff));
@@ -122,20 +138,20 @@ void fragment() {
 	// Snow: the mountains snow above the same height the streamed terrain does,
 	// weather snow settles on gentle slopes everywhere.
 	float up = smoothstep(0.55, 0.9, nw.y);
-	float line = smoothstep(64.6, 66.6, p.y + (macro - 0.5) * 3.0);
-	float snow = v_flags.x * line * (1.0 - cliff * 0.8);
+	float snow = clamp(v_flags.x * 1.4 - 0.2, 0.0, 1.0) * (1.0 - cliff * 0.8);
 	// Seen from afar the high summits carry snowcaps on all but sheer faces
 	// (the real slopes there are broken by ledges the 8 m mesh cannot show).
 	float cap = v_flags.x * smoothstep(95.0, 150.0, p.y + (macro - 0.5) * 20.0) * smoothstep(0.32, 0.6, nw.y) * v_far;
 	snow = max(snow, cap);
 	snow = max(snow, clamp(snow_cover * 1.4 - (1.0 - up), 0.0, 1.0));
-	snow *= 1.0 - sea;
+	snow *= (1.0 - sea) * (1.0 - lava);
 	vec3 snow_alb = layer_top(snow_code, p.xz * 0.5) * 0.92;
 	alb = mix(alb, snow_alb, snow);
 
 	// Sea.
 	vec3 water = vec3(0.018, 0.045, 0.055);
 	alb = mix(alb, water, sea);
+	alb = mix(alb, vec3(0.05, 0.02, 0.015), lava);
 	vec3 n = mix(nw, vec3(0.0, 1.0, 0.0), sea);
 	if (sea > 0.5) {
 		// Long swell so the sun glitters instead of mirroring flat.
@@ -146,6 +162,7 @@ void fragment() {
 	ALBEDO = alb;
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 	SPECULAR = mix(0.35, 0.5, sea);
+	EMISSION = vec3(1.0, 0.32, 0.05) * lava * (1.2 + 0.8 * n_value2(p.xz * 0.05 + TIME * 0.05));
 	ROUGHNESS = ascii_roughness(mix(mix(0.92, 0.75, snow), 0.06, sea), sea > 0.5 ? ASCII_LIQUID : ASCII_GROUND);
 
 	// Aerial perspective: matches the environment fog up to the rim of the
@@ -185,7 +202,7 @@ void light() {
 		vis = smoothstep(horizon - 0.02, horizon + 0.06, tan_e);
 	}
 	DIFFUSE_LIGHT += diff * vis * ATTENUATION * LIGHT_COLOR / PI;
-	if (v_flags.y > 0.5) {
+	if (v_flags.y > 0.5 && v_flags.y < 1.5) {
 		vec3 h = normalize(VIEW + LIGHT);
 		float s = pow(clamp(dot(NORMAL, h), 0.0, 1.0), 180.0) * 5.0;
 		SPECULAR_LIGHT += s * vis * ATTENUATION * LIGHT_COLOR / PI;

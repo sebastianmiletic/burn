@@ -177,7 +177,7 @@ func start_campaign() -> void:
 	# not just late joiners. Otherwise an old host world and new client differ.
 	var initial_state := {
 		"edits": save.get("edits", {}), "bosses_defeated": save.get("bosses_defeated", []),
-		"world_revision": save.get("world_revision", 2 if save.is_empty() else 1),
+		"world_revision": save.get("world_revision", WorldGen.LATEST_REVISION if save.is_empty() else 1),
 		"ryft_unlocked": save.get("ryft_unlocked", false),
 		"time_of_day": save.get("time_of_day", 8.5), "day": save.get("day", 1),
 	}

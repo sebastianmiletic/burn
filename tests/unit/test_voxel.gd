@@ -174,3 +174,73 @@ func test_mesher_produces_faces_and_timing() -> void:
 	var verts: PackedVector3Array = result["opaque"][Mesh.ARRAY_VERTEX]
 	var idx: PackedInt32Array = result["opaque"][Mesh.ARRAY_INDEX]
 	check(verts.size() > 0 and idx.size() % 3 == 0, "valid triangles")
+
+
+func test_revision3_world_is_larger_with_new_lands() -> void:
+	var g := _world()
+	check_eq(g.revision, WorldGen.LATEST_REVISION, "new worlds use the latest revision")
+	check(g.size >= 4608, "the overworld is at least 1.5x wider")
+	var land := 0
+	var biomes := {}
+	var n := g.size / WorldGen.COARSE
+	for i in range(0, n * n, 7):
+		if g._base[i] > WorldGen.SEA_LEVEL:
+			land += 1
+		biomes[int(g._biome[i])] = true
+	check(land * 7 * 16 > 7000000, "land area at least doubled (%.1f km2)" % [land * 7 * 16 / 1e6])
+	for b in [WorldGen.Biome.REDWOOD, WorldGen.Biome.CANYON, WorldGen.Biome.ALPINE, WorldGen.Biome.TUNDRA, WorldGen.Biome.VOLCANIC, WorldGen.Biome.FJORD]:
+		check(biomes.has(b), "biome %s exists" % WorldGen.BIOME_NAMES[b])
+	check_eq(WorldGen.BIOME_NAMES.size(), WorldGen.Biome.size(), "every biome is named")
+	check_eq(WorldGen.BIOME_COLORS.size(), WorldGen.Biome.size(), "every biome has a map colour")
+
+
+func test_new_villages_mines_and_caves_are_planned() -> void:
+	var g := _world()
+	var ids := {}
+	for loc in g.locations:
+		ids[loc.id] = loc
+	for id in [&"emberfall", &"elderhollow", &"highmere", &"kaldvik", &"redmesa", &"brimhold", &"old_ember_mine", &"old_ember_mine_workings", &"redrock_delve"]:
+		check(ids.has(id), "planned %s" % id)
+	var mines := 0
+	for loc in g.locations:
+		if loc.kind == Location.Kind.MINE and loc.has_meta(&"mine"):
+			mines += 1
+			var props: Array = loc.get_meta(&"mine")["props"]
+			check(props.size() > 40, "%s is dressed (%d props)" % [loc.name, props.size()])
+			check(not loc.spawns_of("enemy").is_empty() and not loc.spawns_of("chest").is_empty(), "%s has monsters and loot" % loc.name)
+			# The workings are carved: a drift floor point is open air.
+			for p: Dictionary in props:
+				if p["type"] == "rail":
+					var at: Vector3 = (p["a"] as Vector3).lerp(p["b"], 0.5) + Vector3(0, 1.5, 0)
+					var data := g.generate_chunk(Chunk.key_of(Vector3i(at.floor())))
+					var l := Chunk.local(Vector3i(at.floor()))
+					check_eq(data[Chunk.index(l.x, l.y, l.z)], Blocks.AIR, "%s drift is open" % loc.name)
+					break
+	check(mines >= 6, "full mines planned (%d)" % mines)
+	var kinds := {}
+	for e: Array in g.caves.entrances:
+		kinds[e[2]] = true
+	check(kinds.has("mouth") and kinds.has("sinkhole"), "cave mouths and sinkholes lead underground")
+	check(g.caves.rivers.size() > 0, "underground rivers")
+	check(g.lakes.size() > 3, "lakes")
+
+
+func test_cave_naming_never_reports_the_surface() -> void:
+	var g := _world()
+	var p := Vector3(1024, -40, 1024)
+	check(g.is_underground(p), "deep below Emberfall is underground")
+	check(g.cave_name_at(p) != "", "named as a cave")
+	check_eq(g.cave_name_at(Vector3(1024, g.ground_level(1024, 1024) + 2.0, 1024)), "", "no cave name in the open")
+
+
+func test_generation_v3_timing() -> void:
+	var g := _world()
+	var t0 := Time.get_ticks_usec()
+	var count := 0
+	for x in range(150, 154):
+		for z in range(60, 63):
+			var h := g.surface_height(x * 16 + 8, z * 16 + 8)
+			for y in [floori(h / 16.0), -2]:
+				g.generate(Vector3i(x, y, z))
+				count += 1
+	print("      v3 generate: %.2f ms/chunk" % [(Time.get_ticks_usec() - t0) / 1000.0 / count])

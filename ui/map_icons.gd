@@ -111,6 +111,9 @@ static func place_of(world: Object, loc: Object) -> Dictionary:
 		Location.Kind.TOWER:
 			out["icon"] = &"tower"
 			out["sub"] = "Watchtower"
+		Location.Kind.MINE:
+			out["icon"] = &"mine"
+			out["sub"] = "Mine"
 		Location.Kind.CRYPT:
 			out["icon"] = &"mine" if ("mine" in id or "adit" in id) else &"cave"
 			out["sub"] = "Mine" if out["icon"] == &"mine" else "Cave"

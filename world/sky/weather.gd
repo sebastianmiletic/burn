@@ -332,11 +332,20 @@ func _process(delta: float) -> void:
 				dust_target = 1.0
 			var crater: Vector3 = g._crater
 			ember_target = 1.0 - smoothstep(crater.z * 1.5, crater.z * 8.0, Vector2(player_pos.x, player_pos.z).distance_to(Vector2(crater.x, crater.y)))
+	# High up, snow blows whatever the weather below is doing.
+	var alt_target := clampf((player_pos.y - 95.0) / 120.0, 0.0, 1.0) if _dimension == 0 and not _underground else 0.0
+	if w != null and _dimension == 0 and w.gen_for(0) != null and w.gen_for(0).revision >= 3:
+		# Revision 3 climate (WorldGen.climate_at): snow in cold biomes / above their snowline,
+		# dust over the badlands and mesas, haze only on the highest summits.
+		var climate := w.gen_for(0).climate_at(player_pos)
+		snow_target = climate.x
+		dust_target = climate.y
+		alt_target = climate.z if not _underground else 0.0
+	if _forced_snow:
+		snow_target = 1.0
 	# A blizzard snows everywhere; a dust storm carries dust everywhere.
 	snow_target = maxf(snow_target, _current[5])
 	dust_target = maxf(dust_target, _current[6])
-	# High up, snow blows whatever the weather below is doing.
-	var alt_target := clampf((player_pos.y - 95.0) / 120.0, 0.0, 1.0) if _dimension == 0 and not _underground else 0.0
 	altitude = move_toward(altitude, alt_target, delta * 0.25)
 	if altitude > 0.05:
 		snow_target = 1.0

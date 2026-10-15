@@ -18,6 +18,8 @@ at startup, layered with a small set of public-domain (CC0) recordings listed be
 | Patterned Clay Plaster, Rough Wood, Old Planks 02, Rustic Stone Wall, Rustic Stone Wall 02, Reed Roof 04, Roof Slates 02 and 03, Rust Coarse 01, Rough Linen, Stone Pathway 02, Brown Planks 09 (diffuse, GL normal, roughness, AO; 1k, packed into texture arrays) | Poly Haven, https://polyhaven.com/textures | CC0 1.0 | Modelled buildings, villages and ruins (`assets/architecture/arch_albedo.jpg`, `arch_normal.webp`; packing script `tools/textures/pack_architecture.py`) |
 | Jolcham Oak Bark 01, Pine Bark, Bark Willow 02, Rock Boulder Dry (diffuse + GL normal, downscaled to 512 px) | Poly Haven, https://polyhaven.com/textures | CC0 1.0 | Tree trunks, fallen logs, boulders and pebbles (`world/flora/textures/*_bark_*.jpg`, `rock_*.jpg`) |
 
+| Marble Cliff 01, Dark Rock 02, Gray Rocks, Cliff Side (diffuse, GL normal, roughness, displacement; 1k) | Poly Haven, https://polyhaven.com/textures | CC0 1.0 | Terrain layers for mountain rock faces, basalt, scree and the red mesa cliffs (row 7 of `assets/terrain/terrain_albedo.jpg` / `terrain_normal.webp`) |
+
 The leaf atlas (`world/flora/textures/leaf_atlas*.png`) is painted procedurally by
 `world/flora/tools/bake_leaf_atlas.gd`.
 

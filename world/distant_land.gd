@@ -31,7 +31,8 @@ const SKIRT := 24.0
 const WATER_Y := float(WorldGen.SEA_LEVEL) + 0.85
 ## Material classes (index -> material code); keep in step with the shader.
 const CLASSES := [Blocks.GRASS, Blocks.DRY_GRASS, SmoothMesher.CODE_FOREST_FLOOR, SmoothMesher.CODE_PEAK_GRASS,
-		Blocks.SAND, Blocks.ASH, Blocks.MUD, Blocks.STONE]
+		Blocks.SAND, Blocks.ASH, Blocks.MUD, Blocks.STONE, Blocks.RED_ROCK, Blocks.BASALT, Blocks.ALPINE_ROCK, Blocks.RED_SAND]
+const NCLASS := 12
 ## Sun azimuths the horizon angles are traced along (the sun's path rises in
 ## the east-north-east and sets in the west-north-west, see SkyController).
 const SUN_EAST := Vector2(0.925, 0.381)
@@ -62,8 +63,9 @@ static func arrays_for(world_gen: WorldGen) -> Array:
 	# Sample rows in parallel (pure reads of the generator), then stitch.
 	var rows: Array = []
 	rows.resize(n)
+	var hm := world_gen.height_map() if world_gen.revision >= 3 else PackedFloat32Array()
 	var task := WorkerThreadPool.add_group_task(func(z: int) -> void:
-		rows[z] = _sample_row(world_gen, z, n), n, -1, true, "distant land rows")
+		rows[z] = _sample_row(world_gen, z, n, hm), n, -1, true, "distant land rows")
 	WorkerThreadPool.wait_for_group_task_completion(task)
 	for z in n:
 		var row: Array = rows[z]
@@ -92,51 +94,89 @@ static func arrays_for(world_gen: WorldGen) -> Array:
 
 
 ## One row of samples: [heights, material class, sea flag, mountain flag, canopy].
-static func _sample_row(world_gen: WorldGen, z: int, n: int) -> Array:
+static func _sample_row(world_gen: WorldGen, z: int, n: int, hm: PackedFloat32Array) -> Array:
 	var detail := world_gen.make_detail_noise()
 	var ridge := world_gen.make_ridge_noise()
 	var h := PackedFloat32Array()
 	var c := PackedByteArray()
 	var wtr := PackedByteArray()
-	var pk := PackedFloat32Array()
+	var snow := PackedFloat32Array()
 	var cp := PackedColorArray()
 	h.resize(n)
 	c.resize(n)
 	wtr.resize(n)
-	pk.resize(n)
+	snow.resize(n)
 	cp.resize(n)
 	var over := world_gen.dimension == 0
+	var v3 := world_gen.revision >= 3 and not hm.is_empty()
+	var cn := world_gen.size / WorldGen.COARSE
 	var wz := mini(z * FINE, world_gen.size - 1)
 	for x in n:
 		var wx := mini(x * FINE, world_gen.size - 1)
-		# Open sea: the highest the noise could lift it is still under water.
-		if over and world_gen.smooth_height(wx, wz) + world_gen._coarse_sample(world_gen._amp, wx, wz) \
-				+ world_gen._coarse_sample(world_gen._ridge, wx, wz) < WorldGen.SEA_LEVEL - 2.0:
-			h[x] = WATER_Y
-			wtr[x] = 1
-			continue
-		var col := world_gen.column_f(wx, wz, detail, ridge)
-		var ground := col.x + 1.0   # the smooth surface lies one unit above the column value
+		var ground := 0.0
+		var slope := 0.0
+		if v3:
+			# Revision 3: the cached 4 m height map (macro surface, detail, pads).
+			var ix := mini(wx / WorldGen.COARSE, cn - 2)
+			var iz := mini(wz / WorldGen.COARSE, cn - 2)
+			var ci := ix + iz * cn
+			ground = hm[ci] + 1.0
+			slope = maxf(absf(hm[ci + 1] - hm[ci]), absf(hm[ci + cn] - hm[ci])) / WorldGen.COARSE
+		else:
+			# Open sea: the highest the noise could lift it is still under water.
+			if over and world_gen.smooth_height(wx, wz) + world_gen._coarse_sample(world_gen._amp, wx, wz) \
+					+ world_gen._coarse_sample(world_gen._ridge, wx, wz) < WorldGen.SEA_LEVEL - 2.0:
+				h[x] = WATER_Y
+				wtr[x] = 1
+				continue
+			ground = world_gen.column_f(wx, wz, detail, ridge).x + 1.0   # the smooth surface lies one unit above the column value
 		var biome := world_gen.biome_at(wx, wz)
-		var hi := int(floorf(col.x + 0.5))
+		var hi := int(floorf(ground - 0.5))
 		if over and ground < WATER_Y and biome != WorldGen.Biome.MARSH:
 			h[x] = WATER_Y
 			wtr[x] = 1
 			continue
+		if v3:
+			# Lakes (water, ice, the caldera's lava) at their own levels.
+			var lake := world_gen.lake_level(wx, wz)
+			if lake.x > ground - 0.6:
+				h[x] = lake.x + 0.85
+				wtr[x] = 2 if int(lake.y) == Blocks.LAVA else 1
+				continue
 		h[x] = ground
-		var code := world_gen._ground_block(wx, hi, wz, hi, biome, 0)
-		if code == Blocks.GRASS:
-			if biome == WorldGen.Biome.FOREST:
+		var code := 0
+		if v3:
+			code = world_gen._surface_v3(wx, wz, hi, biome, 0, slope) & 255
+			if code == WorldGen.FACE:
+				code = Blocks.RED_ROCK if biome == WorldGen.Biome.CANYON else (Blocks.BASALT if biome == WorldGen.Biome.VOLCANIC else Blocks.ALPINE_ROCK)
+		else:
+			code = world_gen._ground_block(wx, hi, wz, hi, biome, 0)
+		if code == Blocks.SNOW:
+			snow[x] = 1.0
+			code = Blocks.ALPINE_ROCK if v3 else Blocks.STONE
+		elif code == Blocks.GRASS or (v3 and code == Blocks.DIRT and biome == WorldGen.Biome.REDWOOD):
+			if biome == WorldGen.Biome.FOREST or biome == WorldGen.Biome.REDWOOD:
 				code = SmoothMesher.CODE_FOREST_FLOOR
-			elif biome == WorldGen.Biome.PEAKS:
+			elif biome in [WorldGen.Biome.PEAKS, WorldGen.Biome.ALPINE, WorldGen.Biome.FJORD]:
 				code = SmoothMesher.CODE_PEAK_GRASS
 		var k := CLASSES.find(code)
 		if k < 0:
-			k = 7 if code in [Blocks.SNOW, Blocks.GRANITE, Blocks.BASALT, Blocks.GRAVEL] else (1 if code == Blocks.DIRT else 0)
+			match code:
+				Blocks.SCREE, Blocks.GRANITE:
+					k = 10
+				Blocks.GRAVEL:
+					k = 7
+				Blocks.UMBER_ROCK:
+					k = 8
+				Blocks.SCORIA, Blocks.OBSIDIAN:
+					k = 9
+				Blocks.PERMAFROST, Blocks.DIRT:
+					k = 1
+				_:
+					k = 0
 		c[x] = k
-		pk[x] = 1.0 if biome == WorldGen.Biome.PEAKS else 0.0
-		cp[x] = _canopy(biome, hi)
-	return [h, c, wtr, pk, cp]
+		cp[x] = _canopy(world_gen, biome, hi, wx, wz)
+	return [h, c, wtr, snow, cp]
 
 
 ## [fine arrays, coarse arrays, aabb] for the tile whose corner is fine cell (x0, z0).
@@ -155,8 +195,8 @@ static func _tile(heights: PackedFloat32Array, soft: PackedFloat32Array, water: 
 			lo = minf(lo, heights[i])
 			hi_y = maxf(hi_y, heights[i])
 	if all_water:
-		var flat := _water_quad(Vector2(x0 * FINE, z0 * FINE), Vector2(x1 * FINE, z1 * FINE))
-		return [flat, flat, AABB(Vector3(x0 * FINE, WATER_Y - 1, z0 * FINE), Vector3((x1 - x0) * FINE, 2, (z1 - z0) * FINE))]
+		var flat := _water_quad(Vector2(x0 * FINE, z0 * FINE), Vector2(x1 * FINE, z1 * FINE), lo)
+		return [flat, flat, AABB(Vector3(x0 * FINE, lo - 1, z0 * FINE), Vector3((x1 - x0) * FINE, 2, (z1 - z0) * FINE))]
 	var fine := _grid_arrays(heights, soft, water, cls, peaks, canopy, hz, n, x0, z0, x1, z1, 1)
 	var coarse := _grid_arrays(heights, soft, water, cls, peaks, canopy, hz, n, x0, z0, x1, z1, COARSE / FINE)
 	return [fine, coarse, AABB(Vector3(x0 * FINE, lo - SKIRT, z0 * FINE), Vector3((x1 - x0) * FINE, hi_y - lo + SKIRT + 12.0, (z1 - z0) * FINE))]
@@ -193,7 +233,7 @@ static func _soften(heights: PackedFloat32Array, water: PackedByteArray, n: int)
 				sum += (rows[zz] as PackedFloat32Array)[x] * float(R + 1 - absi(d))
 				top = maxf(top, heights[x + zz * n])
 			var avg := sum / float((R + 1) * (R + 1))
-			col[z] = WATER_Y if water[x + z * n] == 1 else lerpf(avg, maxf(avg, top), 0.3)
+			col[z] = heights[x + z * n] if water[x + z * n] != 0 else lerpf(avg, maxf(avg, top), 0.3)
 		cols[x] = col, n, -1, true, "distant land soften z")
 	WorkerThreadPool.wait_for_group_task_completion(pass2)
 	var out := PackedFloat32Array()
@@ -207,16 +247,31 @@ static func _soften(heights: PackedFloat32Array, water: PackedByteArray, n: int)
 
 ## Tree cover (rgb canopy colour, a coverage) from the same chances the
 ## streamed world plants trees with.
-static func _canopy(biome: int, h: int) -> Color:
+static func _canopy(world_gen: WorldGen, biome: int, h: int, x: int, z: int) -> Color:
+	var v3 := world_gen.revision >= 3
 	match biome:
 		WorldGen.Biome.FOREST:
+			if v3:
+				# The four forest regions (autumn oak, pine, crimson, old growth).
+				var region := world_gen.forest_region(x, z)
+				var col: Color = WorldGen.FOREST_COLORS[region] * 0.75
+				col.a = [0.58, 0.5, 0.42, 0.66][region]
+				return col
 			return Color(0.42, 0.13, 0.06, 0.58)   # Emberwood: autumn crowns
 		WorldGen.Biome.PEAKS:
-			return Color(0.07, 0.11, 0.07, 0.3) if h <= 70 else Color(0, 0, 0, 0)
+			return Color(0.07, 0.11, 0.07, 0.3) if h <= (84 if v3 else 70) else Color(0, 0, 0, 0)
 		WorldGen.Biome.MARSH:
 			return Color(0.22, 0.1, 0.06, 0.15)
 		WorldGen.Biome.PLAINS:
 			return Color(0.36, 0.14, 0.06, 0.05)
+		WorldGen.Biome.REDWOOD:
+			return Color(0.06, 0.12, 0.06, 0.45)
+		WorldGen.Biome.ALPINE:
+			return Color(0.06, 0.1, 0.07, 0.34 if h < 118 else (0.11 if h < 132 else 0.0))
+		WorldGen.Biome.FJORD:
+			return Color(0.06, 0.1, 0.07, 0.28 if h < 104 else 0.0)
+		WorldGen.Biome.TUNDRA:
+			return Color(0.08, 0.1, 0.07, 0.03)
 	return Color(0, 0, 0, 0)
 
 
@@ -284,6 +339,7 @@ static func _grid_arrays(heights: PackedFloat32Array, soft: PackedFloat32Array, 
 	var custom0 := PackedFloat32Array()
 	var custom1 := PackedFloat32Array()
 	var custom2 := PackedFloat32Array()
+	var custom3 := PackedFloat32Array()
 	var uv := PackedVector2Array()
 	var uv2 := PackedVector2Array()
 	var idx := PackedInt32Array()
@@ -307,7 +363,7 @@ static func _grid_arrays(heights: PackedFloat32Array, soft: PackedFloat32Array, 
 			var hu := _h_at(heights, water, n, x, z + step, step) if r == rows - 1 else grid_h[c + (r + 1) * cols]
 			var nrm := Vector3(hl - hr, 2.0 * step * FINE, hd - hu).normalized()
 			_push_vertex(Vector3(x * FINE, h, z * FINE), nrm, x, z, n, water, cls, peaks, canopy, hz,
-					verts, norms, colors, custom0, custom1, uv, uv2)
+					verts, norms, colors, custom0, custom1, custom3, uv, uv2)
 			# Far shape (geomorph target): the softened field on the fine LOD.
 			if step == 1:
 				var sl := soft[maxi(x - 1, 0) + z * n]
@@ -341,6 +397,7 @@ static func _grid_arrays(heights: PackedFloat32Array, soft: PackedFloat32Array, 
 			for q in 4:
 				custom0.append(custom0[src * 4 + q])
 				custom1.append(custom1[src * 4 + q])
+				custom3.append(custom3[src * 4 + q])
 			custom2.append_array([custom2[src * 4] - SKIRT, custom2[src * 4 + 1], custom2[src * 4 + 2], custom2[src * 4 + 3]])
 			uv.append(uv[src])
 			uv2.append(uv2[src])
@@ -359,6 +416,7 @@ static func _grid_arrays(heights: PackedFloat32Array, soft: PackedFloat32Array, 
 	out[Mesh.ARRAY_CUSTOM0] = custom0
 	out[Mesh.ARRAY_CUSTOM1] = custom1
 	out[Mesh.ARRAY_CUSTOM2] = custom2
+	out[Mesh.ARRAY_CUSTOM3] = custom3
 	out[Mesh.ARRAY_TEX_UV] = uv
 	out[Mesh.ARRAY_TEX_UV2] = uv2
 	out[Mesh.ARRAY_INDEX] = idx
@@ -370,23 +428,24 @@ static func _grid_arrays(heights: PackedFloat32Array, soft: PackedFloat32Array, 
 static func _push_vertex(p: Vector3, nrm: Vector3, x: int, z: int, n: int, water: PackedByteArray, cls: PackedByteArray,
 		peaks: PackedFloat32Array, canopy: PackedColorArray, hz: PackedVector2Array,
 		verts: PackedVector3Array, norms: PackedVector3Array, colors: PackedColorArray, custom0: PackedFloat32Array,
-		custom1: PackedFloat32Array, uv: PackedVector2Array, uv2: PackedVector2Array) -> void:
+		custom1: PackedFloat32Array, custom3: PackedFloat32Array, uv: PackedVector2Array, uv2: PackedVector2Array) -> void:
 	var i := x + z * n
-	var w := PackedFloat32Array([0, 0, 0, 0, 0, 0, 0, 0])
+	var w := PackedFloat32Array()
+	w.resize(NCLASS)
 	var count := 0.0
 	var pk := 0.0
 	var cp := Color(0, 0, 0, 0)
 	for dz in range(-1, 2):
 		for dx in range(-1, 2):
 			var j := clampi(x + dx, 0, n - 1) + clampi(z + dz, 0, n - 1) * n
-			if water[j] == 1:
+			if water[j] != 0:
 				continue
 			w[cls[j]] += 1.0
 			pk += peaks[j]
 			cp += canopy[j]
 			count += 1.0
 	if count > 0.0:
-		for k in 8:
+		for k in NCLASS:
 			w[k] /= count
 		pk /= count
 		cp /= count
@@ -397,6 +456,7 @@ static func _push_vertex(p: Vector3, nrm: Vector3, x: int, z: int, n: int, water
 	colors.append(Color(w[0], w[1], w[2], w[3]))
 	custom0.append_array([w[4], w[5], w[6], w[7]])
 	custom1.append_array([cp.r, cp.g, cp.b, cp.a])
+	custom3.append_array([w[8], w[9], w[10], w[11]])
 	uv.append(Vector2(pk, float(water[i])))
 	uv2.append(hz[i])
 
@@ -426,13 +486,13 @@ static func _filtered_height(heights: PackedFloat32Array, water: PackedByteArray
 			if absi(ox) <= 1 and absi(oz) <= 1:
 				top = maxf(top, h)
 	var avg := sum / wsum
-	if water[x + z * n] == 1 and avg < WATER_Y + 0.5:
-		return WATER_Y
+	if water[x + z * n] != 0 and avg < heights[x + z * n] + 0.5:
+		return heights[x + z * n]
 	return lerpf(avg, maxf(avg, top), 0.35)
 
 
-static func _water_quad(a: Vector2, b: Vector2) -> Array:
-	var verts := PackedVector3Array([Vector3(a.x, WATER_Y, a.y), Vector3(b.x, WATER_Y, a.y), Vector3(a.x, WATER_Y, b.y), Vector3(b.x, WATER_Y, b.y)])
+static func _water_quad(a: Vector2, b: Vector2, y: float) -> Array:
+	var verts := PackedVector3Array([Vector3(a.x, y, a.y), Vector3(b.x, y, a.y), Vector3(a.x, y, b.y), Vector3(b.x, y, b.y)])
 	return _flat_arrays(verts, PackedInt32Array([0, 1, 2, 1, 3, 2]))
 
 
@@ -475,6 +535,7 @@ static func _flat_arrays(verts: PackedVector3Array, idx: PackedInt32Array) -> Ar
 	for v in verts:
 		c2.append_array([v.y, 0.0, 1.0, 0.0])
 	out[Mesh.ARRAY_CUSTOM2] = c2
+	out[Mesh.ARRAY_CUSTOM3] = custom.duplicate()
 	out[Mesh.ARRAY_TEX_UV] = uv
 	out[Mesh.ARRAY_TEX_UV2] = uv2
 	out[Mesh.ARRAY_INDEX] = idx
@@ -492,7 +553,8 @@ func setup(world_gen: WorldGen, data: Array) -> void:
 	_mat.set_shader_parameter(&"class_codes", codes)
 	_mat.set_shader_parameter(&"snow_code", Blocks.SNOW)
 	var flags := (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) | (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT) \
-			| (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM2_SHIFT)
+			| (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM2_SHIFT) \
+			| (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM3_SHIFT)
 	if data.size() < 2:
 		return
 	for t: Array in data[0]:

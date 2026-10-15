@@ -9,7 +9,8 @@ const NORMAL_PATH := "res://assets/terrain/terrain_normal.webp"
 
 # Texture array layers.
 enum L { LUSH, DRY, DIRT, FOREST, ROCK, SAND, SNOW, TRAIL, MUD, ASH, DARK, MARBLE, SANDSTONE, CLAY, GRANITE,
-	LIMESTONE, MOSSY, PLANKS, BARK, COBBLE, CASTLE, MOSSY_WALL, THATCH, CARVED }
+	LIMESTONE, MOSSY, PLANKS, BARK, COBBLE, CASTLE, MOSSY_WALL, THATCH, CARVED,
+	CLIFF, BASALT_ROCK, SCREE, RED_CLIFF }  # row 7: Poly Haven marble_cliff_01, dark_rock_02, gray_rocks, cliff_side
 
 const ASCII_SOLID := 0
 const ASCII_GROUND := 4
@@ -35,18 +36,18 @@ static func _table() -> Dictionary:
 	t[Blocks.SNOW] = [L.SNOW, L.ROCK, 0.25, 1.0, Color(1.0, 1.0, 1.02), ASCII_GROUND]
 	t[Blocks.ICE] = [L.SNOW, L.SNOW, 0.15, 0.2, Color(0.62, 0.78, 0.92), ASCII_LIQUID]
 	t[Blocks.GRAVEL] = [L.TRAIL, L.ROCK, 0.35, 1.0, Color(0.95, 0.92, 0.88), ASCII_GROUND]
-	t[Blocks.COAL_ORE] = rock + [Color(0.06, 0.06, 0.06), 0.55, Color(0, 0, 0), 0.0]
-	t[Blocks.IRON_ORE] = rock + [Color(0.62, 0.38, 0.24), 0.5, Color(0, 0, 0), 0.3]
-	t[Blocks.GOLD_ORE] = rock + [Color(0.95, 0.72, 0.25), 0.45, Color(0.05, 0.03, 0.0), 0.95]
-	t[Blocks.EMBER_ORE] = dark + [Color(1.0, 0.45, 0.12), 0.55, Color(1.5, 0.5, 0.1), 0.0]
+	t[Blocks.COAL_ORE] = rock + [Color(0.06, 0.06, 0.06), 0.28, Color(0.00, 0.00, 0.00), 0.0]
+	t[Blocks.IRON_ORE] = rock + [Color(0.62, 0.38, 0.24), 0.25, Color(0.00, 0.00, 0.00), 0.3]
+	t[Blocks.GOLD_ORE] = rock + [Color(0.95, 0.72, 0.25), 0.23, Color(0.02, 0.01, 0.00), 0.95]
+	t[Blocks.EMBER_ORE] = dark + [Color(1.0, 0.45, 0.12), 0.28, Color(0.96, 0.36, 0.08), 0.0]
 	t[Blocks.OBSIDIAN] = [L.DARK, L.DARK, 0.25, 0.25, Color(0.22, 0.17, 0.3), ASCII_SOLID]
 	t[Blocks.BEDROCK] = [L.DARK, L.DARK, 0.2, 1.0, Color(0.35, 0.33, 0.33), ASCII_SOLID]
-	t[Blocks.BASALT] = dark
-	t[Blocks.ASH] = [L.ASH, L.DARK, 0.25, 1.0, Color(0.9, 0.86, 0.84), ASCII_GROUND]
+	t[Blocks.BASALT] = [L.BASALT_ROCK, L.BASALT_ROCK, 0.13, 1.0, Color(0.95, 0.92, 0.92), ASCII_SOLID]
+	t[Blocks.ASH] = [L.ASH, L.DARK, 0.11, 1.0, Color(0.9, 0.86, 0.84), ASCII_GROUND]  # low rate: the ash photo tiles visibly
 	t[Blocks.BONE] = [L.LIMESTONE, L.LIMESTONE, 0.4, 0.9, Color(1.15, 1.1, 0.95), ASCII_SOLID]
 	t[Blocks.HELLSTONE] = [L.DARK, L.DARK, 0.25, 0.8, Color(0.7, 0.3, 0.25), ASCII_SOLID, Color(1.0, 0.25, 0.08), 0.7, Color(2.2, 0.35, 0.08), 0.0]
 	t[Blocks.DRY_GRASS] = [L.DRY, L.DIRT, 0.28, 1.0, Color(1.0, 0.95, 0.85), ASCII_GROUND]
-	t[Blocks.CRYSTAL] = [L.SNOW, L.ROCK, 0.3, 0.2, Color(0.55, 0.85, 1.0), ASCII_SOLID, Color(0.6, 0.9, 1.0), 0.8, Color(0.22, 0.5, 0.8), 0.0]
+	t[Blocks.CRYSTAL] = [L.SNOW, L.ROCK, 0.3, 0.2, Color(0.55, 0.85, 1.0), ASCII_SOLID, Color(0.6, 0.9, 1.0), 0.40, Color(0.36, 0.64, 0.88), 0.0]
 	t[Blocks.DEEPSLATE] = deep
 	t[Blocks.MUD] = [L.MUD, L.MUD, 0.3, 0.7, Color(0.9, 0.88, 0.85), ASCII_GROUND]
 	t[Blocks.SOUL_SAND] = [L.SAND, L.ASH, 0.3, 1.0, Color(0.45, 0.33, 0.27), ASCII_GROUND]
@@ -56,17 +57,31 @@ static func _table() -> Dictionary:
 	t[Blocks.SLATE] = [L.DARK, L.DARK, 0.3, 0.9, Color(0.75, 0.82, 0.95), ASCII_SOLID]
 	t[Blocks.CLAY] = [L.CLAY, L.CLAY, 0.3, 0.9, Color(1.0, 0.95, 0.9), ASCII_GROUND]
 	t[Blocks.LIMESTONE] = [L.LIMESTONE, L.LIMESTONE, 0.22, 1.0, Color(0.95, 0.95, 0.92), ASCII_SOLID]
-	t[Blocks.COPPER_ORE] = rock + [Color(0.78, 0.42, 0.22), 0.5, Color(0, 0, 0), 0.75]
-	t[Blocks.TIN_ORE] = rock + [Color(0.78, 0.8, 0.8), 0.45, Color(0, 0, 0), 0.6]
-	t[Blocks.SILVER_ORE] = deep + [Color(0.88, 0.9, 0.95), 0.45, Color(0.02, 0.02, 0.03), 1.0]
-	t[Blocks.MITHRIL_ORE] = deep + [Color(0.6, 0.85, 1.0), 0.5, Color(0.14, 0.36, 0.6), 1.0]
-	t[Blocks.ADAMANTITE_ORE] = dark + [Color(0.3, 0.9, 0.45), 0.5, Color(0.08, 0.48, 0.17), 1.0]
-	t[Blocks.RUBY_ORE] = deep + [Color(0.85, 0.06, 0.1), 0.4, Color(0.6, 0.02, 0.04), 0.3]
-	t[Blocks.SAPPHIRE_ORE] = deep + [Color(0.1, 0.25, 0.95), 0.4, Color(0.03, 0.1, 0.7), 0.3]
-	t[Blocks.AMETHYST] = deep + [Color(0.65, 0.35, 0.95), 0.85, Color(0.42, 0.15, 0.78), 0.2]
+	t[Blocks.COPPER_ORE] = rock + [Color(0.78, 0.42, 0.22), 0.25, Color(0.00, 0.00, 0.00), 0.75]
+	t[Blocks.TIN_ORE] = rock + [Color(0.78, 0.8, 0.8), 0.23, Color(0.00, 0.00, 0.00), 0.6]
+	t[Blocks.SILVER_ORE] = deep + [Color(0.88, 0.9, 0.95), 0.23, Color(0.01, 0.01, 0.01), 1.0]
+	t[Blocks.MITHRIL_ORE] = deep + [Color(0.6, 0.85, 1.0), 0.25, Color(0.14, 0.32, 0.52), 1.0]
+	t[Blocks.ADAMANTITE_ORE] = dark + [Color(0.3, 0.9, 0.45), 0.25, Color(0.08, 0.44, 0.16), 1.0]
+	t[Blocks.RUBY_ORE] = deep + [Color(0.85, 0.06, 0.1), 0.20, Color(0.24, 0.01, 0.02), 0.3]
+	t[Blocks.SAPPHIRE_ORE] = deep + [Color(0.1, 0.25, 0.95), 0.20, Color(0.01, 0.04, 0.28), 0.3]
+	t[Blocks.AMETHYST] = deep + [Color(0.65, 0.35, 0.95), 0.42, Color(0.36, 0.14, 0.64), 0.2]
+	# World revision 3: canyon, volcanic, tundra and cave-biome materials.
+	t[Blocks.RED_ROCK] = [L.RED_CLIFF, L.RED_CLIFF, 0.11, 1.0, Color(1.12, 0.82, 0.7), ASCII_SOLID]
+	t[Blocks.RED_SAND] = [L.SAND, L.SANDSTONE, 0.3, 1.0, Color(1.2, 0.64, 0.4), ASCII_GROUND]
+	t[Blocks.UMBER_ROCK] = [L.RED_CLIFF, L.RED_CLIFF, 0.11, 1.0, Color(0.8, 0.6, 0.52), ASCII_SOLID]
+	t[Blocks.SCORIA] = [L.BASALT_ROCK, L.BASALT_ROCK, 0.16, 1.0, Color(1.35, 0.78, 0.66), ASCII_SOLID]
+	t[Blocks.PERMAFROST] = [L.TRAIL, L.ROCK, 0.3, 0.9, Color(0.78, 0.82, 0.86), ASCII_GROUND]
+	t[Blocks.FLOWSTONE] = [L.MARBLE, L.LIMESTONE, 0.3, 0.45, Color(1.02, 0.9, 0.72), ASCII_SOLID, Color(1.0, 0.94, 0.82), 0.2, Color(0, 0, 0), 0.0]
+	t[Blocks.GEYSERITE] = [L.LIMESTONE, L.LIMESTONE, 0.35, 0.8, Color(1.08, 0.86, 0.62), ASCII_SOLID, Color(0.92, 0.42, 0.16), 0.35, Color(0, 0, 0), 0.0]
+	t[Blocks.MYCELIUM] = [L.MUD, L.MOSSY, 0.35, 0.8, Color(0.72, 0.62, 0.78), ASCII_GROUND, Color(0.35, 0.9, 0.75), 0.18, Color(0.08, 0.4, 0.32), 0.0]
+	t[Blocks.MAGMA_ROCK] = [L.DARK, L.DARK, 0.25, 0.9, Color(0.5, 0.36, 0.32), ASCII_SOLID, Color(1.0, 0.38, 0.08), 0.62, Color(3.2, 0.95, 0.18), 0.0]
+	t[Blocks.SCREE] = [L.SCREE, L.CLIFF, 0.3, 1.0, Color(0.95, 0.96, 1.0), ASCII_GROUND]
+	t[Blocks.ALPINE_ROCK] = [L.CLIFF, L.CLIFF, 0.1, 1.0, Color(0.78, 0.82, 0.9), ASCII_SOLID]
 	t[SmoothMesher.CODE_FOREST_FLOOR] = [L.FOREST, L.DIRT, 0.3, 1.0, Color(1.0, 0.93, 0.85), ASCII_GROUND]
 	t[SmoothMesher.CODE_HELL_ASH] = [L.ASH, L.DARK, 0.25, 1.0, Color(0.75, 0.55, 0.5), ASCII_GROUND]
 	t[SmoothMesher.CODE_PEAK_GRASS] = [L.LUSH, L.ROCK, 0.28, 1.0, Color(0.78, 0.82, 0.72), ASCII_GROUND]
+	# (Ore amounts and glow are kept low: the modelled crusts and crystals of CaveDecor carry the
+	# look; the shader adds only faint stains around them.)
 	# Crisp cube blocks (voxel.gdshader).
 	t[Blocks.PLANKS] = [L.PLANKS, L.PLANKS, 0.5, 1.0, Color(1.0, 0.92, 0.82), ASCII_SOLID]
 	t[Blocks.CHEST] = [L.PLANKS, L.PLANKS, 0.5, 1.0, Color(0.85, 0.65, 0.45), ASCII_SOLID]
