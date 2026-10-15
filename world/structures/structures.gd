@@ -61,6 +61,10 @@ static func village(loc: Location, rng: RandomNumberGenerator, is_start: bool) -
 		elif i == 1:
 			_forge(bp, Vector3i(hp.x, fy, hp.y))
 			loc.add_spawn("npc", _w(bp, Vector3(hp.x + door.x * 4, fy + 1, hp.y + door.y * 4)), {"role": "blacksmith"})
+			# Crafting stations at the smithy (spawned by LocationDirector once stations exist).
+			loc.add_spawn("station", _w(bp, Vector3(hp.x + 1, fy + 1, hp.y - 2)), {"station": "anvil", "yaw": 0.0})
+			loc.add_spawn("station", _w(bp, Vector3(hp.x - 2, fy + 1, hp.y + 2)), {"station": "furnace", "yaw": PI})
+			loc.add_spawn("station", _w(bp, Vector3(hp.x + 3, fy + 1, hp.y - 2)), {"station": "workbench", "yaw": 0.0})
 		else:
 			_house(bp, Vector3i(hp.x, fy, hp.y), 7 + 2 * rng.randi_range(0, 1), 6 + rng.randi_range(0, 2), 4, door, false)
 	for i in 4:

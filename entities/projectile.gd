@@ -12,6 +12,9 @@ const KINDS := {
 	"arrow": {"gravity": 9.0, "radius": 0.18, "explode": 0.0, "damage_kind": "hit", "life": 5.0, "visual": "arrow", "size": 1.0},
 	"boulder": {"gravity": 16.0, "radius": 1.0, "explode": 3.4, "damage_kind": "hit", "life": 7.0, "visual": "boulder", "size": 1.0},
 	"soul_bolt": {"gravity": 0.0, "radius": 0.4, "explode": 1.2, "damage_kind": "fire", "life": 6.0, "visual": "soul", "size": 0.9, "homing": 1.6},
+	# Creature venom / bile: lobbed globs that splash (Leviathan, spiders, the Bog Hag).
+	"bile": {"gravity": 9.0, "radius": 0.5, "explode": 2.6, "damage_kind": "hit", "life": 6.0, "visual": "bile", "size": 1.2},
+	"venom": {"gravity": 6.0, "radius": 0.3, "explode": 1.2, "damage_kind": "hit", "life": 4.0, "visual": "bile", "size": 0.6},
 }
 
 var kind := "fireball"
@@ -165,6 +168,9 @@ func _play_impact(point: Vector3, explode: float) -> void:
 			_shake(point, 0.6)
 		"arrow":
 			Audio.play("block_hit", point, -8.0, 1.4)
+		"bile":
+			CreatureFx.play(parent, "venom", point, maxf(0.8, explode * 0.6))
+			Audio.play("splash", point, -2.0, 1.4)
 
 
 func _shake(point: Vector3, strength: float) -> void:
@@ -208,6 +214,17 @@ func _build_visual() -> void:
 			light.light_energy = 2.0
 			light.omni_range = 6.0
 			add_child(light)
+		"bile":
+			var size := float(_cfg["size"])
+			var core := MeshInstance3D.new()
+			var quad := QuadMesh.new()
+			quad.size = Vector2(size, size)
+			core.mesh = quad
+			core.material_override = MaterialLibrary.fx(Color(0.85, 1.0, 0.5), Color(0.2, 0.55, 0.05), 5.0)
+			core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(core)
+			var drip := CreatureFx.emitter(self, "venom", 24, Vector3(0.1, 0.1, 0.1), 0.6)
+			drip.emitting = true
 		"arrow":
 			var wood := ModelKit.mat(Color(0.45, 0.32, 0.2))
 			ModelKit.part(self, ModelKit.cylinder(0.015, 0.015, 0.8, 4), wood, Vector3(0, 0, 0.1), Vector3(90, 0, 0))

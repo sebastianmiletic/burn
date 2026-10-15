@@ -84,9 +84,119 @@ func _plan_overworld() -> Array[Location]:
 		var loc := Location.new(StringName("ruin_%d" % i), ruin_names[i], Location.Kind.RUIN, Vector3(p.x, g, p.y))
 		Structures.ruin(loc, rng)
 		out.append(loc)
+	# Creature lairs: planned last with their own random stream so every
+	# location above keeps its place in existing worlds.
+	var lair_rng := RandomNumberGenerator.new()
+	lair_rng.seed = gen.world_seed * 104729 + 31
+	out.append_array(_drowned_spire(out, lair_rng))
+	out.append_array(_weeping_hollow(out, lair_rng))
+	out.append_array(_hagsfen(out, lair_rng))
 	for loc in out:
 		loc.dimension = 0
 	return out
+
+
+func _inside(p: Vector2, margin: float) -> bool:
+	return p.x > margin and p.y > margin and p.x < gen.size - margin and p.y < gen.size - margin
+
+
+## The Leviathan's islet: the shortest hop from the coast out into deep water,
+## away from everything else, joined to the shore by a broken causeway.
+func _drowned_spire(existing: Array[Location], lrng: RandomNumberGenerator) -> Array[Location]:
+	var c := gen.center()
+	var best := {}
+	var best_score := INF
+	for i in 36:
+		var a := TAU * float(i) / 36.0
+		var d := Vector2(cos(a), sin(a))
+		var r := 300.0
+		var r_land := -1.0
+		var found := false
+		while r < 1000.0 and _inside(c + d * r, 60.0):
+			if gen.smooth_height((c + d * r).x, (c + d * r).y) < WorldGen.SEA_LEVEL - 2:
+				found = true
+				break
+			r_land = r
+			r += 4.0
+		if not found or r_land < 0.0:
+			continue
+		var deep := true
+		for k in range(10, 100, 10):
+			var q := c + d * (r + float(k))
+			if not _inside(q, 45.0) or gen.smooth_height(q.x, q.y) > WorldGen.SEA_LEVEL - 3:
+				deep = false
+				break
+		if not deep:
+			continue
+		var islet := c + d * (r + 60.0)
+		if not _far_from(existing, islet, 170.0) or not _far_from(existing, c + d * (r_land - 8.0), 70.0):
+			continue
+		var score := r + lrng.randf() * 40.0
+		if score < best_score:
+			best_score = score
+			best = {"dir": d, "islet": islet, "land": c + d * (r_land - 2.0)}
+	if best.is_empty():
+		return []
+	var d: Vector2 = best["dir"]
+	var islet: Vector2 = best["islet"]
+	var land: Vector2 = best["land"]
+	var spire := Location.new(&"drowned_spire", "The Drowned Spire", Location.Kind.TOWER, Vector3(islet.x, WorldGen.SEA_LEVEL + 2, islet.y))
+	spire.major = true
+	Lairs.drowned_spire(spire, d, lrng)
+	Lairs.causeway(spire, land, islet - d * 16.0, lrng)
+	return [spire, _shrine(&"tidewatch_shrine", "Tidewatch Shrine", land - d * 8.0)]
+
+
+## The Broodmother's cavern beneath Emberwood.
+func _weeping_hollow(existing: Array[Location], lrng: RandomNumberGenerator) -> Array[Location]:
+	var dirs: Array[Vector2i] = [Vector2i(1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(-1, 0)]
+	var candidates: Array[Vector2] = []
+	for gz in range(-7, 8):
+		for gx in range(-7, 8):
+			candidates.append(Vector2(1400, 1060) + Vector2(gx, gz) * 28.0)
+	candidates.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.distance_squared_to(Vector2(1400, 1060)) < b.distance_squared_to(Vector2(1400, 1060)))
+	for p: Vector2 in candidates:
+		if not _inside(p, 140.0) or gen.biome_at(int(p.x), int(p.y)) != WorldGen.Biome.FOREST:
+			continue
+		var g := _ground(p.x, p.y)
+		if g < WorldGen.SEA_LEVEL + 6 or not _far_from(existing, p, 150.0):
+			continue
+		for dv: Vector2i in dirs:
+			var cav := p + Vector2(dv) * 101.0
+			if not _inside(cav, 40.0) or not _far_from(existing, cav, 110.0):
+				continue
+			var gc := _ground(cav.x, cav.y)
+			if gc < WorldGen.SEA_LEVEL + 6:
+				continue
+			var floor_y := clampi(mini(g, gc) - 42, -70, 10)
+			var surface := Location.new(&"weeping_hollow", "The Weeping Hollow", Location.Kind.RUIN, Vector3(p.x, g, p.y))
+			surface.major = true
+			var lair := Location.new(&"broodmother_lair", "The Broodmother's Lair", Location.Kind.CRYPT, Vector3(cav.x, floor_y, cav.y))
+			lair.major = true
+			Lairs.weeping_hollow(surface, lair, dv, floor_y, lrng)
+			return [surface, lair, _shrine(&"hollow_shrine", "Emberwood Shrine", p - Vector2(dv) * 16.0)]
+	return []
+
+
+## The bog witch's clearing in Blackmarsh.
+func _hagsfen(existing: Array[Location], lrng: RandomNumberGenerator) -> Array[Location]:
+	var centre := Vector2(400, 860)
+	var candidates: Array[Vector2] = []
+	for gz in range(-9, 10):
+		for gx in range(-9, 10):
+			candidates.append(centre + Vector2(gx, gz) * 26.0)
+	candidates.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.distance_squared_to(centre) < b.distance_squared_to(centre))
+	for p: Vector2 in candidates:
+		if not _inside(p, 60.0) or gen.biome_at(int(p.x), int(p.y)) != WorldGen.Biome.MARSH:
+			continue
+		if not _far_from(existing, p, 130.0):
+			continue
+		var g := maxi(_ground(p.x, p.y), WorldGen.SEA_LEVEL + 2)
+		var loc := Location.new(&"hagsfen", "Hagsfen", Location.Kind.RUIN, Vector3(p.x, g, p.y))
+		loc.major = true
+		Lairs.hagsfen(loc, lrng)
+		return [loc]
+	return []
 
 
 func _far_from(locs: Array[Location], p: Vector2, dist: float) -> bool:
@@ -182,7 +292,7 @@ static func roads(world_gen: WorldGen) -> Array[PackedVector2Array]:
 	if world_gen.dimension == WorldGen.Dimension.OVERWORLD:
 		if by_id.has(&"emberfall"):
 			hub = Vector2(by_id[&"emberfall"].center.x, by_id[&"emberfall"].center.z)
-		for id: StringName in [&"ashford", &"thornwick", &"frosthold", &"mirewatch", &"cinderreach", &"silent_crypt", &"hall_shrine", &"keep_shrine", &"crater_shrine"]:
+		for id: StringName in [&"ashford", &"thornwick", &"frosthold", &"mirewatch", &"cinderreach", &"silent_crypt", &"hall_shrine", &"keep_shrine", &"crater_shrine", &"tidewatch_shrine"]:
 			if by_id.has(id):
 				targets.append(by_id[id])
 	else:

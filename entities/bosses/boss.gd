@@ -33,6 +33,8 @@ var spawn_point := Vector3.ZERO
 var threat := {}
 var fight_time := 0.0
 var summons: Array[Entity] = []
+## Location id this boss guards (set by LocationDirector; arena gates use it).
+var home_location := ""
 
 var _attack := ""
 var _attack_t := 0.0
@@ -81,6 +83,12 @@ static func create(boss_kind: String) -> Boss:
 			return CerberusBoss.new()
 		"hades":
 			return HadesBoss.new()
+		"leviathan":
+			return LeviathanBoss.new()
+		"broodmother":
+			return BroodmotherBoss.new()
+		"bog_hag":
+			return BogHagBoss.new()
 	push_error("Unknown boss kind %s" % boss_kind)
 	return WardenBoss.new()
 

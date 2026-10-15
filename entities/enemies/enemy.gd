@@ -90,8 +90,15 @@ static func create(enemy_kind: String) -> Enemy:
 	return e
 
 
+## Stats for any monster kind: the originals here, newer creatures in MobDB.
+static func stats_for(enemy_kind: String) -> Dictionary:
+	if STATS.has(enemy_kind):
+		return STATS[enemy_kind]
+	return MobDB.STATS.get(enemy_kind, STATS["skeleton"])
+
+
 func _ready() -> void:
-	stats = STATS.get(kind, STATS["skeleton"])
+	stats = stats_for(kind)
 	display_name = stats["name"]
 	max_health = stats["health"]
 	if health <= 0.0 or health == 100.0:
@@ -107,7 +114,7 @@ func _ready() -> void:
 	if spawn_point == Vector3.ZERO:
 		spawn_point = global_position
 	_rng.seed = hash(str(net_id) + kind)
-	model = Models.create(kind)
+	model = Models.create_mob(kind, net_id)
 	add_child(model)
 	_last_pos = global_position
 	_last_health = health
@@ -159,7 +166,32 @@ func _on_died() -> void:
 
 # --- Server AI ------------------------------------------------------------------
 
-func server_tick(delta: float) -> void:
+## AI level of detail: calm monsters with no player nearby think 5x a second.
+var _lod_acc := 0.0
+var _lod_check := 0.0
+var _lod_step := 0.0
+
+
+## Seconds of simulation to run now, or -1 to skip this frame.
+func _lod_gate(delta: float) -> float:
+	_lod_check -= delta
+	if _lod_check <= 0.0:
+		_lod_check = 0.5
+		var w = _w()
+		var near: Variant = w.nearest_player(global_position, dimension, 40.0) if w != null else null
+		_lod_step = 0.0 if near != null or not state in [State.IDLE, State.PATROL, State.RETURN] else 0.2
+	_lod_acc += delta
+	if _lod_acc < _lod_step:
+		return -1.0
+	var d := _lod_acc
+	_lod_acc = 0.0
+	return d
+
+
+func server_tick(frame_delta: float) -> void:
+	var delta := frame_delta if dead else _lod_gate(frame_delta)
+	if delta < 0.0:
+		return
 	if dead:
 		_dead_t += delta
 		if _dead_t > 3.6 and not _despawned:

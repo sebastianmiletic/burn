@@ -1,0 +1,176 @@
+class_name FlockModel
+extends CreatureModel
+## A group of small animals drawn with MultiMeshes and animated locally:
+## birds (sparrows / crows / gulls) that peck on the ground and burst into
+## the air when startled, fish schools that mill in the water and scatter,
+## and bat swarms that loop under cave ceilings.
+##
+## `startled` (from the entity) switches between calm and flight. Members
+## move in the model's local space; the entity's position is the group's
+## centre (birds' perch ground, fish's mid-depth).
+
+var species := "bird_flock"
+var count := 10
+var startled := false
+var flee_dir := Vector3.FORWARD
+
+var _members: Array = []  # [pos, vel, phase, perch(Vector3), size]
+var _bodies: MultiMeshInstance3D
+var _wing_l: MultiMeshInstance3D
+var _wing_r: MultiMeshInstance3D
+var _rng := RandomNumberGenerator.new()
+var _startle_t := 0.0
+
+
+func _init(kind_name := "bird_flock", variant_seed := 0) -> void:
+	species = kind_name
+	_rng.seed = variant_seed
+	match species:
+		"fish_school":
+			count = _rng.randi_range(9, 16)
+		"bat_swarm":
+			count = _rng.randi_range(8, 14)
+		"gull_flock":
+			count = _rng.randi_range(5, 8)
+		_:
+			count = _rng.randi_range(6, 11)
+	dissolve_delay = 0.2
+
+
+func _lod_size() -> float:
+	return 2.0
+
+
+func _build() -> void:
+	var body_mesh: Mesh
+	var wing_mesh: Mesh
+	var body_mat: Material
+	var wing_mat: Material
+	var size := 1.0
+	match species:
+		"fish_school":
+			size = 0.5
+			body_mesh = OrganicMesh.profile("flock_fish", Vector3(0, 0, 0.22), Vector3(0, 0, -0.2), [[0.0, 0.005, 0.06], [0.12, 0.015, 0.025], [0.45, 0.045, 0.07], [0.85, 0.035, 0.05], [1.0, 0.01, 0.01]], 8, 10)
+			body_mat = CreatureSkin.scales(Color(0.35, 0.42, 0.45), Color(0.85, 0.88, 0.85), 40.0, {"specular_amount": 0.9, "roughness": 0.2, "wet": 0.6, "ascii_id": AsciiMaterialId.LIQUID})
+		"bat_swarm":
+			body_mesh = OrganicMesh.blob("flock_bat_body", Vector3(0.05, 0.05, 0.09), 0.1, 3, 8)
+			wing_mesh = OrganicMesh.membrane("flock_bat_wing", PackedVector2Array([Vector2(0, 0.02), Vector2(0.24, 0.03), Vector2(0.2, -0.08), Vector2(0.12, -0.05), Vector2(0.0, -0.12)]), 0.02, 0.005)
+			body_mat = CreatureSkin.fur(Color(0.18, 0.14, 0.12), Color(0.25, 0.2, 0.17), {"pattern_scale": 40.0})
+			wing_mat = CreatureSkin.membrane(Color(0.2, 0.12, 0.1), {"backlight": 1.2})
+		_:
+			var dark := species == "crow_flock"
+			var gull := species == "gull_flock"
+			size = 1.6 if gull else (1.2 if dark else 0.8)
+			body_mesh = OrganicMesh.profile("flock_bird_body", Vector3(0, 0, 0.12), Vector3(0, 0.02, -0.11), [[0.0, 0.015, 0.006], [0.25, 0.045, 0.045], [0.7, 0.04, 0.04], [0.85, 0.028, 0.028], [1.0, 0.008, 0.006]], 8, 10)
+			wing_mesh = OrganicMesh.membrane("flock_bird_wing", PackedVector2Array([Vector2(0, 0.03), Vector2(0.12, 0.02), Vector2(0.22, -0.03), Vector2(0.14, -0.07), Vector2(0, -0.05)]), 0.015, 0.006)
+			var c := Color(0.12, 0.11, 0.12) if dark else (Color(0.85, 0.86, 0.85) if gull else Color(0.45, 0.35, 0.25))
+			body_mat = CreatureSkin.feathers(c, c.lightened(0.3), {"pattern_scale": 60.0})
+			wing_mat = CreatureSkin.feathers(c.darkened(0.2) if not gull else Color(0.55, 0.57, 0.6), c, {"pattern_scale": 60.0})
+	_bodies = _multi(body_mesh, body_mat)
+	if wing_mesh != null:
+		_wing_l = _multi(wing_mesh, wing_mat)
+		_wing_r = _multi(wing_mesh, wing_mat)
+	for i in count:
+		var a := _rng.randf() * TAU
+		var r := _rng.randf_range(0.5, 3.5)
+		var perch := Vector3(cos(a) * r, 0.0, sin(a) * r)
+		var pos := perch
+		if species == "fish_school" or species == "bat_swarm":
+			pos = Vector3(cos(a) * r, _rng.randf_range(-0.8, 0.8), sin(a) * r)
+		_members.append([pos, Vector3.ZERO, _rng.randf() * TAU, perch, size * _rng.randf_range(0.85, 1.15)])
+
+
+func _multi(mesh: Mesh, mat: Material) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = count
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.custom_aabb = AABB(Vector3(-40, -20, -40), Vector3(80, 60, 80))
+	add_child(mi)
+	return mi
+
+
+func _animate(delta: float) -> void:
+	if _bodies == null:
+		return
+	delta = minf(delta, 0.1)
+	_startle_t = _startle_t + delta if startled else 0.0
+	var fish := species == "fish_school"
+	var bats := species == "bat_swarm"
+	for i in count:
+		var m: Array = _members[i]
+		var pos: Vector3 = m[0]
+		var vel: Vector3 = m[1]
+		var ph: float = m[2]
+		var perch: Vector3 = m[3]
+		var sz: float = m[4]
+		var flying := false
+		var flap := 0.0
+		if fish or bats:
+			# Orbit the centre with a little wander; scatter faster when startled.
+			var speed := (1.2 if fish else 3.0) * (2.2 if startled else 1.0)
+			var orbit_r := (2.5 if fish else 3.5) + sin(_time * 0.3 + i) * 1.0 + (2.0 if startled else 0.0)
+			var a := atan2(pos.z, pos.x) + speed / orbit_r * delta * (1.0 if i % 3 else -1.0)
+			var target := Vector3(cos(a) * orbit_r, sin(_time * (0.7 if fish else 1.6) + i * 1.3) * (0.6 if fish else 1.4), sin(a) * orbit_r)
+			vel = vel.lerp((target - pos) * 2.0, 1.0 - exp(-3.0 * delta))
+			flying = true
+			flap = sin(_time * 18.0 + ph)
+		else:
+			if startled:
+				# Burst up and away, then circle high above while the flock leaves.
+				var t := _startle_t + float(i) * 0.04
+				var away := flee_dir.normalized() if flee_dir.length() > 0.1 else Vector3.FORWARD
+				var target := Vector3(cos(_time * 0.6 + ph) * 6.0, 10.0 + sin(ph) * 2.0, sin(_time * 0.6 + ph) * 6.0) + away * minf(t * 4.0, 30.0)
+				var accel := (target - pos) * (3.0 if t < 1.0 else 1.2)
+				vel = vel.lerp(accel.limit_length(9.0), 1.0 - exp(-4.0 * delta))
+				flying = true
+				flap = sin(_time * (22.0 if t < 1.0 else 12.0) + ph)
+			else:
+				# Peck about on the ground, hop to new spots now and then.
+				var hop := fposmod(_time * 0.35 + ph, 3.0) < 0.12
+				if hop:
+					perch += Vector3(cos(ph * 7.0 + _time), 0, sin(ph * 5.0 + _time)) * 0.03
+					perch = perch.limit_length(4.0)
+					m[3] = perch
+				vel = (perch - pos) * 4.0
+				pos.y = maxf(0.0, pos.y)
+				if pos.y > 0.3:
+					flying = true
+					flap = sin(_time * 18.0 + ph)
+		pos += vel * delta
+		if not fish and not bats and not startled:
+			pos.y = lerpf(pos.y, 0.0, 1.0 - exp(-5.0 * delta))
+		m[0] = pos
+		m[1] = vel
+		var dir := vel
+		dir.y *= 0.5
+		var basis := Basis()
+		if dir.length() > 0.05:
+			basis = Basis.looking_at(dir.normalized(), Vector3.UP)
+		else:
+			basis = Basis(Vector3.UP, ph)
+		if not flying and not fish:
+			var peck := maxf(0.0, sin(_time * 5.0 + ph * 3.0)) * 0.7
+			basis = basis * Basis(Vector3.RIGHT, -peck)
+		if fish:
+			basis = basis * Basis(Vector3.UP, sin(_time * 9.0 + ph) * 0.25)
+		var xf := Transform3D(basis.scaled(Vector3.ONE * sz), pos + Vector3(0, 0.05 * sz if not fish else 0.0, 0))
+		_bodies.multimesh.set_instance_transform(i, xf)
+		if _wing_l != null:
+			var flat := Basis(Vector3.RIGHT, -PI * 0.5)
+			var mirror := Basis.from_scale(Vector3(-1, 1, 1))
+			var rb: Basis
+			var lb: Basis
+			if flying:
+				rb = Basis(Vector3.BACK, flap * 0.9) * flat
+				lb = Basis(Vector3.BACK, -flap * 0.9) * flat * mirror
+			else:
+				# Folded back along the body.
+				rb = Basis(Vector3.UP, -1.45) * Basis(Vector3.BACK, 0.25) * flat
+				lb = Basis(Vector3.UP, 1.45) * Basis(Vector3.BACK, -0.25) * flat * mirror
+			_wing_r.multimesh.set_instance_transform(i, xf * Transform3D(rb, Vector3(0.03, 0.025, -0.02)))
+			_wing_l.multimesh.set_instance_transform(i, xf * Transform3D(lb, Vector3(-0.03, 0.025, -0.02)))

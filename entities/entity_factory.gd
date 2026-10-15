@@ -3,7 +3,14 @@ extends RefCounted
 ## Creates any entity by kind name (used by GameWorld on server and clients).
 
 const ENEMY_KINDS := ["skeleton", "archer", "ghoul", "troll", "imp", "shade"]
-const BOSS_KINDS := ["warden", "mountain_king", "dragon", "cerberus", "hades"]
+const BOSS_KINDS := ["warden", "mountain_king", "dragon", "cerberus", "hades", "leviathan", "broodmother", "bog_hag"]
+## Hostile creatures with their own behaviours (entities/enemies/beast.gd, stats in mob_db.gd).
+const BEAST_KINDS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "giant_spider", "spiderling",
+		"cave_bat", "cave_crawler", "rock_golem", "scorpion", "fire_elemental", "bog_lurker", "shark",
+		"sea_serpent", "drowned"]
+## Passive wildlife (entities/wildlife/*).
+const WILDLIFE_KINDS := ["deer", "stag", "rabbit", "goat", "boar"]
+const FLOCK_KINDS := ["bird_flock", "gull_flock", "crow_flock", "fish_school", "bat_swarm"]
 
 
 static func create(kind: String, _data := {}) -> Entity:
@@ -22,8 +29,16 @@ static func create(kind: String, _data := {}) -> Entity:
 			return Portal.new()
 		"lore":
 			return LoreStone.new()
+		"decor":
+			return LairDecor.new()
 	if kind in ENEMY_KINDS:
 		return _from_script("res://entities/enemies/enemy.gd", kind)
+	if kind in BEAST_KINDS:
+		return _from_script("res://entities/enemies/beast.gd", kind)
+	if kind in WILDLIFE_KINDS:
+		return _from_script("res://entities/wildlife/wildlife.gd", kind)
+	if kind in FLOCK_KINDS:
+		return _from_script("res://entities/wildlife/flock.gd", kind)
 	if kind in BOSS_KINDS:
 		return _from_script("res://entities/bosses/boss.gd", kind)
 	return null
