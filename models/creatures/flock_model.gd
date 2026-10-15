@@ -50,8 +50,28 @@ func _build() -> void:
 	match species:
 		"fish_school":
 			size = 0.5
-			body_mesh = OrganicMesh.profile("flock_fish", Vector3(0, 0, 0.22), Vector3(0, 0, -0.2), [[0.0, 0.005, 0.06], [0.12, 0.015, 0.025], [0.45, 0.045, 0.07], [0.85, 0.035, 0.05], [1.0, 0.01, 0.01]], 8, 10)
-			body_mat = CreatureSkin.scales(Color(0.35, 0.42, 0.45), Color(0.85, 0.88, 0.85), 40.0, {"specular_amount": 0.9, "roughness": 0.2, "wet": 0.6, "ascii_id": AsciiMaterialId.LIQUID})
+			# A laterally flattened, fusiform fish with a forked tail, dorsal and
+			# pectoral fins and a gill cover, merged into one mesh.
+			var fish_body := OrganicMesh.profile("flock_fish_body", Vector3(0, 0, 0.17), Vector3(0, -0.004, -0.2), [[0.0, 0.007, 0.016], [0.15, 0.013, 0.03],
+				[0.42, 0.029, 0.068, 0.004], [0.62, 0.031, 0.066, 0.002], [0.8, 0.025, 0.05], [0.92, 0.016, 0.03, -0.004], [1.0, 0.004, 0.006, -0.006]], 10, 14)
+			var tail_fin := OrganicMesh.membrane("flock_fish_tail", PackedVector2Array([Vector2(0.015, 0.012), Vector2(-0.06, 0.06), Vector2(-0.115, 0.095),
+				Vector2(-0.085, 0.02), Vector2(-0.075, 0.0), Vector2(-0.085, -0.02), Vector2(-0.115, -0.095), Vector2(-0.06, -0.06), Vector2(0.015, -0.012)]), 0.0, 0.004)
+			var dorsal_fin := OrganicMesh.membrane("flock_fish_dorsal", PackedVector2Array([Vector2(0.04, 0.0), Vector2(0.01, 0.045), Vector2(-0.03, 0.04), Vector2(-0.07, 0.012), Vector2(-0.07, 0.0)]), 0.0, 0.004)
+			var anal_fin := OrganicMesh.membrane("flock_fish_anal", PackedVector2Array([Vector2(0.02, 0.0), Vector2(-0.04, -0.025), Vector2(-0.05, 0.0)]), 0.0, 0.003)
+			var pec_fin := OrganicMesh.membrane("flock_fish_pec", PackedVector2Array([Vector2(0.0, 0.008), Vector2(0.045, -0.006), Vector2(0.035, -0.016), Vector2(0.0, -0.006)]), 0.0, 0.003)
+			var gill := OrganicMesh.bezier("flock_fish_gill", Vector3(0, 0.045, 0), Vector3(0, 0.0, 0.012), Vector3(0, -0.045, 0.0), 0.004, 0.003, 5, 4)
+			var eye := OrganicMesh.blob("flock_fish_eye", Vector3(0.006, 0.012, 0.012), 0.02, 3, 8)
+			var turn := Basis(Vector3.UP, PI * 0.5)
+			var fish_parts: Array = [[fish_body, Transform3D()], [tail_fin, Transform3D(turn, Vector3(0, 0, 0.165))],
+				[dorsal_fin, Transform3D(turn, Vector3(0, 0.06, -0.02))], [anal_fin, Transform3D(turn, Vector3(0, -0.05, 0.07))]]
+			for side: float in [-1.0, 1.0]:
+				fish_parts.append([pec_fin, Transform3D(Basis.from_euler(Vector3(0.0, side * -0.5, 0.0)).scaled(Vector3(side, 1, 1)), Vector3(side * 0.024, -0.02, -0.08))])
+				fish_parts.append([gill, Transform3D(Basis(), Vector3(side * 0.027, 0.0, -0.105))])
+				fish_parts.append([eye, Transform3D(Basis(), Vector3(side * 0.02, 0.012, -0.15))])
+			body_mesh = OrganicMesh.merge("flock_fish2", fish_parts)
+			body_mat = CreatureSkin.smooth(Color(0.2, 0.27, 0.3), Color(0.88, 0.9, 0.88), {"belly_mix": 1.0, "specular_amount": 0.95,
+				"pattern": CreatureSkin.Pattern.HIDE, "pattern_scale": 60.0, "roughness": 0.15, "wet": 0.6, "rim": 0.5, "bump": 0.15, "accent": Color(0.08, 0.1, 0.12), "accent_mode": 3, "accent_amount": 0.5,
+				"accent_scale": 30.0, "ascii_id": AsciiMaterialId.LIQUID})
 		"bat_swarm":
 			body_mesh = OrganicMesh.blob("flock_bat_body", Vector3(0.05, 0.05, 0.09), 0.1, 3, 8)
 			wing_mesh = OrganicMesh.membrane("flock_bat_wing", PackedVector2Array([Vector2(0, 0.02), Vector2(0.24, 0.03), Vector2(0.2, -0.08), Vector2(0.12, -0.05), Vector2(0.0, -0.12)]), 0.02, 0.005)
