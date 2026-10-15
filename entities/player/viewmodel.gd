@@ -150,7 +150,7 @@ func _process(delta: float) -> void:
 	_land = minf(_land + delta * 0.5, 0.06) if not player.body.on_floor else lerpf(_land, 0.0, 1.0 - exp(-delta * 9.0))
 
 	# Rest grips. One-handed: item held low-right, angled up and slightly in.
-	var r := _at(Vector3(0.21, -0.25, -0.38), -42.0, 6.0, 22.0)
+	var r := _at(Vector3(0.25, -0.29, -0.4), -58.0, 4.0, -6.0)
 	var l := _at(Vector3(-0.24, -0.34, -0.33), -10.0, -10.0, 12.0)
 	if two_handed:
 		# Both hands on the haft, the head forward and up to the right.
