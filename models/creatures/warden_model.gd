@@ -42,7 +42,7 @@ func _lod_size() -> float:
 
 
 func _dress() -> void:
-	var iron := BossKit.metal({"rust": 0.85, "wear": 0.4, "grime": 0.75, "roughness": 0.5, "rune": 1.0, "rune_color": SOUL, "rune_energy": 2.0, "rune_scale": 12.0})
+	var iron := BossKit.metal({"rust": 0.6, "wear": 0.4, "grime": 0.7, "roughness": 0.5, "rune": 1.0, "rune_color": SOUL, "rune_energy": 2.0, "rune_scale": 12.0})
 	var cloth := BossKit.cloth(CLOTH, Color(0.2, 0.19, 0.14), {"tatter": 0.6, "grime": 0.75})
 	var leather := BossKit.leather()
 	var bone := BossKit.bone()

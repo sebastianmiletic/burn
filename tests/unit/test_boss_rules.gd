@@ -418,3 +418,29 @@ func test_returns_when_fallen_or_lost() -> void:
 	var out := Vector2(b.global_position.x - b.spawn_point.x, b.global_position.z - b.spawn_point.z).length()
 	check(out < b.arena_radius * 1.3, "leashed to the arena (%.1f m out, arena %.0f m)" % [out, b.arena_radius])
 	_end()
+
+
+func test_boss_bar_ignores_other_bosses() -> void:
+	if not _begin():
+		return
+	var sim := SimWorld.new()
+	var hades := _boss(sim, "hades", "throne_of_hades")
+	var hag := _boss(sim, "bog_hag", "hagsfen")
+	hades.engaged = true
+	var bar := BossBar.new()
+	bar._on_engaged(hades, hades.display_name)
+	check_eq(bar._max, hades.max_health, "bar tracks the engaged boss")
+	# The hag left behind in her own arena gives up and reports her health.
+	bar._on_disengaged(hag)
+	bar._on_health(hag, hag.health, hag.max_health, 1)
+	check(bar._boss == hades, "another boss disengaging does not drop the tracked boss")
+	check_eq(bar._max, hades.max_health, "another boss's health never shows on the bar")
+	# With nothing tracked, a resetting (not engaged) boss is ignored; an engaged one is adopted.
+	bar._on_disengaged(hades)
+	hag.engaged = false
+	bar._on_health(hag, hag.health, hag.max_health, 1)
+	check(bar._boss == null, "a disengaged boss is not adopted")
+	bar._on_health(hades, hades.health, hades.max_health, 2)
+	check(bar._boss == hades and bar._phase == 2, "an engaged boss is adopted with its phase (joined mid-fight)")
+	bar.free()
+	_end()

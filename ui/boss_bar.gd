@@ -25,9 +25,7 @@ func _ready() -> void:
 	UiContext.on("boss_engaged", _on_engaged)
 	UiContext.on("boss_health_changed", _on_health)
 	UiContext.on("boss_defeated", _on_defeated)
-	UiContext.on("boss_disengaged", func(_b: Node) -> void:
-		_visible_target = false
-		_boss = null)
+	UiContext.on("boss_disengaged", _on_disengaged)
 
 
 func _on_engaged(boss: Node, display_name: String) -> void:
@@ -50,9 +48,24 @@ func _on_engaged(boss: Node, display_name: String) -> void:
 	_trail = _shown
 
 
-func _on_health(boss: Node, health: float, max_health: float, phase: int) -> void:
+## Another boss giving up (one left behind in another arena) must not hide or
+## take over the bar of the boss being fought.
+func _on_disengaged(boss: Node) -> void:
 	if boss != _boss and _boss != null:
 		return
+	_visible_target = false
+	_boss = null
+
+
+func _on_health(boss: Node, health: float, max_health: float, phase: int) -> void:
+	if not BossBar.accepts(_boss, boss):
+		return
+	if _boss == null and boss != null:
+		# Adopt a boss that is being fought (a client that joined mid-fight).
+		_boss = boss
+		var n: Variant = boss.get("display_name")
+		if n != null:
+			_name = String(n)
 	if health < _health:
 		_hit_flash = 1.0
 	if phase != _phase:
@@ -138,3 +151,14 @@ func _draw() -> void:
 	var nums := "%s / %s" % [UiTheme.format_int(ceili(_health)), UiTheme.format_int(roundi(_max))]
 	var ns := font.get_string_size(nums, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
 	draw_string(font, Vector2(w - ns.x, y), nums, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UiTheme.TEXT)
+
+
+## Health updates are shown for the tracked boss, or (with none tracked) only
+## for a boss that is actually engaged - never for one resetting elsewhere.
+static func accepts(tracked: Object, boss: Object) -> bool:
+	if tracked != null:
+		return boss == tracked
+	if boss == null:
+		return true
+	var e: Variant = boss.get("engaged")
+	return e == null or bool(e)
