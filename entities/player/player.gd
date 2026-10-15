@@ -51,6 +51,8 @@ var _fall_speed := 0.0
 var _lava_tick := 0.0
 var _footstep := 0.0
 var _sprinting := false
+var _coyote := 0.0
+var _jump_buffer := 1.0
 var _was_on_floor := true
 var _rustle := 0.0
 var _model_steps := false   # the model reports foot plants (footstep signal)
@@ -223,7 +225,8 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	var target_vel := wish * speed
 	if _action == "dodge":
 		target_vel = _dodge_dir * 11.0 * (1.0 - _action_time / 0.5)
-	var accel := 14.0 if body.on_floor else 4.0
+	# Snappy on the ground (quicker to stop than to start), some steering in the air.
+	var accel := (18.0 if target_vel.length() < 0.1 else 13.0) if body.on_floor else 5.0
 	if body.in_liquid == Blocks.WATER:
 		accel = 6.0
 		target_vel *= 0.6
@@ -231,14 +234,22 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	hv = hv.lerp(target_vel, 1.0 - exp(-accel * delta))
 	body.velocity.x = hv.x
 	body.velocity.z = hv.z
-	if _input_enabled and Input.is_action_pressed("jump"):
-		if body.on_floor:
-			body.velocity.y = JUMP_VELOCITY
-			_start_action("jump", 0.4)
-			_model_call("on_jump")
-			Audio.play("jump", global_position, -6.0, randf_range(0.92, 1.08))
-		elif body.in_liquid != 0:
-			body.velocity.y = 4.0  # swim up
+	# Jump buffering (a press just before landing still counts) and coyote time
+	# (a jump just after running off an edge still works); holding the key
+	# doesn't bunny-hop.
+	_coyote = 0.0 if body.on_floor else _coyote + delta
+	_jump_buffer += delta
+	if _input_enabled and Input.is_action_just_pressed("jump"):
+		_jump_buffer = 0.0
+	if _input_enabled and _jump_buffer < 0.14 and (body.on_floor or _coyote < 0.12) and body.velocity.y <= 0.5 and body.in_liquid == 0:
+		_jump_buffer = 1.0
+		_coyote = 1.0
+		body.velocity.y = JUMP_VELOCITY
+		_signal_anim("jump", 0.4)
+		_model_call("on_jump")
+		Audio.play("jump", global_position, -6.0, randf_range(0.92, 1.08))
+	elif _input_enabled and body.in_liquid != 0 and Input.is_action_pressed("jump"):
+		body.velocity.y = 4.0  # swim up
 	var falling := body.velocity.y
 	body.step(self, vw, delta)
 	if body.stepped > 0.0:
@@ -349,6 +360,14 @@ func _regen(delta: float) -> void:
 
 
 # --- Actions -----------------------------------------------------------------------------
+
+## Play an animation everywhere (model + replicated id) without occupying the
+## action slot, so e.g. jumping never blocks attacking.
+func _signal_anim(action: String, duration: float) -> void:
+	_action_seq = (_action_seq + 1) % 64
+	anim = ACTIONS.find(action) + 16 * _action_seq
+	_model_call("play", [action, duration])
+
 
 func _start_action(action: String, duration: float) -> void:
 	_action = action

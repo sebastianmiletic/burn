@@ -177,6 +177,16 @@ func _run() -> void:
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
 		for arg in OS.get_cmdline_user_args():
+			if arg == "--third-person" and p.camera.first_person:
+				p.camera.first_person = false
+				p.call("_apply_view")
+				await _frames(10)
+			elif arg.begins_with("--press="):
+				# Hold movement keys (e.g. move_forward,sprint) to catch locomotion mid-stride.
+				for act in arg.trim_prefix("--press=").split(","):
+					Input.action_press(act)
+				await get_tree().create_timer(1.2).timeout
+		for arg in OS.get_cmdline_user_args():
 			if arg.begins_with("--action="):
 				# Freeze-frame an action mid-swing (first-person viewmodel checks).
 				p.call("_start_action", arg.trim_prefix("--action="), 0.6)
