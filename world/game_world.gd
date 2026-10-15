@@ -29,6 +29,8 @@ var bosses_defeated := {}    # boss kind -> true
 var opened_chests := {}      # chest key -> true
 var lit_shrines := {}        # location id -> true
 var play_time := 0.0
+## Wounded bosses remembered across despawns and reloads (entities/bosses/boss_ledger.gd).
+var boss_ledger := BossLedger.new()
 var replicator: Replicator
 var director: LocationDirector
 var spawner: WildSpawner
@@ -111,6 +113,8 @@ func setup(info: Dictionary) -> void:
 	add_child(spawner)
 	tracker = LocationTracker.new()
 	add_child(tracker)
+	# Activities (treasure, bounties, world events, the Proving Ring): same node path on every peer.
+	add_child(ActivityDirector.new())
 
 	var save: Dictionary = info.get("save", {})
 	_load_world_state(save)
@@ -826,10 +830,12 @@ func save_data() -> Dictionary:
 		"quests": quests.to_dict(),
 		"discovered": discovered.keys(),
 		"bosses_defeated": bosses_defeated.keys(),
+		"boss_wounds": boss_ledger.to_save(play_time),
 		"opened_chests": opened_chests.keys(),
 		"lit_shrines": lit_shrines.keys(),
 		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits(), 2: world_for(2).get_edits()},
 		"stations": placed_stations,
+		"activities": ActivityDirector.of(self).save_state() if ActivityDirector.of(self) != null else {},
 		"ryft_unlocked": ryft_unlocked,
 		"time_of_day": sky.time_of_day,
 		"day": sky.day,
@@ -844,6 +850,9 @@ func _load_world_state(save: Dictionary) -> void:
 		discovered[StringName(id)] = true
 	for k in save.get("bosses_defeated", []):
 		bosses_defeated[String(k)] = true
+	var wounds: Variant = save.get("boss_wounds", {})
+	if wounds is Dictionary:
+		boss_ledger.from_save(wounds)
 	for k in save.get("opened_chests", []):
 		opened_chests[String(k)] = true
 	for k in save.get("lit_shrines", []):

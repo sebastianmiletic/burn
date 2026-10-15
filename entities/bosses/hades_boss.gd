@@ -53,7 +53,7 @@ func _begin_attack(name: String) -> void:
 				var a := _rng.randf() * TAU
 				dirs.append(Vector3(cos(a), 0, sin(a)))
 			for d in dirs:
-				_tele("line", global_position, d, Vector3(22.0, 2.6, 0), 1.3, 38.0, "fire", 4.0, _pillar_line.bind(global_position, d))
+				_tele("line:spirit", global_position, d, Vector3(22.0, 2.6, 0), 1.3, 38.0, "fire", 4.0, _pillar_line.bind(global_position, d))
 		"summon":
 			_play("summon", 1.4)
 		"teleport":
@@ -64,10 +64,10 @@ func _begin_attack(name: String) -> void:
 			_play("summon", 2.4)
 			Audio.play("roar_big", center(), 4.0, 0.6)
 			# Three bands with safe gaps (6-8 m and 13-15 m) and a delayed inner circle.
-			_tele("ring", global_position, _fwd(), Vector3(2.0, 6.0, 0), 1.5, 34.0, "fire", 5.0, _ring_fx.bind(4.0))
-			_tele("ring", global_position, _fwd(), Vector3(8.0, 13.0, 0), 2.1, 34.0, "fire", 5.0, _ring_fx.bind(10.5))
-			_tele("ring", global_position, _fwd(), Vector3(15.0, 22.0, 0), 2.7, 34.0, "fire", 5.0, _ring_fx.bind(18.5))
-			_tele("circle", global_position, _fwd(), Vector3(2.0, 0, 0), 3.2, 34.0, "fire", 8.0)
+			_tele("ring:spirit", global_position, _fwd(), Vector3(2.0, 6.0, 0), 1.5, 34.0, "fire", 5.0, _ring_fx.bind(4.0))
+			_tele("ring:spirit", global_position, _fwd(), Vector3(8.0, 13.0, 0), 2.1, 34.0, "fire", 5.0, _ring_fx.bind(10.5))
+			_tele("ring:spirit", global_position, _fwd(), Vector3(15.0, 22.0, 0), 2.7, 34.0, "fire", 5.0, _ring_fx.bind(18.5))
+			_tele("circle:spirit", global_position, _fwd(), Vector3(2.0, 0, 0), 3.2, 34.0, "fire", 8.0)
 
 
 func _sweep() -> void:

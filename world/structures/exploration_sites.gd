@@ -63,6 +63,10 @@ static func ryft(gen: WorldGen) -> Array[Location]:
 		else:
 			loc.add_spawn("chest", loc.center + Vector3(0, 1, 0), {"tier": 3})
 			loc.add_spawn("enemy", loc.center + Vector3(10, 1, 3), {"kind": "rock_golem" if i == 2 else "shade"})
+			# Ryft bosses (entities/bosses/ryft_sentinel_boss.gd, void_sovereign_boss.gd) on the
+			# levelled pad of the observatory and crown isles; their lairs may move these.
+			if i == 1 or i == 2:
+				loc.add_spawn("boss", loc.center + Vector3(0, 1.5, -6), {"kind": "ryft_sentinel" if i == 1 else "void_sovereign"})
 		if i == 1 or i == 2:
 			Battlegrounds.ryft_lair(loc, i)  # crystal boss arenas (Prism Sentinel, Void Sovereign)
 		out.append(loc)

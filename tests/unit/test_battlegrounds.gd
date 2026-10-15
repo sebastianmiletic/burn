@@ -3,7 +3,7 @@ extends TestCase
 ## writes visible cube blocks, arena gates open onto air, and the arena
 ## builders produce geometry on any seed.
 
-const BOSSES := ["warden", "mountain_king", "dragon", "leviathan", "broodmother", "bog_hag", "cerberus", "hades"]
+const BOSSES := ["warden", "mountain_king", "dragon", "leviathan", "broodmother", "bog_hag", "cerberus", "hades", "ryft_sentinel", "void_sovereign"]
 
 
 func _locations(seed_value: int) -> Array[Location]:

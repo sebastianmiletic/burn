@@ -64,15 +64,25 @@ func step(owner: Node3D, world: VoxelWorld, delta: float) -> void:
 		pos = _move_axis(world, pos, 0, part.x)
 		pos = _move_axis(world, pos, 2, part.z)
 		if can_step and (was_on_floor or on_floor) and (absf(pos.x - before.x - part.x) > 0.001 or absf(pos.z - before.z - part.z) > 0.001):
-			# Blocked by a crisp block: try again one block higher.
-			var up := before + Vector3(0, 1.001, 0)
-			if not _overlaps(world, up) and not _smooth_blocked(world, up):
+			# Blocked by a built cell: first try just topping the cell we hit (a
+			# small lip where a floor meets the ground, under a low lintel), then a
+			# whole block higher.
+			var lifts: Array[float] = []
+			var lip := ceilf(before.y + 0.001) - before.y + 0.001
+			if lip > 0.002 and lip <= climb_step:
+				lifts.append(lip)
+			lifts.append(1.001)
+			for lift in lifts:
+				var up := before + Vector3(0, lift, 0)
+				if _overlaps(world, up) or _smooth_blocked(world, up):
+					continue
 				var try_pos := _move_axis(world, up, 0, part.x)
 				try_pos = _move_axis(world, try_pos, 2, part.z)
 				if Vector2(try_pos.x - before.x, try_pos.z - before.z).length() > Vector2(pos.x - before.x, pos.z - before.z).length() + 0.01:
 					stepped += try_pos.y - pos.y
 					pos = try_pos
 					hit_wall = false
+					break
 	# Settle onto the ground after the horizontal moves (walking uphill).
 	if velocity.y <= 0.0:
 		var y0 := pos.y

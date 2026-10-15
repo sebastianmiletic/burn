@@ -56,9 +56,9 @@ func _begin_attack(name: String) -> void:
 				for i in 10:
 					var a := TAU * i / 10.0
 					_fx_burst(global_position + Vector3(cos(a), 0.2, sin(a)) * 6.0, false, 0.6)
-			_tele("ring", global_position, _fwd(), Vector3(3.0, 9.0, 0), 1.4, 30.0, "hit", 3.0, land)
+			_tele("ring:soul", global_position, _fwd(), Vector3(3.0, 9.0, 0), 1.4, 30.0, "hit", 3.0, land)
 			if phase >= 3:
-				_tele("circle", global_position, _fwd(), Vector3(3.0, 0, 0), 2.2, 30.0, "hit", 6.0)
+				_tele("circle:soul", global_position, _fwd(), Vector3(3.0, 0, 0), 2.2, 30.0, "hit", 6.0)
 		"charge":
 			var dir := _fwd()
 			if _target != null:

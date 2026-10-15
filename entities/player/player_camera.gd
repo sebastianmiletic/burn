@@ -114,8 +114,13 @@ func _follow_first_person(world: VoxelWorld, focus: Vector3, delta: float) -> vo
 	_bob_phase += delta * (5.2 + move_speed * 0.55) * (1.0 if walking > 0.05 else 0.0)
 	_bob = lerpf(_bob, walking, 1.0 - exp(-delta * 8.0))
 	# Landing dip: a damped spring.
-	_dip_v += (-_dip * 90.0 - _dip_v * 14.0) * delta
-	_dip += _dip_v * delta
+	# Semi-implicit spring in small steps: stable even on very long frames.
+	var left := minf(delta, 0.25)
+	while left > 0.0:
+		var h := minf(left, 1.0 / 120.0)
+		_dip_v += (-_dip * 90.0 - _dip_v * 14.0) * h
+		_dip += _dip_v * h
+		left -= h
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
 	var bob := Vector3(cos(_bob_phase) * 0.035, absf(sin(_bob_phase)) * 0.05 - 0.025, 0.0) * _bob
 	var target := focus + Vector3(0, eye_height + _dip, 0) + Basis(Vector3.UP, yaw) * Vector3(0, 0, -0.06)
