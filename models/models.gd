@@ -26,7 +26,7 @@ const WARM_KINDS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "de
 
 ## Build every ordinary creature once (a few per frame) under a hidden node,
 ## filling the mesh caches; humanoid kinds build several variants.
-static func warmup_mobs(parent: Node, budget_ms := 40.0) -> void:
+static func warmup_mobs(parent: Node, budget_ms := 250.0) -> void:
 	var holder := Node3D.new()
 	holder.name = "MobWarmup"
 	holder.visible = false
