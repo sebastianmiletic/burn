@@ -145,17 +145,27 @@ func _materials() -> Array:
 	var extra := {"use_rest": true, "accent": spec["accent"], "accent_mode": 3, "accent_amount": 0.5, "accent_scale": 2.0,
 		"bump_distance": 25.0}
 	if spec.has("cracks"):
-		extra.merge({"glow_mode": 2, "glow_color": spec["cracks"], "glow_energy": 2.6, "glow_amount": 0.0, "glow_pulse": 0.6, "glow_sparsity": 0.85}, true)
+		extra.merge({"glow_mode": 2, "glow_color": spec["cracks"], "glow_energy": 2.2, "glow_amount": 0.0, "glow_pulse": 0.6, "glow_sparsity": 0.93}, true)
 	var body: ShaderMaterial
 	if fur:
 		extra["pattern_scale"] = 22.0
 		extra["bump"] = 1.1
-		extra["rim"] = 0.55
+		extra["rim"] = 0.3
+		if spec.has("cracks"):
+			extra["pattern_scale"] = 9.0
+			extra["glow_amount"] = -0.3
 		body = CreatureSkin.fur(back, spec["belly"], extra)
+		var fl := float(spec.get("fur_len", 1.0))
+		if fl >= 0.8:
+			var tip := (back as Color).lightened(0.35) if species != "hellhound" else Color(0.5, 0.2, 0.08)
+			body = CreatureSkin.with_fur(body, 0.018 * fl, 3, {"tip_color": tip, "density": 230.0 / sqrt(fl), "rim": 0.3})
 	else:
 		extra["pattern_scale"] = 9.0
-		extra["wet"] = 0.45
-		extra["bump"] = 1.4
+		extra["wet"] = 0.15
+		extra["bump"] = 1.6
+		extra["roughness"] = 0.78
+		extra["specular_amount"] = 0.25
+		extra["rim"] = 0.15
 		extra["accent_mode"] = 2
 		extra["accent_amount"] = 0.35
 		extra["accent_scale"] = 3.0
@@ -171,7 +181,7 @@ func _materials() -> Array:
 		ivory_col = Color(0.55, 0.45, 0.34)
 	var ivory := CreatureSkin.keratin(ivory_col, {"use_rest": true, "pattern_scale": 30.0, "bump": 0.5,
 		"roughness": 0.75 if spec.get("antlers", false) else 0.35})
-	var mouth := CreatureSkin.mouth(Color(0.42, 0.12, 0.12))
+	var mouth := CreatureSkin.mouth(Color(0.3, 0.08, 0.08))
 	var eye: Material
 	if _eye_glow:
 		eye = CreatureSkin.eye(spec["eye"], float(spec["eye_e"]), 0.1)
@@ -194,9 +204,10 @@ func _rig_data() -> Dictionary:
 	r.bone("neck2", NECK, bl[4])
 	r.bone("head", NECK2, bl[5])
 	var hp: Vector3 = bl[5]
-	var jaw_at: Vector3 = hp + _jaw_offset()
+	var hk := float(fam.get("head_k", 1.0))
+	var jaw_at: Vector3 = hp + _jaw_offset() * hk
 	r.bone("jaw", HEAD, jaw_at)
-	var ear_at := _ear_offset()
+	var ear_at := _ear_offset() * hk
 	r.bone("ear_l", HEAD, hp + Vector3(-ear_at.x, ear_at.y, ear_at.z))
 	r.bone("ear_r", HEAD, hp + ear_at)
 	var tj: Array = fam["tail"]
@@ -227,7 +238,8 @@ func _rig_data() -> Dictionary:
 	for row: Array in rows:
 		var p := Vector3(0, float(row[1]), float(row[0]))
 		path.append(p)
-		radii.append(Vector2(float(row[2]) * bulk, float(row[3]) * lerpf(1.0, bulk, 0.6)))
+		var tk: Vector2 = fam.get("torso_k", Vector2.ONE)
+		radii.append(Vector2(float(row[2]) * bulk * tk.x, float(row[3]) * lerpf(1.0, bulk, 0.6) * tk.y))
 		var best := HIPS
 		var best_d := INF
 		for b: int in centre_bones:
@@ -274,8 +286,8 @@ func _rig_data() -> Dictionary:
 		var scaled: Array = []
 		for row: Array in prof:
 			var rw := row.duplicate()
-			rw[1] = float(rw[1]) * bulk
-			rw[2] = float(rw[2]) * bulk
+			rw[1] = float(rw[1]) * bulk * float(fam.get("leg_k", 1.0))
+			rw[2] = float(rw[2]) * bulk * float(fam.get("leg_k", 1.0))
 			scaled.append(rw)
 		var root := CHEST if front else HIPS
 		r.slot(S_BODY).limb(pts, [root, up, up + 1, up + 2], scaled, 22, 12, Vector3.BACK, 0.05 * float(fam["gait"]["cycle"]),
@@ -332,7 +344,7 @@ func _body_tufts(r: MobRig) -> void:
 	var fl := float(spec.get("fur_len", 1.0))
 	if not spec.get("fur", true):
 		# Osteoderms: tidy rows of keeled scutes along the back.
-		var scute := OrganicMesh.blob("quad_scute", Vector3(0.45, 0.35, 0.5), 0.1, 3, 8)
+		var scute := OrganicMesh.blob("quad_scute", Vector3(0.42, 0.5, 0.24), 0.12, 3, 8)
 		r.slot(S_BODY).tufts(scute, 0, 0.08, 0.95, -55.0, 55.0, 0.075, 0.92, 11, 1.0, true, Vector2i(16, 6))
 		return
 	var tm := _tuft_mesh()
@@ -349,17 +361,16 @@ func _body_tufts(r: MobRig) -> void:
 			r.tufts(tm, 90, 0.05, 0.9, -130.0, 130.0, base * 1.4, 0.85, 3, 1.2)
 			r.tufts(tm, 30, 0.2, 0.75, 140.0, 220.0, base * 1.6, 0.6, 7, 1.2)
 		"deer":
-			r.tufts(tm, 26, 0.05, 0.72, -90.0, 90.0, base * 0.7, 0.92, 3)
 			if spec.get("mane", false):
-				r.tufts(tm, 34, 0.74, 0.97, 100.0, 260.0, base * 2.4, 0.55, 5, 1.2)
+				r.tufts(tm, 40, 0.74, 0.97, 120.0, 240.0, base * 1.8, 0.75, 5, 1.8)
 		"goat":
 			# Long white coat: a skirt hanging from the flanks, a shaggy crest.
 			r.tufts(tm, 60, 0.05, 0.85, -100.0, 100.0, base * 1.1, 0.85, 3, 1.2)
-			r.tufts(tm, 44, 0.1, 0.8, 95.0, 265.0, base * 2.6, 0.25, 5, 1.1, false)
+			r.tufts(tm, 56, 0.1, 0.8, 100.0, 260.0, base * 2.0, 0.55, 5, 1.8)
 			r.tufts(tm, 20, 0.72, 0.98, -40.0, 40.0, base * 1.6, 0.7, 7)
 		"boar":
 			# Coarse bristles and a tall crest of them along the spine.
-			r.tufts(MobRig.tuft_mesh("quad_bristle", 0.12, 0.08), 34, 0.2, 0.98, -12.0, 12.0, 0.085, 0.42, 9, 1.3, false)
+			r.tufts(MobRig.tuft_mesh("quad_bristle", 0.14, 0.08), 40, 0.2, 0.98, -14.0, 14.0, 0.06, 0.55, 9, 1.4, false)
 			r.tufts(tm, 70, 0.05, 0.95, -150.0, 150.0, base * 0.9, 0.85, 3)
 		"hare":
 			r.tufts(tm, 40, 0.0, 1.0, -180.0, 180.0, 0.012, 0.85, 3, 1.3)
@@ -436,7 +447,8 @@ func _foot(r: MobRig, pts: PackedVector3Array, toe: int, foot_r: float, left: bo
 
 ## Rigid part on a head bone, given in head-local coordinates (origin `at`).
 func _hp(r: MobRig, slot_i: int, mesh: Mesh, at: Vector3, local: Transform3D, b: int) -> void:
-	r.slot(slot_i).rigid(mesh, Transform3D(local.basis, at + local.origin), b)
+	var hk := float(fam.get("head_k", 1.0))
+	r.slot(slot_i).rigid(mesh, Transform3D(local.basis.scaled(Vector3.ONE * hk), at + local.origin * hk), b)
 
 
 func _put(pos: Vector3, rot := Vector3.ZERO, scl := Vector3.ONE) -> Transform3D:
@@ -463,11 +475,11 @@ func _head(r: MobRig, hp: Vector3, jaw_at: Vector3) -> void:
 				"nose": [Vector3(0, -0.035, -0.365), Vector3(0.036, 0.026, 0.022)], "eye": [Vector3(0.07, 0.035, -0.17), 0.013, 0.3],
 				"ear": [0.06, 0.05, "round"], "fangs": [Vector3(0.035, -0.085, -0.31), 0.035], "brow": true}
 		"deer":
-			g = {"skull_a": Vector3(0, 0.03, 0.05), "skull_b": Vector3(0, -0.085, -0.27),
+			g = {"skull_a": Vector3(0, 0.035, 0.05), "skull_b": Vector3(0, -0.13, -0.245),
 				"skull": [[0.0, 0.042, 0.048], [0.15, 0.054, 0.055, 0.01], [0.3, 0.05, 0.05, 0.006], [0.45, 0.04, 0.042, -0.004],
 					[0.7, 0.03, 0.035, -0.008], [0.9, 0.026, 0.03, -0.008], [1.0, 0.016, 0.02, -0.006]],
-				"jaw_b": Vector3(0, -0.06, -0.21), "jaw": [[0.0, 0.035, 0.022], [0.5, 0.026, 0.017], [1.0, 0.016, 0.01]],
-				"nose": [Vector3(0, -0.075, -0.266), Vector3(0.018, 0.014, 0.012)], "eye": [Vector3(0.043, 0.02, -0.06), 0.014, 0.75],
+				"jaw_b": Vector3(0, -0.1, -0.19), "jaw": [[0.0, 0.035, 0.022], [0.5, 0.026, 0.017], [1.0, 0.016, 0.01]],
+				"nose": [Vector3(0, -0.12, -0.24), Vector3(0.018, 0.014, 0.012)], "eye": [Vector3(0.043, 0.02, -0.055), 0.0125, 0.75],
 				"ear": [0.15, 0.048, "leaf"], "brow": false}
 		"goat":
 			g = {"skull_a": Vector3(0, 0.02, 0.04), "skull_b": Vector3(0, -0.09, -0.22),
@@ -502,15 +514,19 @@ func _head(r: MobRig, hp: Vector3, jaw_at: Vector3) -> void:
 	_hp(r, S_BODY, jaw, jaw_at, Transform3D(), JAW)
 	# Mouth: dark lips along the jaw line, wet inside, tongue.
 	var jb: Vector3 = g["jaw_b"]
-	_hp(r, S_MOUTH, OrganicMesh.blob("qh_mouth_" + species, Vector3(absf(float(g["jaw"][0][1])) * 0.7, absf(float(g["jaw"][0][2])) * 0.5, jb.length() * 0.45), 0.05, 3, 10), jaw_at, _put(Vector3(0, 0.008, jb.z * 0.5)), JAW)
+	var mouth_b := Basis.looking_at(jb.normalized(), Vector3.UP)
+	_hp(r, S_MOUTH, OrganicMesh.blob("qh_mouth_" + species, Vector3(absf(float(g["jaw"][0][1])) * 0.6, absf(float(g["jaw"][0][2])) * 0.4, jb.length() * 0.42), 0.05, 3, 10), jaw_at, Transform3D(mouth_b, Vector3(0, 0.004, 0) + jb * 0.5), JAW)
 	var nose: Array = g["nose"]
-	_hp(r, S_DARK, OrganicMesh.blob("qh_nose_" + species, nose[1], 0.12, 5, 10), hp, _put(nose[0]), HEAD)
+	var nsz: Vector3 = nose[1]
+	_hp(r, S_DARK, OrganicMesh.blob("qh_nose_" + species, nsz * Vector3(1.0, 0.85, 0.75), 0.12, 5, 10), hp, _put(nose[0]), HEAD)
 	# Eyes: a glossy ball with a pupil, sunk under a brow, turned outwards.
 	var ev: Array = g["eye"]
 	for side: float in [-1.0, 1.0]:
 		var ep: Vector3 = ev[0]
-		ep.x *= side
 		var er := float(ev[1])
+		# Sink the eyeball into the skull surface so only its front shows.
+		var surf_x := _surface_x(skull, ep.y, ep.z)
+		ep.x = maxf(surf_x - er * 0.45, er * 0.6) * side
 		var out_dir := Vector3(side * float(ev[2]), 0.1, -1.0).normalized()
 		_hp(r, S_EYE, ModelKit.sphere(er, 10), hp, _put(ep), HEAD)
 		if not _eye_glow:
@@ -542,9 +558,7 @@ func _head(r: MobRig, hp: Vector3, jaw_at: Vector3) -> void:
 					rot = Vector3(0.2, side * 0.3, -side * 1.35)
 				"long":
 					rot = Vector3(0.45, side * 0.2, -side * 0.18)
-			r.slot(S_BODY).rigid(em, Transform3D(Basis.from_euler(rot), ebase), eb)
-			# Darker, furred inside of the ear.
-			r.slot(S_DARK).rigid(_ear_mesh(String(ear[2]) + "_in", el * 0.82, ew * 0.7), Transform3D(Basis.from_euler(rot), ebase + Basis.from_euler(rot) * Vector3(0, el * 0.06, -ew * 0.12)), eb)
+			r.slot(S_BODY).rigid(em, Transform3D(Basis.from_euler(rot).scaled(Vector3.ONE * float(fam.get("head_k", 1.0))), ebase), eb)
 	# Teeth.
 	if spec.get("teeth", false) and g.has("fangs"):
 		var fg: Array = g["fangs"]
@@ -621,6 +635,20 @@ func _head(r: MobRig, hp: Vector3, jaw_at: Vector3) -> void:
 				_hp(r, S_BODY, tm, hp, Transform3D(b.scaled(Vector3(1.4, 1, 1) * 0.045 * hs * float(spec.get("fur_len", 1.0))), pos), HEAD)
 
 
+## Outermost x of `mesh` along the ray from (0, y, z) towards +X (the skull's side at the eye).
+static func _surface_x(mesh: Mesh, y: float, z: float) -> float:
+	var arr := mesh.surface_get_arrays(0)
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var best := 0.0
+	var from := Vector3(0, y, z)
+	for i in range(0, idx.size(), 3):
+		var hit: Variant = Geometry3D.ray_intersects_triangle(from, Vector3.RIGHT, v[idx[i]], v[idx[i + 1]], v[idx[i + 2]])
+		if hit != null:
+			best = maxf(best, (hit as Vector3).x)
+	return best
+
+
 func _ear_mesh(shape: String, l: float, w: float) -> Mesh:
 	var key := "qh_ear_%s_%d_%d" % [shape, int(l * 1000.0), int(w * 1000.0)]
 	var prof: Array
@@ -635,6 +663,13 @@ func _ear_mesh(shape: String, l: float, w: float) -> Mesh:
 		_:
 			prof = [[0.0, w, w * 0.3], [0.5, w * 0.62, w * 0.2, w * cup * 0.4], [1.0, 0.0, 0.0]]
 	return OrganicMesh.profile(key, Vector3.ZERO, Vector3(0, l, 0), prof, 8, 6, Vector3.BACK)
+
+
+## World position of the head (for close-up cameras and look-at logic).
+func head_point() -> Vector3:
+	if skel == null:
+		return global_position
+	return skel.global_transform * gp[HEAD]
 
 
 # --- Animation ------------------------------------------------------------------------------
@@ -688,9 +723,11 @@ func _animate(delta: float) -> void:
 		"attack", "attack2", "bite":
 			var wind := keys(p, [[0, 0], [0.3, 1.0], [0.45, 0.0], [1, 0]])
 			var strike := keys(p, [[0, 0], [0.32, 0.0], [0.5, 1.0], [0.7, 0.8], [1, 0]])
-			crouch = 0.08 * wind
-			lunge = 0.16 * strike - 0.05 * wind
-			head_pitch = lerpf(head_pitch, -0.35, strike) + 0.35 * wind
+			crouch = 0.12 * wind - 0.03 * strike
+			lunge = 0.3 * strike - 0.08 * wind
+			pitch = -0.1 * strike + 0.06 * wind
+			head_pitch = lerpf(head_pitch, -0.5, strike) + 0.45 * wind
+			head_yaw += sin(_time * 23.0) * 0.12 * strike
 			jaw_t = keys(p, [[0, 0.05], [0.3, 0.85], [0.48, 0.9], [0.56, 0.0], [1, 0.05]])
 			ear_back = w
 		"lunge", "pounce":

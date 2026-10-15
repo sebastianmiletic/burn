@@ -70,12 +70,18 @@ const MOBS := [["wolf", "", 0.0, 35.0], ["wolf", "attack", 0.3, 20.0], ["dire_wo
 	["elemental", "throw", 0.45, 20.0], ["shade", "", 0.0, 20.0], ["shade", "drain", 0.5, 30.0], ["imp", "throw", 0.4, 25.0],
 	["imp", "", 0.0, 50.0], ["shark", "bite", 0.3, 50.0], ["fish", "", 0.0, 30.0], ["skeleton_0", "attack", 0.4, 25.0],
 	["skeleton_2", "", 0.0, 30.0], ["archer_0", "shoot", 0.5, 30.0], ["ghoul_0", "attack", 0.35, 25.0], ["drowned", "", 0.0, 35.0],
-	["troll_a", "", 0.0, 25.0], ["troll_b", "slam", 0.5, 30.0], ["birds", "", 0.0, 20.0]]
+	["troll_a", "", 0.0, 25.0], ["troll_b", "slam", 0.5, 30.0], ["birds", "", 0.0, 20.0],
+	# Head close-ups (5th value: distance in metres to the model's head_point()).
+	["wolf", "", 0.0, 30.0, 0.9], ["bear", "", 0.0, 30.0, 1.4], ["stag", "", 0.0, 40.0, 1.1], ["deer", "", 0.0, 60.0, 0.9],
+	["goat", "", 0.0, 40.0, 0.9], ["boar", "", 0.0, 35.0, 1.0], ["lurker", "", 0.0, 30.0, 1.4], ["hellhound", "", 0.0, 30.0, 1.1],
+	["rabbit", "", 0.0, 40.0, 0.5]]
 
 var camera: Camera3D
 var _models := {}
 var _capture_dir := ""
 var _only := ""
+## --strip=<model>:<speed>[:<action>[:<step s>]]: 8 side-view frames (gait / action / die check).
+var _strip := ""
 var _shot := 0
 var _t := 0.0
 
@@ -88,6 +94,8 @@ func _ready() -> void:
 			Settings.set_value("graphics", "style", int(arg.trim_prefix("--style=")))
 		elif arg.begins_with("--only="):
 			_only = arg.trim_prefix("--only=")
+		elif arg.begins_with("--strip="):
+			_strip = arg.trim_prefix("--strip=")
 		elif arg.begins_with("--quality="):
 			Settings.set_value("graphics", "quality", int(arg.trim_prefix("--quality=")))
 	_environment()
@@ -344,6 +352,38 @@ func _wanted(shot: String) -> bool:
 	return false
 
 
+func _capture_strip() -> void:
+	var parts := _strip.split(":")
+	var m: CreatureModel = _models.get(parts[0])
+	if m == null:
+		return
+	m.move_speed = float(parts[1]) if parts.size() > 1 else 0.0
+	var size := maxf(0.5, m._lod_size())
+	var side := m.global_transform.basis.x
+	var focus := m.global_position + Vector3(0, size * 0.3, 0)
+	camera.global_position = focus + side * size * 1.6 + Vector3(0, 0.3, 0)
+	camera.look_at(focus, Vector3.UP)
+	var t := 0.0
+	while t < 1.0:
+		t += get_process_delta_time()
+		await get_tree().process_frame
+	if parts.size() > 2:
+		if parts[2] == "die":
+			m.set_dead(true)
+		else:
+			m.play(parts[2])
+	var step := 0.07 if parts.size() < 4 else float(parts[3])
+	for i in 8:
+		t = 0.0
+		while t < step:
+			t += get_process_delta_time()
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var img := get_viewport().get_texture().get_image()
+		img.resize(img.get_width() / 3, img.get_height() / 3)
+		img.save_png(_capture_dir.path_join("s%02d_%s.png" % [i, parts[0]]))
+
+
 ## Camera at a player's eye height in front of `m`, `spec[3]` degrees round
 ## its side, far enough to frame it; plays the action and waits `spec[2]` s.
 func _mob_shot(m: CreatureModel, spec: Array) -> void:
@@ -359,8 +399,14 @@ func _mob_shot(m: CreatureModel, spec: Array) -> void:
 	front.y = 0.0
 	front = front.normalized().rotated(Vector3.UP, deg_to_rad(float(spec[3])))
 	var focus := m.global_position + Vector3(0, minf(height, 1.4), 0)
-	var dist := clampf(size * 1.25, 2.0, 9.0)
+	var dist := clampf(size * 1.0, 1.8, 9.0)
 	camera.global_position = Vector3(m.global_position.x, maxf(0.0, m.global_position.y) + 1.6, m.global_position.z) + front * dist
+	if spec.size() > 4 and m.has_method("head_point"):
+		focus = m.call("head_point")
+		var head_dir := (front * 1.0 + Vector3(0, 0.25, 0)).normalized()
+		var hf := -m.global_transform.basis.z
+		hf.y = 0.0
+		camera.global_position = focus + (hf.normalized() * 0.6 + head_dir).normalized() * float(spec[4])
 	camera.look_at(focus, Vector3.UP)
 	if String(spec[1]) != "":
 		m.play(spec[1])
@@ -378,6 +424,10 @@ func _capture() -> void:
 	while t < 4.0:
 		t += get_process_delta_time()
 		await get_tree().process_frame
+	if _strip != "":
+		await _capture_strip()
+		get_tree().quit()
+		return
 	for i in SHOTS.size():
 		if _only != "" and not _wanted(String(SHOTS[i][0])):
 			continue
@@ -407,7 +457,7 @@ func _capture() -> void:
 		await _mob_shot(m, MOBS[i])
 		var img := get_viewport().get_texture().get_image()
 		img.resize(img.get_width() / 2, img.get_height() / 2)
-		img.save_png(_capture_dir.path_join("m%02d_%s_%s.png" % [i, mname, MOBS[i][1] if MOBS[i][1] != "" else "idle"]))
+		img.save_png(_capture_dir.path_join("m%02d_%s_%s.png" % [i, mname, (MOBS[i][1] if MOBS[i][1] != "" else "idle") if MOBS[i].size() < 5 else "head"]))
 		printerr("[creatures] mob ", mname)
 	for i in PORTRAITS.size():
 		if _only.begins_with("mob"):
