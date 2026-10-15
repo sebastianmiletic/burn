@@ -66,7 +66,7 @@ func _process(delta: float) -> void:
 			else:
 				title = "Caverns"
 			if g.revision >= 2 and pos.y < -8:
-				title = CaveBiomes.NAMES[CaveBiomes.kind_at(pos, g.world_seed)]
+				title = CaveBiomes.NAMES[CaveBiomes.kind_at(pos, g.world_seed, g.revision)]
 			subtitle = "%d m below the surface" % int(depth)
 			if above != null:
 				subtitle = "%d m beneath %s" % [int(depth), above.name]
