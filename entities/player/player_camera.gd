@@ -47,9 +47,12 @@ func _ready() -> void:
 	fill.light_specular = 0.1
 	fill.shadow_enabled = false
 	fill.light_volumetric_fog_energy = 0.0
+	# Above and behind the eye: lights what you look at without blowing out
+	# the first-person hands half a metre away.
+	fill.position = Vector3(0.0, 0.9, 1.6)
 	add_child(fill)
 	Events.screen_shake.connect(add_trauma)
-	first_person = true  # Gameplay is first-person, including saves from older builds.
+	first_person = bool(Settings.get_value("gameplay", "first_person"))
 	Settings.changed.connect(func(section: String, key: String) -> void:
 		if section == "graphics" and key == "fov":
 			fov = float(Settings.get_value("graphics", "fov")))

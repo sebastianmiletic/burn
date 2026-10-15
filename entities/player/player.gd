@@ -143,6 +143,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_select((inventory.selected + 1) % Inventory.HOTBAR)
 		elif Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if event.is_action_pressed("toggle_view"):
+		camera.first_person = not camera.first_person
+		Settings.set_value("gameplay", "first_person", camera.first_person)
+		_apply_view()
 	if event.is_action_pressed("slot_1"):
 		_select(0)
 	elif event.is_action_pressed("slot_2"):

@@ -51,8 +51,10 @@ func show_target(hit: Dictionary, show: bool) -> void:
 	if not visible:
 		return
 	_smooth = true  # A surface contact, never a visible voxel-selection box.
-	_outline.visible = not _smooth
-	_ring.visible = _smooth
+	_outline.visible = false
+	# No target marker on natural ground: the crosshair is enough, and a glowing
+	# ring on every surface you look at with a tool out is distracting.
+	_ring.visible = false
 	if _smooth:
 		# Decals project along their -Y: line Y up with the surface normal.
 		var n: Vector3 = hit.get("surface_normal", Vector3.UP)

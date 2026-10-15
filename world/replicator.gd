@@ -584,6 +584,8 @@ func _resolve_fill(peer: int, point: Vector3, radius: float, block: int, dim: in
 		return
 	# Never bury anyone.
 	for e in w.entities_near(point, radius + 1.2, dim):
+		if e.kind == "drop":
+			continue  # loose items just pop back out of the ground
 		if e.global_position.distance_to(point) < radius + 0.6 or e.center().distance_to(point) < radius + 0.6:
 			return
 	var changes := w.world_for(dim).plan_fill(point, clampf(radius, 0.3, 1.2), block)
