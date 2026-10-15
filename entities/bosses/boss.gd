@@ -756,6 +756,9 @@ func _shake_near(pos: Vector3, strength: float) -> void:
 func _process(delta: float) -> void:
 	if model == null:
 		return
+	# Bespoke boss models brood while idle and transform with the phases.
+	if model.has_method("set_boss_state"):
+		model.call("set_boss_state", engaged, phase, dead)
 	if not is_server():
 		interpolate(Time.get_ticks_msec() / 1000.0)
 		var moved := (global_position - _last_pos) / maxf(delta, 0.0001)
