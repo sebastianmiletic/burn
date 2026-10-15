@@ -6,7 +6,8 @@ is rendered through a GPU ASCII pass and composed glyph by glyph at your screen'
 Play solo, or with friends on the same Wi-Fi: the host shows four ancient runes, everyone else types them in.
 
 Built with **Godot 4.7** (Forward+, GDScript). All content — terrain, structures, creatures, sound, music — is generated
-procedurally at runtime; the only shipped assets are two OFL fonts (see `CREDITS.md`).
+procedurally at runtime; the only shipped assets are two OFL fonts and ~3 MB of CC0 sound recordings that the sound
+synthesiser layers into footsteps, impacts and water (see `CREDITS.md`).
 
 ## Running
 
