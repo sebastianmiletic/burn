@@ -26,6 +26,7 @@ instance uniform float hit_flash : instance_index(9) = 0.0;
 instance uniform vec3 flash_color : instance_index(10) = vec3(1.0, 1.0, 1.0);
 instance uniform float burn : instance_index(11) = 0.0;
 instance uniform float dissolve : instance_index(12) = 0.0;
+instance uniform float fp_hide : instance_index(13) = 0.0;
 
 global uniform float wetness;
 
@@ -82,6 +83,9 @@ vec3 bump(vec3 n, vec3 p, float h, float strength) {
 }
 
 void fragment() {
+	if (fp_hide > 0.0 && distance(v_world, CAMERA_POSITION_WORLD) < fp_hide) {
+		discard;
+	}
 	int t = v_type;
 	vec3 base = (v_slot >= 8) ? fixed_color(t) : palette(v_slot);
 	vec3 col = base * v_shade;

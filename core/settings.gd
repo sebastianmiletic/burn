@@ -22,12 +22,12 @@ const DEFAULTS := {
 		"fps_cap": 0,
 	},
 	"graphics": {
-		"quality": Quality.MEDIUM,
+		"quality": Quality.HIGH,
 		"render_scale": -1.0,  # -1: follow the quality preset
-		"style": Style.EMBER,
+		"style": Style.OFF,
 		"cell_preset": 1,
 		"brightness": 0.85,
-		"fov": 70.0,
+		"fov": 80.0,
 		"fog": 1.0,
 		"bloom": 1.0,
 		"vignette": 0.3,
@@ -48,6 +48,7 @@ const DEFAULTS := {
 		"invert_y": false,
 		"camera_shake": 1.0,
 		"player_name": "",
+		"first_person": true,
 	},
 	"controls": {},
 }

@@ -357,6 +357,17 @@ func _attach_mesh() -> bool:
 	return true
 
 
+## Local first-person view: fragments within this radius of the camera are cut
+## away (the head and hood), so the eye camera never sees the inside of the face.
+var _fp_radius := 0.0
+
+
+func set_first_person(on: bool) -> void:
+	_fp_radius = 0.42 if on else 0.0
+	if mesh_instance != null:
+		mesh_instance.set_instance_shader_parameter(&"fp_hide", _fp_radius)
+
+
 func _apply_palette() -> void:
 	var skel: bool = st("skeleton", false)
 	var cloth: Color = st("cloth", Color(0.3, 0.25, 0.2)) if st("cloth", null) != null else Color(0.3, 0.25, 0.2)
@@ -376,6 +387,7 @@ func _apply_palette() -> void:
 		var c: Color = cols[k]
 		var lin := c.srgb_to_linear()
 		mesh_instance.set_instance_shader_parameter(k, Vector3(lin.r, lin.g, lin.b))
+	mesh_instance.set_instance_shader_parameter(&"fp_hide", _fp_radius)
 
 
 func _collect(node: Node) -> void:

@@ -84,10 +84,22 @@ func _run() -> void:
 
 	# --- Mining and building ---------------------------------------------------
 	# Mining sculpts: strike the ground a few times beside the player.
+	# Find natural ground nearby (the village plaza is paved).
 	var dig_at := p.global_position + Vector3(2.5, -0.3, 0)
-	var g := vw.ground_below(dig_at.x, dig_at.y + 3.0, dig_at.z, 8.0)
-	if absf(g) < 1e6:
-		dig_at.y = g - 0.2
+	var g := -INF
+	for r in range(2, 14):
+		var found := false
+		for a in 8:
+			var c := p.global_position + Vector3(cos(a * TAU / 8.0), 0, sin(a * TAU / 8.0)) * float(r)
+			var gg := vw.ground_below(c.x, c.y + 4.0, c.z, 10.0)
+			if absf(gg) < 1e6 and Blocks.is_smooth(vw.get_block(Vector3i(Vector3(c.x, gg - 0.4, c.z).floor()))) \
+					and Blocks.tier(vw.get_block(Vector3i(Vector3(c.x, gg - 0.4, c.z).floor()))) <= 1:
+				dig_at = Vector3(c.x, gg - 0.2, c.z)
+				g = gg
+				found = true
+				break
+		if found:
+			break
 	var before := vw.get_block(Vector3i(dig_at.floor()))
 	var dropped_before := _count("drop")
 	for i in 8:

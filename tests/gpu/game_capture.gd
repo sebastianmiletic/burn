@@ -145,6 +145,11 @@ func _run() -> void:
 				Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--action="):
+				# Freeze-frame an action mid-swing (first-person viewmodel checks).
+				p.call("_start_action", arg.trim_prefix("--action="), 0.6)
+				await get_tree().create_timer(0.2).timeout
 		await _shot(stop)
 		if "--gpu-breakdown" in OS.get_cmdline_user_args():
 			await _gpu_breakdown(w, report, gpu if gpu > 0.0 else (await _measure(2.0)).x)

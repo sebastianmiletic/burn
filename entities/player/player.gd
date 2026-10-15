@@ -83,6 +83,10 @@ func _ready() -> void:
 		camera = PlayerCamera.new()
 		camera.target = self
 		add_child(camera)
+		_apply_view.call_deferred()
+		var vm := Viewmodel.new()
+		vm.player = self
+		camera.add_child(vm)
 		_highlight = BlockHighlight.new()
 		add_child(_highlight)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -95,6 +99,14 @@ func _make_model() -> Node3D:
 	if Net.players.has(peer_id):
 		colour = Net.players.keys().find(peer_id)
 	return Models.player(colour, is_local)
+
+
+## First person hides the head and hood from the inside (you still see your
+## body, arms and weapon); third person shows the whole character.
+func _apply_view() -> void:
+	if camera == null:
+		return
+	_model_call("set_first_person", [camera.first_person])
 
 
 func _model_call(method: String, args := []) -> void:
@@ -129,6 +141,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_select((inventory.selected + 1) % Inventory.HOTBAR)
 		elif Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if event.is_action_pressed("toggle_view"):
+		camera.first_person = not camera.first_person
+		Settings.set_value("gameplay", "first_person", camera.first_person)
+		_apply_view()
 	if event.is_action_pressed("slot_1"):
 		_select(0)
 	elif event.is_action_pressed("slot_2"):
@@ -176,6 +192,8 @@ func _process(delta: float) -> void:
 		body.step(self, vw, delta)
 	_update_light(delta)
 	_animate(delta)
+	camera.move_speed = _move_speed
+	camera.grounded = body.on_floor
 	camera.follow(vw, global_position + Vector3(0, _visual_offset, 0), delta)
 
 
@@ -237,7 +255,10 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	var face_dir := hv
 	if _action in ["attack", "attack2", "cast", "mine"] or Input.is_action_pressed("attack"):
 		face_dir = -cam_basis.z
-	if face_dir.length() > 0.3:
+	if camera.first_person and _action != "dodge":
+		# First person: the body always faces where you look.
+		yaw = camera.yaw + PI
+	elif face_dir.length() > 0.3:
 		yaw = lerp_angle(yaw, atan2(face_dir.x, face_dir.z), 1.0 - exp(-delta * 12.0))
 	rotation.y = yaw
 	# Footsteps (timed by the model's feet when it reports them).
@@ -391,7 +412,7 @@ func _block_target() -> Dictionary:
 	var ray := camera.aim_ray()
 	var origin: Vector3 = ray[0]
 	var dir: Vector3 = ray[1]
-	var hit := vw.raycast(origin, dir, camera.distance + REACH + 1.0)
+	var hit := vw.raycast(origin, dir, (0.2 if camera.first_person else camera.distance) + REACH + 1.0)
 	if hit.is_empty():
 		return {}
 	var eye := global_position + Vector3(0, 1.5, 0)
