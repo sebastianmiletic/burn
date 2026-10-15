@@ -7,6 +7,12 @@ var _root: Node3D
 var _key := ""
 var _steam: Array[GPUParticles3D] = []
 var _warned := ""
+var _mines: MineDressing
+
+func _ready() -> void:
+	_mines = MineDressing.new()
+	_mines.name = "MineDressing"
+	add_child(_mines)
 
 func _process(delta: float) -> void:
 	_timer -= delta
@@ -42,7 +48,8 @@ func _process(delta: float) -> void:
 		var label := "%s:%d" % [str(r["key"]), kind]
 		if label != _warned:
 			_warned = label
-			Events.notify.emit(CaveBiomes.NAMES[kind] + (": no creatures, finite riches." if kind == CaveBiomes.Kind.CRYSTAL_REFUGE else (": steam surges every ten seconds. Keep clear of the vents." if kind == CaveBiomes.Kind.GEYSER else "")), "info")
+			var cave_name: String = CaveBiomes.NAMES[kind] if kind < CaveBiomes.NAMES.size() else "Caverns"
+			Events.notify.emit(cave_name + (": no creatures, finite riches." if kind == CaveBiomes.Kind.CRYSTAL_REFUGE else (": steam surges every ten seconds. Keep clear of the vents." if kind == CaveBiomes.Kind.GEYSER else "")), "info")
 			w.quests.on_event("cave", str(kind))
 	var phase := fmod(now + int(r["seed"]) % 8, 10.0)
 	for emitter in _steam:
@@ -63,28 +70,50 @@ func _rebuild(w: GameWorld, pos: Vector3, cave: bool, r: Dictionary) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	if cave:
-		var kind := int(r["kind"])
-		if kind == CaveBiomes.Kind.GEYSER:
+		# Dripstone, fungi, crystals and webs are per-chunk CaveDecor; only set pieces live here.
+		if int(r["kind"]) == CaveBiomes.Kind.GEYSER:
 			for vent in _vents(r):
-				_add_mesh(ModelKit.cylinder(1.1, 1.8, 1.2, 16), vent, ModelKit.mat(Color(0.23, 0.22, 0.2)))
-				_make_steam(vent)
-		else:
-			var rng := RandomNumberGenerator.new()
-			rng.seed = int(r["seed"])
-			for i in 36:
-				var angle := rng.randf() * TAU
-				var radius := rng.randf_range(3, 34)
-				var p: Vector3 = r["center"] + Vector3(cos(angle) * radius, -20 * sqrt(1.0 - pow(radius / 48, 2)), sin(angle) * radius)
-				var height := rng.randf_range(0.6, 2.6)
-				if kind == CaveBiomes.Kind.FUNGAL:
-					_add_mesh(ModelKit.cylinder(0.08, 0.16, height, 8), p + Vector3.UP * height * 0.5, ModelKit.mat(Color(0.45, 0.5, 0.33)))
-					var cap := _add_mesh(ModelKit.sphere(0.7, 12), p + Vector3.UP * height, ModelKit.glow(Color(0.18, 0.65, 0.5), 1.1))
-					cap.scale.y = 0.35
-				else:
-					var col := Color(0.4, 0.65, 0.85) if kind == CaveBiomes.Kind.FROST else (Color(0.55, 0.28, 0.7) if kind == CaveBiomes.Kind.CRYSTAL_REFUGE else Color(0.55, 0.51, 0.4))
-					_add_mesh(ModelKit.cone(0.35, height, 7), p + Vector3.UP * height * 0.5, ModelKit.mat(col))
+				_add_mesh(_vent_mesh(), vent + Vector3(0, -0.35, 0), CaveDecor.material(CaveDecor.T.R_SINTER))
+				_make_steam(vent + Vector3(0, 0.6, 0))
+				_vent_glow(vent + Vector3(0, 0.9, 0))
 	elif w.local_dimension == 0 and pos.y < WorldGen.SEA_LEVEL + 15:
 		_ocean(w.gen_for(0), pos)
+
+static var _vent: ArrayMesh
+
+## A geyser vent: a sinter cone with terraced rimstone flanks and a hot pool in its crater.
+static func _vent_mesh() -> ArrayMesh:
+	if _vent != null:
+		return _vent
+	var b := CaveMeshes.Builder.new()
+	var rad := func(a: float) -> float: return 3.2 * (1.0 + 0.12 * sin(a * 3.0 + 0.7) + 0.07 * sin(a * 7.0))
+	var hgt := func(f: float, a: float) -> float:
+		if f < 0.14:
+			return 1.05  # pool surface
+		if f < 0.2:
+			return 1.05 + (f - 0.14) * 4.0  # crater lip
+		var slope := 1.29 - (f - 0.2) * 1.55
+		var steps := 6.0
+		var k := (f - 0.2) / 0.8 * steps
+		var frac := k - floorf(k)
+		return slope + smoothstep(0.7, 0.95, frac) * 0.06 + 0.02 * sin(a * 11.0 + f * 20.0) - (0.25 if f > 0.98 else 0.0)
+	CaveMeshes.disc(b, 22, 40, rad, hgt, Color(0, 0, 0.5, 1.0), 1.8)
+	for i in b.v.size():
+		var d := Vector2(b.v[i].x, b.v[i].z).length()
+		b.c[i].r = clampf(1.0 - d / 3.2, 0.0, 1.0)
+		if d < 0.45:
+			b.c[i].g = 1.0
+	_vent = b.commit()
+	return _vent
+
+func _vent_glow(at: Vector3) -> void:
+	var l := OmniLight3D.new()
+	l.light_color = Color(0.45, 0.95, 0.85)
+	l.light_energy = 0.8
+	l.omni_range = 7.0
+	l.shadow_enabled = false
+	l.position = at
+	_root.add_child(l)
 
 func _add_mesh(mesh: Mesh, at: Vector3, mat: Material) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()

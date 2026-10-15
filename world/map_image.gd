@@ -41,6 +41,12 @@ const MAP_COLORS := {
 	WorldGen.Biome.LAKE_OF_FIRE: Color(0.45, 0.2, 0.1),
 	WorldGen.Biome.TARTARUS: Color(0.26, 0.21, 0.21),
 	WorldGen.Biome.RYFT: Color(0.4, 0.36, 0.52),
+	WorldGen.Biome.REDWOOD: WorldGen.BIOME_COLORS[WorldGen.Biome.REDWOOD],
+	WorldGen.Biome.CANYON: WorldGen.BIOME_COLORS[WorldGen.Biome.CANYON],
+	WorldGen.Biome.ALPINE: WorldGen.BIOME_COLORS[WorldGen.Biome.ALPINE],
+	WorldGen.Biome.TUNDRA: WorldGen.BIOME_COLORS[WorldGen.Biome.TUNDRA],
+	WorldGen.Biome.VOLCANIC: WorldGen.BIOME_COLORS[WorldGen.Biome.VOLCANIC],
+	WorldGen.Biome.FJORD: WorldGen.BIOME_COLORS[WorldGen.Biome.FJORD],
 }
 const SNOW := Color(0.9, 0.91, 0.93)
 const SAND := Color(0.74, 0.67, 0.5)
@@ -67,14 +73,16 @@ static func build(gen: WorldGen) -> Image:
 	var mpp := float(gen.size) / float(n)
 	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
 	var sea := float(WorldGen.SEA_LEVEL if gen.dimension == 0 else WorldGen.LAVA_LEVEL)
-	var detail := gen.make_detail_noise()
-	var ridge := gen.make_ridge_noise()
-	var heights := PackedFloat32Array()
-	heights.resize(n * n)
 	var half := int(mpp * 0.5)
-	for z in n:
-		for x in n:
-			heights[x + z * n] = gen.column_f(int(x * mpp) + half, int(z * mpp) + half, detail, ridge).x
+	# Computed once, in parallel, and shared with the horizon.
+	var heights := gen.height_map() if gen.has_method("height_map") else PackedFloat32Array()
+	if heights.size() != n * n:
+		var detail := gen.make_detail_noise()
+		var ridge := gen.make_ridge_noise()
+		heights.resize(n * n)
+		for z in n:
+			for x in n:
+				heights[x + z * n] = gen.column_f(int(x * mpp) + half, int(z * mpp) + half, detail, ridge).x
 	var forest := gen.dimension == 0
 	# Light from the north-west, a little from above; a second softer light
 	# from the north-east keeps east-facing slopes from going flat.
@@ -100,7 +108,7 @@ static func build(gen: WorldGen) -> Image:
 				c = biome_color(gen, b)
 				colors[b] = c
 			if gen.dimension == 0:
-				if h > 95.0:
+				if h > 95.0 and b != WorldGen.Biome.VOLCANIC and b != WorldGen.Biome.CANYON:
 					c = c.lerp(SNOW, smoothstep(95.0, 165.0, h))
 				# The sea floor (the shader lays the water and beaches over it).
 				if h < sea:
@@ -114,6 +122,16 @@ static func build(gen: WorldGen) -> Image:
 			var flat := l1.y * 0.75 + l2.y * 0.35
 			c = c * clampf(0.62 + 0.55 * shade / flat - 0.17, 0.42, 1.32)
 			img.set_pixel(x, z, c.clamp())
+	# Lakes above the sea: alpine tarns, frozen ponds, the caldera's lava.
+	for lake: Array in gen.get("lakes") if gen.get("lakes") != null else []:
+		var lc: Vector2 = lake[0]
+		var r: float = lake[1]
+		var lava: bool = lake[3] == Blocks.LAVA
+		var frozen: bool = lake[3] == Blocks.ICE
+		for z in range(maxi(0, int((lc.y - r) / mpp)), mini(n, int((lc.y + r) / mpp) + 1)):
+			for x in range(maxi(0, int((lc.x - r) / mpp)), mini(n, int((lc.x + r) / mpp) + 1)):
+				if Vector2(x * mpp + half, z * mpp + half).distance_to(lc) < r and heights[x + z * n] < float(lake[2]):
+					img.set_pixel(x, z, Color(0.95, 0.42, 0.1) if lava else (Color(0.72, 0.8, 0.86) if frozen else Color(0.16, 0.34, 0.42)))
 	img.set_meta("metres_per_pixel", mpp)
 	img.set_meta("world_size", float(gen.size))
 	img.set_meta("sea_level", sea)

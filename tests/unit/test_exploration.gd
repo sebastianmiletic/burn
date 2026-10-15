@@ -38,7 +38,13 @@ func test_cave_regions_and_refuges() -> void:
 			if k == CaveBiomes.Kind.CRYSTAL_REFUGE:
 				check(CaveBiomes.sanctuary(p, 1234))
 				check(not CaveBiomes.sanctuary(p + Vector3(63, 0, 0), 1234))
-	check_eq(counts.size(), 5, "all five biomes occur")
+	check(counts.size() >= 5 and counts.has(CaveBiomes.Kind.FLOODED), "the classic cave biomes and flooded grottos occur")
+	var deep := {}
+	for z in 32:
+		for x in 32:
+			deep[int(CaveBiomes.region(Vector3(x * 128 + 64, -96, z * 128 + 64), 1234)["kind"])] = true
+	check(deep.has(CaveBiomes.Kind.MAGMA), "magma vaults in the deepest layer")
+	check_eq(int(CaveBiomes.region(Vector3(64, -32, 64), 1234, 2)["kind"]) <= CaveBiomes.Kind.CRYSTAL_REFUGE, true, "revision 2 worlds keep their five biomes")
 	check(int(counts[CaveBiomes.Kind.CRYSTAL_REFUGE]) < 80, "sanctuaries are rare")
 
 func test_ryft_islands_have_air_below_and_connected_paths() -> void:

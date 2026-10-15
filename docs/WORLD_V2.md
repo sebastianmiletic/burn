@@ -31,3 +31,39 @@
 
 The previous architecture docs describe the original two-dimension design. They remain useful for the
 entity, rendering and audio contracts, but these additions supersede their world-size, camera and HUD notes.
+
+# World revision 3 (new worlds; saves keep the revision they were made with)
+
+- `WorldGen.LATEST_REVISION` (3) is used for new games (core/game.gd, world/game_world.gd). Revision 2 code
+  paths are untouched, so 0.4 saves generate exactly as before.
+- Extent 4608 m (2.25x the area), land ~9.7 km2 (3.3x). The campaign island keeps its places; land bridges
+  lead east from Thornwick to the Eastreach and south from the Dragon's Keep to the Sunderlands.
+- New biomes (`WorldGen.Biome`, names in `BIOME_NAMES`, map colours in `BIOME_COLORS`): REDWOOD "The
+  Elderwood", CANYON "The Red Mesas", ALPINE "Highmere Alps", TUNDRA "The Pale Tundra", VOLCANIC
+  "Brimstone Badlands", FJORD "Kaldfjord Coast". New blocks 63..72: red rock, red sand, scoria, permafrost,
+  redwood trunk, umber rock, flowstone, geyserite, mycelium, magma rock.
+- `prepare()`: a 32 m biome-blend grid and the 4 m terrain maps on the WorkerThreadPool, then lakes,
+  locations, protected sites, the cave network, pads/roads. `height_map()` (parallel, cached) feeds the
+  world map and the horizon. Chunk columns are cached (`_columns_v3`).
+- Mountains are sculpted massifs (`PEAKS`): concave peak profiles, ridged ridgelines and spurs,
+  couloirs that converge on each summit (`_couloirs`), scree, fell-field and slope-aware snowcaps.
+  Mesas/canyons (`_mesa`, banded red beds), the caldera volcano with a lava lake, fjord inlets with
+  sheer walls, glacial tarns and frozen ponds (`lakes`, `lake_level()`), ravines (`_ravine`).
+- `CaveNetwork` (world/caves/cave_network.gd): signed-distance carvers evaluated per chunk — natural cave
+  mouths on hillsides and pit entrances, sinkholes, winding passages down to the regional chamber,
+  underground rivers between flooded chambers, and mine workings. Chambers have flat floors; flooded
+  grottos hold lakes and magma vaults lava pools (`CaveBiomes.pool_level`), guarded so no tunnel breaches
+  a pool.
+- Full mines (`MineLayout`, world/caves/mine_layout.gd): hillside portal, adit, 2-3 levels joined by
+  declines, stopes with ore seams, storerooms, a caved-in crosscut hiding a rich stope, a flooded sump,
+  the deep gallery with a guardian and a tier-3 chest, and a breakthrough into the caves. The workings
+  location (`<id>_workings`, `Location.Kind.MINE`) carries `get_meta(&"mine")["props"]` for MineDressing.
+- Queries: `cave_name_at(pos)`, `is_underground(pos)`, `cave_biome_at(x, y, z)`, `climate_at(pos)` (weather
+  snow/dust/haze), `horizon_color(x, z, h, slope)`, `mountain_weight(x, z)`, `is_protected(x, z)`.
+- `tools/world_bench.gd` prints prepare timings, land/biome areas, chunk costs and can save the map.
+- Terrain textures gained a seventh row of layers (`TerrainTextures.L.CLIFF`, `BASALT_ROCK`, `SCREE`,
+  `RED_CLIFF`). Steep columns show the bedrock of their height (`WorldGen.FACE`), so faces read as one rock.
+- Cave decoration (CaveDecor), mine dressing (MineDressing) and the geyser vents are modelled meshes in
+  world/caves/*; `CaveBiomes.decor_kind()` tells CaveDecor where the mine workings are.
+- Weather (world/sky/weather.gd) reads `climate_at()` for revision 3; the horizon (world/distant_land.gd)
+  colours its mesh with `horizon_color()`.
