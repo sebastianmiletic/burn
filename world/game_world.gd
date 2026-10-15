@@ -288,6 +288,8 @@ func _activate_dimension(dim: int) -> void:
 # --- Main loop -------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if replicator != null:
+		replicator.check_party_wipe(delta)
 	if local_player == null:
 		return
 	play_time += delta

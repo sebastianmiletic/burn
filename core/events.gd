@@ -7,6 +7,8 @@ extends Node
 signal notify(text: String, kind: String)                      ## toast: "info", "loot", "quest", "warn", "rank"
 signal location_changed(title: String, subtitle: String, first_visit: bool)
 signal interact_prompt(text: String)                           ## "" hides the prompt
+## The crosshair has rested ~1 s on something: what it is (title "" = looked away).
+signal look_info(title: String, subtitle: String, detail: String)
 signal damage_number(pos: Vector3, amount: int, crit: bool, kind: String)  ## kind: "hit", "heal", "player", "fire"
 signal screen_shake(strength: float)
 signal screen_flash(amount: float)

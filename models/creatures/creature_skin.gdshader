@@ -38,6 +38,17 @@ uniform vec3 glow_color : source_color = vec3(0.3, 0.9, 1.0);
 uniform float glow_energy = 4.0;
 uniform float glow_amount : hint_range(0.0, 1.0) = 0.15;
 uniform float glow_pulse = 0.0;
+// 0 = glow everywhere; towards 1 the cracks / spots only glow in scattered patches.
+uniform float glow_sparsity : hint_range(0.0, 1.0) = 0.0;
+// Belly scutes (skinned bodies, use_uv): transverse plates along UV.y on the underside.
+uniform float plates : hint_range(0.0, 1.0) = 0.0;
+uniform float plate_spacing = 0.5;
+uniform vec3 plate_color : source_color = vec3(0.62, 0.5, 0.36);
+// Inner fire seen through the seams of the plates / scales between UV.y = x..y
+// metres (a dragon's throat and chest); strength per instance (`inner_glow`).
+uniform vec2 inner_span = vec2(0.0, 0.0);
+uniform vec3 inner_color : source_color = vec3(1.0, 0.42, 0.08);
+uniform float inner_energy = 5.0;
 
 global uniform float wetness;
 
@@ -45,6 +56,7 @@ instance uniform float hit_flash = 0.0;
 instance uniform vec3 flash_color = vec3(1.0, 1.0, 1.0);
 instance uniform float burn = 0.0;
 instance uniform float dissolve = 0.0;
+instance uniform float inner_glow = 0.0;
 
 varying vec3 v_local;
 varying vec3 v_world;
@@ -177,6 +189,19 @@ void fragment() {
 		col = mix(col, accent, m * accent_amount);
 	}
 
+	// Belly scutes: broad plates with deep seams across the underside.
+	float under = 0.0;
+	float seam = 0.0;
+	if (plates > 0.0 && use_uv) {
+		under = (1.0 - smoothstep(-0.55, -0.05, v_wnormal.y)) * plates;
+		float band = fract(UV.y / plate_spacing);
+		seam = 1.0 - smoothstep(0.0, 0.09, band) * (1.0 - smoothstep(0.86, 1.0, band));
+		float plate_h = (1.0 - seam) * (0.75 + 0.25 * sin(band * 3.14159));
+		h = mix(h, plate_h, under);
+		vec3 pc = plate_color * (0.85 + 0.3 * n_fbm3(vec3(UV * 0.7, 1.0)));
+		col = mix(col, pc * mix(1.0, 0.35, seam), under);
+	}
+
 	// Bump from the height field (Mikkelsen surface gradient).
 	float fade = 1.0 - smoothstep(bump_distance * 0.15, bump_distance, -VERTEX.z);
 	float bh = h * bump * 0.035 * fade;
@@ -202,11 +227,23 @@ void fragment() {
 	} else if (glow_mode == 2) {
 		vec3 c = use_uv ? n_voronoi2(p.xy * 0.5) : voronoi3(p * 0.5);
 		float crack = 1.0 - smoothstep(0.0, 0.06 + glow_amount * 0.1, c.y - c.x);
+		if (glow_sparsity > 0.0) {
+			float patch = n_fbm3((use_uv ? vec3(UV * 0.35, 0.5) : v_local * 1.3) + vec3(0.0, TIME * 0.03, 0.0));
+			crack *= mix(1.0, smoothstep(0.35 + glow_sparsity * 0.25, 0.6 + glow_sparsity * 0.2, patch), glow_sparsity);
+		}
 		float pulse = 1.0 - glow_pulse * 0.5 + glow_pulse * 0.5 * sin(TIME * 1.7 + v_world.y);
-		emit += glow_color * glow_energy * crack * pulse;
+		// inner_glow (per instance) stokes the cracks hotter (Cerberus' rage).
+		emit += glow_color * glow_energy * crack * pulse * (1.0 + inner_glow);
 		col *= 1.0 - crack * 0.7;
 	}
 
+	if (inner_glow > 0.0 && use_uv && inner_span.y > inner_span.x) {
+		float span = smoothstep(inner_span.x, inner_span.x + 0.8, UV.y) * (1.0 - smoothstep(inner_span.y - 1.5, inner_span.y, UV.y));
+		// Fire shows through the plate seams underneath and between the scales.
+		float through = max(seam * under, (1.0 - h) * 0.15 * (1.0 - smoothstep(-0.6, 0.1, v_wnormal.y)));
+		float flicker = 0.8 + 0.2 * sin(TIME * 7.0 + UV.y * 2.0) * sin(TIME * 3.1 + UV.x);
+		emit += inner_color * inner_energy * inner_glow * span * through * flicker;
+	}
 	if (dissolve > 0.0) {
 		float d = n_fbm3(v_world * 1.7);
 		if (d < dissolve) {

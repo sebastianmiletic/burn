@@ -31,6 +31,31 @@ or use `MaterialLibrary` / `ModelKit` helpers. FX (fire, magic, telegraphs) use 
   Spawn types: `npc{role}`, `enemy{kind}`, `boss{kind}`, `chest{tier}`, `shrine`, `portal{to, size}`, `arena_gate{along, across, width, height}`, `lore{text}`, `guard_post`.
 * Block ids: `Blocks` (world/voxel/blocks.gd). 1 block = 1 m. Entity position = feet.
 
+### Modelled architecture (world/architecture/, world/structures/architecture.gd)
+
+Nothing built is drawn from voxels. Planning writes invisible `Blocks.STRUCTURE` collision (and carved rooms and
+doorways) into a location's blueprints and appends specs to `Location.props`; the `Architecture` node models them.
+
+* Planning (world-prepare time): `VillagePlan` (villages: buildings round a green, yards, collision, spawns, then
+  `VillagePlan.finish` lays paths to every door and out to the road ends, palisade gates and docks), `SitePlan`
+  (shrines, watchtowers, ruins by name, crater obelisk, Asphodel), `ExplorationSites` (mines, wrecks, Ryft ruins).
+  Footprints are axis-aligned so collision matches the mesh on the 1 m grid. Village specs keep the planner's random
+  stream untouched (they replay the old draws) so other locations keep their places.
+* Modelling (worker thread): `ArchBuild` holds four `ArchMesh` buckets — shell (to 260 m: walls, roofs, windows,
+  doors, paths), detail (to 115 m: props, rafters, shutters), interior (to 55 m, no shadows) and far (230–1700 m,
+  a few dozen triangles per building, built for every location of the dimension up front) — plus lights, fires and
+  chimney smoke. `BuildingMesh` (timber-framed and stone cottages, longhouse, two-storey tavern, chapel, smithy, stilt
+  houses), `ArchKit` (walls with openings, timber framing, casements, plank doors, thatch / slate / shingle roofs with
+  real courses, chimneys and hearths), `VillageProps`, `VillageGreen`, `SiteMesh`.
+* One shared material: world/architecture/architecture.gdshader with the CC0 texture arrays in assets/architecture/
+  (`ArchMaterials.L` layers; the tangent frame comes from screen-space derivatives, meshes carry no tangents). Vertex
+  data carries layer, tint, grime, wear and snow, so a whole village draws in a handful of calls. Windows glow at
+  night (`ArchMaterials.set_night`), lamps and hearths are unshadowed OmniLights with distance fade.
+* Prop types for other modules: `{"type": "builder", "builder": Callable(b: ArchBuild, prop)}` runs on the worker;
+  legacy `box` / `gable` props still render (textured).
+* `ArchClearings` keeps paved ground, paths and floors free of grass (read by `Flora.plan_chunk`).
+* `--no-architecture` (user arg) disables it all, for A/B GPU measurements.
+
 ## GameWorld (world/game_world.gd) — `GameWorld.instance`
 
 The in-game root. Owns both dimensions, entities, the local player, HUD, sky.
