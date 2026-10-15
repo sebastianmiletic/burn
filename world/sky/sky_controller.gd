@@ -448,7 +448,7 @@ func _update_lights(delta: float, force: bool) -> void:
 		"fog_sky_affect": environment.fog_sky_affect,
 		"fog_dens": environment.fog_density,
 		# Far haze: clear-day air thins it; weather thickens it as much as the near fog.
-		"far_dens": 0.00022 + maxf(environment.fog_density - 0.0013 * _fog_mult, 0.0) * 0.9,
+		"far_dens": 0.00014 + maxf(environment.fog_density - 0.0013 * _fog_mult, 0.0) * 0.9,
 		"sun_scatter": environment.fog_sun_scatter,
 		"sun_dir_w": _sun_dir,
 		"sun_col": Vector3(sun.light_color.r, sun.light_color.g, sun.light_color.b) * sun.light_energy,
