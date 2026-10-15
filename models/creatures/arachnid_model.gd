@@ -136,6 +136,12 @@ func _materials() -> Array:
 		leg = CreatureSkin.fur(palette["body"], palette["belly"], {"use_uv": true, "pattern_scale": 26.0, "bump": 1.3,
 			"accent": palette["accent"], "accent_mode": 1, "accent_amount": 0.7, "accent_scale": 4.6, "rim": 0.45, "bump_distance": 20.0,
 			"ascii_id": AsciiMaterialId.SOLID})
+	if not scorp:
+		# A coat of fine setae over the body and legs (fur shells): a hairy hunting spider.
+		var tip := (palette["body"] as Color).lightened(0.12)
+		body = CreatureSkin.with_fur(body, 0.012, 2, {"tip_color": tip, "density": 260.0, "fur_distance": 16.0})
+		abd = CreatureSkin.with_fur(abd, 0.014, 2, {"tip_color": tip, "density": 260.0, "fur_distance": 16.0})
+		leg = CreatureSkin.with_fur(leg, 0.008, 2, {"tip_color": tip, "density": 300.0, "fur_distance": 14.0, "accent_amount": 0.0})
 	var eye := CreatureSkin.eye((palette["eye"] as Color).darkened(0.35), 1.6, 0.1)
 	var glow := CreatureSkin.eye(palette.get("glow", palette["eye"]), 5.0, 0.6)
 	return [body, abd, fang, eye, glow, leg]
