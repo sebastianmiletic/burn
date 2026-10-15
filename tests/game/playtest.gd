@@ -86,6 +86,19 @@ func _run() -> void:
 
 	# --- Mining and building ---------------------------------------------------
 	# Mining sculpts: strike the ground a few times beside the player.
+	# Looking at something for a second names it beside the minimap.
+	var looked := [""]
+	var on_look := func(t: String, _s: String, _d: String) -> void: looked[0] = t
+	Events.look_info.connect(on_look)
+	p.camera.pitch = -1.2
+	await get_tree().create_timer(1.6).timeout
+	_check(looked[0] != "", "looking at the ground names it (%s)" % looked[0])
+	p.camera.pitch = 1.3  # at the sky: nothing
+	await get_tree().create_timer(0.5).timeout
+	_check(looked[0] == "", "looking away clears it")
+	Events.look_info.disconnect(on_look)
+	p.camera.pitch = -0.2
+
 	# Find natural ground nearby (the village plaza is paved).
 	var dig_at := p.global_position + Vector3(2.5, -0.3, 0)
 	var g := -INF

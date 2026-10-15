@@ -91,6 +91,9 @@ func _ready() -> void:
 		var vm := Viewmodel.new()
 		vm.player = self
 		camera.add_child(vm)
+		var look := LookInspector.new()
+		look.player = self
+		add_child(look)
 		_highlight = BlockHighlight.new()
 		add_child(_highlight)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
