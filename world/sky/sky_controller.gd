@@ -397,9 +397,15 @@ func _update_lights(delta: float, force: bool) -> void:
 			var p := _world().local_player.global_position
 			var b := g.biome_at(int(p.x), int(p.z))
 			forest = 1.0 if b == WorldGen.Biome.FOREST else (0.6 if b == WorldGen.Biome.MARSH else 0.0)
-	var vol := 0.0015 + golden * 0.008 * (1.0 - overcast) + forest * 0.005 * dayf + morning * 0.004 + fog * 0.03 + rain * 0.01 + dust * 0.02
+	# Weather visibility is the distance fog's job; volumetric fog adds local
+	# depth (shafts, halos). Too dense, its far slice paints a pale wall over
+	# everything beyond its range (the horizon included).
+	var vol := 0.0015 + golden * 0.008 * (1.0 - overcast) + forest * 0.005 * dayf + morning * 0.004 + fog * 0.011 + rain * 0.004 + dust * 0.01 + ember * 0.006
 	environment.volumetric_fog_density = lerpf(vol, 0.0045, u) * _fog_mult
-	var vol_albedo := (Vector3(0.88, 0.88, 0.9) if dust < 0.3 else Vector3(0.85, 0.7, 0.55)).lerp(_cave_haze, u)
+	var vol_albedo := (Vector3(0.88, 0.88, 0.9) if dust < 0.3 else Vector3(0.85, 0.7, 0.55)) * (1.0 - overcast * 0.35 - storm * 0.35)
+	if ember > 0.0:
+		vol_albedo = vol_albedo.lerp(Vector3(0.6, 0.32, 0.2), ember)
+	vol_albedo = vol_albedo.lerp(_cave_haze, u)
 	environment.volumetric_fog_albedo = Color(vol_albedo.x, vol_albedo.y, vol_albedo.z)
 	environment.volumetric_fog_emission = Color(0, 0, 0)
 	environment.volumetric_fog_anisotropy = lerpf(lerpf(0.75, 0.3, overcast), 0.45, u)
@@ -420,13 +426,17 @@ func _update_lights(delta: float, force: bool) -> void:
 	var night_hz := Vector3(0.008, 0.01, 0.016)
 	var sky_hz := _horizon * (1.0 - nightf) + night_hz * nightf
 	var sky_hz_sun := _horizon_sun.limit_length(1.5) * (1.0 - nightf) + night_hz * nightf
-	var murk_a := amb * 1.1
+	var murk_a := amb * 1.1 * (1.0 - overcast * 0.4)
 	sky_hz = sky_hz.lerp(murk_a.lerp(Vector3.ONE * sky_hz.dot(Vector3(0.3, 0.5, 0.2)), 0.4), murk_k)
 	sky_hz_sun = sky_hz_sun.lerp(murk_a.lerp(Vector3.ONE * sky_hz_sun.dot(Vector3(0.3, 0.5, 0.2)), 0.4), murk_k)
 	# Low cloud near the horizon (the deck the sky shader fades into haze).
-	var deck := clampf(overcast * 0.6 + storm * 0.3, 0.0, 0.85)
-	sky_hz = sky_hz.lerp(amb * 0.9, deck) * sky_dim
-	sky_hz_sun = sky_hz_sun.lerp(amb * 0.9, deck) * sky_dim
+	# Cloud bases as world_sky.gdshader lights them: sky ambient, darkened by
+	# thickness (cloud_dark) - a storm deck is a fifth as bright as fair cloud.
+	var deck := clampf(overcast * 0.9 + storm * 0.1, 0.0, 0.95)
+	var cloud_dark := clampf(storm * 0.9 + rain * 0.35, 0.0, 1.0)
+	var base_col := amb * 0.75 * (1.0 - cloud_dark * 0.65) * (1.0 - cloud_dark * 0.5) * (1.0 - overcast * 0.5)
+	sky_hz = sky_hz.lerp(base_col, deck) * sky_dim
+	sky_hz_sun = sky_hz_sun.lerp(base_col, deck) * sky_dim
 	if ember > 0.0:
 		sky_hz = sky_hz.lerp(Vector3(0.22, 0.08, 0.035) * maxf(dayf, 0.25), ember * 0.7)
 		sky_hz_sun = sky_hz_sun.lerp(Vector3(0.3, 0.1, 0.04) * maxf(dayf, 0.25), ember * 0.7)
@@ -435,6 +445,7 @@ func _update_lights(delta: float, force: bool) -> void:
 		"sky_hz": sky_hz,
 		"sky_hz_sun": sky_hz_sun,
 		"fog_aerial": environment.fog_aerial_perspective,
+		"fog_sky_affect": environment.fog_sky_affect,
 		"fog_dens": environment.fog_density,
 		# Far haze: clear-day air thins it; weather thickens it as much as the near fog.
 		"far_dens": 0.00022 + maxf(environment.fog_density - 0.0013 * _fog_mult, 0.0) * 0.9,

@@ -30,6 +30,7 @@ uniform vec3 fog_col = vec3(0.5, 0.55, 0.6);
 uniform vec3 sky_hz = vec3(0.5, 0.55, 0.6);
 uniform vec3 sky_hz_sun = vec3(0.6, 0.55, 0.5);
 uniform float fog_aerial = 0.6;
+uniform float fog_sky_affect = 0.12;
 uniform float fog_dens = 0.0016;
 uniform float far_dens = 0.0004;
 uniform float sun_scatter = 0.1;
@@ -162,7 +163,9 @@ void fragment() {
 	if (fog_h_dens > 0.0001) {
 		amount = max(amount, 1.0 - exp(min(0.0, (p.y - fog_h) * fog_h_dens)));
 	}
-	FOG = vec4(col, amount);
+	// Ranges never vanish completely into haze: a trace of their own shading
+	// always reads, darker than the sky in foul weather, never a pale cut-out.
+	FOG = vec4(col, min(amount, 0.93));
 }
 
 void light() {

@@ -89,6 +89,9 @@ func _run() -> void:
 		_clear_ui()
 		# "arena_<location id>": stand 18 m in front of that location's boss spawn.
 		var arena := stop.begins_with("arena_")
+		if not arena and not STOPS.has(stop):
+			report.append("%s: unknown stop" % stop)
+			continue
 		var spec: Array = [StringName(stop.trim_prefix("arena_")), 13.0, 0.0, Vector3(0, 2.5, 18), -0.12] if arena else STOPS[stop]
 		var loc := w.location_by_id(spec[0])
 		if loc == null:
