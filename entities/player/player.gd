@@ -536,6 +536,7 @@ func _sculpt_strike(target: Dictionary, block: int) -> void:
 	var w := world()
 	if w.fx != null:
 		w.fx.debris(point, n, Blocks.color(block), false)
+	_highlight.flash_crack(point, n)
 	# Bite centre sits just inside the surface so each strike digs in.
 	w.replicator.request_dig(point - n * 0.25, 0.8 + tier * 0.06, STRIKE_TIME, item, dimension)
 	camera.add_trauma(0.035)

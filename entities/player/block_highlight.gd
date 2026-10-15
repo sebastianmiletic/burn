@@ -42,13 +42,14 @@ func _ready() -> void:
 	_cracks.size = Vector3(1.4, 0.9, 1.4)
 	_cracks.texture_albedo = _crack_texture()
 	_cracks.modulate = Color(0.05, 0.04, 0.03, 1.0)
+	_cracks.top_level = true  # strikes leave cracks where they landed
 	add_child(_cracks)
 	visible = false
 
 
 func show_target(hit: Dictionary, show: bool) -> void:
-	visible = show and not hit.is_empty()
-	if not visible:
+	visible = (show and not hit.is_empty()) or _flash > 0.0
+	if hit.is_empty() or not show:
 		return
 	_smooth = true  # A surface contact, never a visible voxel-selection box.
 	_outline.visible = false
@@ -69,9 +70,39 @@ func set_crack(progress: float) -> void:
 	progress = clampf(progress, 0.0, 1.0)
 	_crack.visible = progress > 0.02 and not _smooth
 	_crack_mat.set_shader_parameter(&"progress", progress)
-	_cracks.visible = progress > 0.02 and _smooth
+	_cracks.visible = (progress > 0.02 and _smooth) or _flash > 0.0
+	if progress > 0.02 and _flash <= 0.0:
+		_cracks.global_transform = global_transform
 	_cracks.modulate.a = 0.35 + progress * 0.65
 	_cracks.size = Vector3.ONE * (0.5 + progress * 0.9) + Vector3(0, 0.4, 0)
+
+
+## A pickaxe strike: cracks appear where it bit in and fade away. Nothing else
+## marks the ground (no selection box or ring).
+var _flash := 0.0
+
+
+func flash_crack(point: Vector3, normal: Vector3, strength := 1.0) -> void:
+	visible = true
+	_outline.visible = false
+	_ring.visible = false
+	_crack.visible = false
+	var n := normal.normalized() if normal.length() > 0.1 else Vector3.UP
+	var x := n.cross(Vector3.FORWARD if absf(n.y) > 0.9 else Vector3.UP).normalized()
+	# A random twist so repeated strikes don't stamp the same pattern.
+	var b := Basis(x, n, x.cross(n)).rotated(n, randf() * TAU)
+	_cracks.global_transform = Transform3D(b, point)
+	_cracks.size = Vector3(1.0, 0.7, 1.0) * lerpf(0.8, 1.3, clampf(strength, 0.0, 1.0))
+	_cracks.visible = true
+	_flash = 1.0
+
+
+func _process(delta: float) -> void:
+	if _flash > 0.0:
+		_flash = maxf(0.0, _flash - delta * 1.6)
+		_cracks.modulate.a = _flash
+		if _flash <= 0.0:
+			_cracks.visible = false
 
 
 static func _ring_texture() -> ImageTexture:
