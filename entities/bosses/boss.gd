@@ -130,6 +130,10 @@ func _on_phase_changed(_new_phase: int) -> void:
 # --- Damage ---------------------------------------------------------------------
 
 func take_damage(amount: float, source_id := 0, damage_kind := "hit") -> float:
+	# Scale encounter health before applying the opening hit. Doing this in
+	# _on_damaged used to heal away the first strike (even a killing blow).
+	if not engaged and not dead and amount > 0 and source_id != 0:
+		_engage()
 	var resist_kind := "fire" if damage_kind in ["fire", "burn"] else "hit"
 	var dealt := super.take_damage(Damage.apply(amount, kind, resist_kind), source_id, damage_kind)
 	if dealt > 0.0 and source_id != 0 and damage_kind != "burn":
@@ -140,8 +144,6 @@ func take_damage(amount: float, source_id := 0, damage_kind := "hit") -> float:
 func _on_damaged(amount: float, source_id: int, damage_kind: String) -> void:
 	if damage_kind == "fire":
 		burning = Damage.BURN_SECONDS * 0.6
-	if not engaged and source_id != 0:
-		_engage()
 	if model != null:
 		model.flash(Color(1.0, 0.6, 0.35) if damage_kind in ["fire", "burn"] else Color(1, 1, 1))
 	Events.damage_number.emit(center() + Vector3(0, hit_height * 0.35, 0), int(round(amount)), damage_kind == "crit", "fire" if damage_kind in ["fire", "burn"] else "hit")

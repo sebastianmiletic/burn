@@ -42,22 +42,22 @@ func _ready() -> void:
 func _make_arm(right: bool) -> Node3D:
 	var arm := Node3D.new()
 	arm.name = "ArmR" if right else "ArmL"
-	var sleeve := ModelKit.part(arm, ModelKit.cylinder(0.042, 0.052, 0.24, 12), _sleeve_mat, Vector3(0, 0, -0.11), Vector3(90, 0, 0))
+	var sleeve := ModelKit.part(arm, ModelKit.cylinder(0.042, 0.052, 0.24, 24), _sleeve_mat, Vector3(0, 0, -0.11), Vector3(90, 0, 0))
 	sleeve.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var cuff := ModelKit.part(arm, ModelKit.cylinder(0.047, 0.047, 0.035, 12), _sleeve_mat, Vector3(0, 0, -0.22), Vector3(90, 0, 0))
+	var cuff := ModelKit.part(arm, ModelKit.cylinder(0.047, 0.047, 0.035, 24), _sleeve_mat, Vector3(0, 0, -0.22), Vector3(90, 0, 0))
 	cuff.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var hand := Node3D.new()
 	hand.name = "Hand"
 	hand.position = Vector3(0, 0, -0.27)
 	arm.add_child(hand)
 	var s := 1.0 if right else -1.0
-	var palm := ModelKit.part(hand, ModelKit.capsule(0.032, 0.09, 10), _skin_mat, Vector3(0, -0.005, -0.03), Vector3(90, 0, 0), Vector3(1.25, 1.0, 0.8))
+	var palm := ModelKit.part(hand, ModelKit.capsule(0.032, 0.09, 24), _skin_mat, Vector3(0, -0.005, -0.03), Vector3(90, 0, 0), Vector3(1.25, 1.0, 0.8))
 	palm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Curled fingers around the grip and a thumb.
 	for i in 4:
-		var f := ModelKit.part(hand, ModelKit.capsule(0.011, 0.05, 6), _skin_mat, Vector3(s * (-0.024 + i * 0.016), -0.03, -0.07), Vector3(60, 0, 0))
+		var f := ModelKit.part(hand, ModelKit.capsule(0.011, 0.05, 12), _skin_mat, Vector3(s * (-0.024 + i * 0.016), -0.03, -0.07), Vector3(60, 0, 0))
 		f.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var thumb := ModelKit.part(hand, ModelKit.capsule(0.012, 0.05, 6), _skin_mat, Vector3(s * 0.035, 0.0, -0.05), Vector3(70, 0, s * 40.0))
+	var thumb := ModelKit.part(hand, ModelKit.capsule(0.012, 0.05, 12), _skin_mat, Vector3(s * 0.035, 0.0, -0.05), Vector3(70, 0, s * 40.0))
 	thumb.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return arm
 

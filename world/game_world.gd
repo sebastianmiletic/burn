@@ -46,6 +46,7 @@ var _entities := {}          # net_id -> Entity
 var _entity_root: Node3D
 var _next_id := 1
 var _active_boss: Node = null
+var _prepare_task := -1
 var _arena_gate_blocks: Array = []   # [dim, Vector3i] set during a boss fight
 
 
@@ -56,6 +57,11 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	# Closing the game while a loading worker owns generator data must not
+	# free the scene/resources out from under that worker.
+	if _prepare_task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_prepare_task)
+		_prepare_task = -1
 	if instance == self:
 		instance = null
 
@@ -79,6 +85,9 @@ func setup(info: Dictionary) -> void:
 	_log_time("overworld prepared", t0)
 	await _prepare_dimension(1, seed_value ^ 0x5eed, 0.45, 0.6)
 	_log_time("underworld prepared", t0)
+	await _prepare_dimension(2, seed_value ^ 0x7f17, 0.60, 0.62)
+	add_child(Architecture.new())
+	add_child(EnvironmentDetails.new())
 	if DisplayServer.get_name() != "headless":
 		CharBody.warmup([Models.player_style(0), Models.player_style(1)])
 	if ResourceLoader.exists(VoxelWorld.FLORA_PATH):
@@ -117,6 +126,9 @@ func setup(info: Dictionary) -> void:
 	quests.completed_quest.connect(_on_quest_completed)
 	_add_entity(local_player)
 	local_player.load_from(save.get("player", {}))
+	if not worlds.has(local_player.dimension) or (local_player.dimension == 2 and not ryft_unlocked):
+		local_player.dimension = 0
+		local_player.global_position = default_spawn(0)
 	local_dimension = local_player.dimension
 	var pdata: Dictionary = save.get("player", {})
 	var lp := local_player.global_position
@@ -135,6 +147,9 @@ func setup(info: Dictionary) -> void:
 	if pdata.is_empty():
 		local_player.give_starting_kit()
 		quests.accept("kindling")
+	if quests.is_completed("throne") and not quests.is_completed("ryft"):
+		quests.accept("ryft")
+	local_dimension = local_player.dimension
 
 	view = AsciiView.new()
 	view.source_camera = local_player.camera
@@ -202,22 +217,33 @@ func _log_time(what: String, t0: int) -> void:
 
 
 func _prepare_dimension(dim: int, seed_value: int, p0: float, p1: float) -> void:
-	var gen := WorldGen.new(dim, seed_value)
+	var saved: Dictionary = session.get("save", {})
+	var revision := int(saved.get("world_revision", 2 if saved.is_empty() else 1))
+	var gen := WorldGen.new(dim, seed_value, revision)
 	gens[dim] = gen
 	var done := [false]
+	var horizon: Array = [[]]
 	var progress := [0.0, ""]
 	var task := WorkerThreadPool.add_task(func() -> void:
 		gen.prepare(func(f: float, text: String) -> void:
 			progress[0] = f
 			progress[1] = text)
 		map_images[dim] = MapImage.build(gen)
+		if dim == 0:
+			horizon[0] = DistantLand.arrays_for(gen)
 		done[0] = true, true, "prepare dimension")
+	_prepare_task = task
 	while not done[0]:
 		loading.emit(lerpf(p0, p1, progress[0]), progress[1] if progress[1] != "" else "Shaping the land")
 		await get_tree().process_frame
 	WorkerThreadPool.wait_for_task_completion(task)
+	_prepare_task = -1
+	if dim == 0:
+		var distant := DistantLand.new()
+		distant.setup(gen, horizon[0])
+		add_child(distant)
 	var vw := VoxelWorld.new()
-	vw.name = "Overworld" if dim == 0 else "Underworld"
+	vw.name = ["Overworld", "Underworld", "Ryft"][dim]
 	vw.setup(gen, dim)
 	vw.view_radius = view_radius()
 	vw.max_point_lights = [6, 10, 14, 20][int(Settings.get_value("graphics", "quality"))]
@@ -384,7 +410,7 @@ func nearest_player(pos: Vector3, dim: int, max_dist: float) -> Player:
 
 
 func default_spawn(dim: int) -> Vector3:
-	var id := &"emberfall_shrine" if dim == 0 else &"asphodel"
+	var id := &"emberfall_shrine" if dim == 0 else (&"asphodel" if dim == 1 else &"ryft_landing")
 	var loc := location_by_id(id)
 	var g := gen_for(dim)
 	var p := Vector3(g.size * 0.5, 40, g.size * 0.5)
@@ -594,6 +620,7 @@ func boss_finished(boss: Node) -> void:
 				if randf() < float(entry[1]):
 					drop_item((boss as Entity).center(), entry[0], randi_range(int(entry[2]), int(entry[3])), dim)
 		if kind == "hades":
+			ryft_unlocked = true
 			replicator.broadcast_victory()
 
 
@@ -712,8 +739,10 @@ func fell_tree_fx(root: Vector3i, trunk: int, dim: int, dir: Vector3) -> void:
 
 ## Local player moves to another dimension (portal).
 func travel(to_dim: int) -> void:
+	if not worlds.has(to_dim) or (to_dim == 2 and not ryft_unlocked):
+		return
 	var target := default_spawn(to_dim)
-	if to_dim == 0:
+	if to_dim == 0 and local_dimension == 1:
 		var gate := location_by_id(&"gates_of_hades")
 		if gate != null:
 			for s in gate.spawns_of("portal"):
@@ -731,7 +760,7 @@ func travel(to_dim: int) -> void:
 	quests.on_event("dimension", str(to_dim))
 	replicator.notify_dimension(to_dim)
 	if from != to_dim:
-		Events.notify.emit("You pass through the Gates of Hades." if to_dim == 1 else "You return to the world above.", "warn")
+		Events.notify.emit("Ryft Island: follow the stone arches between the floating isles." if to_dim == 2 else ("You pass through the Gates of Hades." if to_dim == 1 else "You return to the world above."), "warn")
 
 
 # --- Quests / rewards ----------------------------------------------------------------------
@@ -764,6 +793,7 @@ func save_data() -> Dictionary:
 	var here := location_at(local_player.global_position, local_dimension)
 	return {
 		"seed": int(session.get("seed", 1)),
+		"world_revision": gen_for(0).revision,
 		"play_time": play_time,
 		"player": local_player.to_dict(),
 		"quests": quests.to_dict(),
@@ -771,7 +801,7 @@ func save_data() -> Dictionary:
 		"bosses_defeated": bosses_defeated.keys(),
 		"opened_chests": opened_chests.keys(),
 		"lit_shrines": lit_shrines.keys(),
-		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits()},
+		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits(), 2: world_for(2).get_edits()},
 		"stations": placed_stations,
 		"ryft_unlocked": ryft_unlocked,
 		"time_of_day": sky.time_of_day,
@@ -795,7 +825,7 @@ func _load_world_state(save: Dictionary) -> void:
 	for d: int in edits:
 		if worlds.has(d):
 			(worlds[d] as VoxelWorld).apply_edits(edits[d])
-	ryft_unlocked = bool(save.get("ryft_unlocked", false))
+	ryft_unlocked = bool(save.get("ryft_unlocked", false)) or bosses_defeated.has("hades")
 	if save.has("time_of_day"):
 		sky.time_of_day = float(save["time_of_day"])
 		sky.day = int(save.get("day", 1))
@@ -805,13 +835,15 @@ func _load_world_state(save: Dictionary) -> void:
 
 
 func is_ready_for_join() -> bool:
-	return worlds.has(0) and worlds.has(1) and sky != null
+	return worlds.has(0) and worlds.has(1) and worlds.has(2) and sky != null
 
 
 ## State a joining client needs: edits, bosses, clock.
 func join_state() -> Dictionary:
 	return {
-		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits()},
+		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits(), 2: world_for(2).get_edits()},
+		"world_revision": gen_for(0).revision,
+		"ryft_unlocked": ryft_unlocked,
 		"bosses_defeated": bosses_defeated.keys(),
 		"time_of_day": sky.time_of_day,
 		"day": sky.day,

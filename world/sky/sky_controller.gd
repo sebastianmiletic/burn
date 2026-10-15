@@ -333,6 +333,17 @@ func _update_lights(delta: float, force: bool) -> void:
 	var morning := _mist_amount()
 	var mist := morning + wet * (1.0 - rain) * 0.5
 	environment.fog_density = (0.0016 + fog * 0.028 + rain * 0.006 + storm * 0.004 + dust * 0.012 + mist * 0.003) * _fog_mult * lerpf(1.0, 2.5, _underground)
+	# Thin, cold air high in the mountains: the distance hazes and softens.
+	var alt := 0.0
+	var gw := GameWorld.instance
+	if gw != null and gw.weather != null:
+		alt = gw.weather.altitude
+	environment.fog_density += alt * 0.0045 * _fog_mult
+	camera_attributes.dof_blur_far_enabled = alt > 0.03 and bool(Settings.get_value("graphics", "altitude_blur"))
+	if alt > 0.03:
+		camera_attributes.dof_blur_far_distance = lerpf(420.0, 110.0, alt)
+		camera_attributes.dof_blur_far_transition = lerpf(200.0, 90.0, alt)
+		camera_attributes.dof_blur_amount = 0.04 + alt * 0.1
 	environment.fog_aerial_perspective = 0.6 * (1.0 - fog * 0.5)
 	environment.fog_sky_affect = 0.12 + fog * 0.6 + rain * 0.2
 	# Ground mist that pools in the valleys at dawn and after rain.

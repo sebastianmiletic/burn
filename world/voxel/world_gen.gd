@@ -9,17 +9,17 @@ extends RefCounted
 ##
 ## generate_chunk() is thread-safe and called from worker threads.
 
-enum Dimension { OVERWORLD, HELL }
-enum Biome { OCEAN, PLAINS, FOREST, PEAKS, MARSH, WASTES, ASPHODEL, LAKE_OF_FIRE, TARTARUS }
+enum Dimension { OVERWORLD, HELL, RYFT }
+enum Biome { OCEAN, PLAINS, FOREST, PEAKS, MARSH, WASTES, ASPHODEL, LAKE_OF_FIRE, TARTARUS, RYFT }
 
 const BIOME_NAMES := ["The Grey Sea", "The Ashen Plains", "Emberwood", "Frost Peaks", "Blackmarsh",
-		"Cinder Wastes", "Asphodel Fields", "Lake of Fire", "Tartarus"]
+		"Cinder Wastes", "Asphodel Fields", "Lake of Fire", "Tartarus", "Ryft Island"]
 
 const SEA_LEVEL := 12
 const LAVA_LEVEL := 0  ## hell
 const COARSE := 4      ## metres per coarse map cell
 const Y_MIN := -128
-const Y_MAX := 127
+const Y_MAX := 383
 
 # base height, detail amplitude, ridge amplitude
 const BIOME_SHAPE := {
@@ -32,10 +32,12 @@ const BIOME_SHAPE := {
 	Biome.ASPHODEL: Vector3(10.0, 4.0, 0.0),
 	Biome.LAKE_OF_FIRE: Vector3(-6.0, 3.0, 0.0),
 	Biome.TARTARUS: Vector3(16.0, 6.0, 22.0),
+	Biome.RYFT: Vector3(80.0, 5.0, 16.0),
 }
 
 var dimension := Dimension.OVERWORLD
 var world_seed := 1
+var revision := 2  ## Saves made before this update retain revision 1 terrain.
 var size := 2048  ## world extent in blocks (x and z)
 var locations: Array[Location] = []
 
@@ -51,15 +53,17 @@ var _blueprints: Array[Blueprint] = []
 var _crater := Vector3(1024, 1555, 70)  # x, z, radius (overworld)
 
 
-func _init(dim: Dimension, seed_value: int) -> void:
+func _init(dim: Dimension, seed_value: int, world_revision := 2) -> void:
 	dimension = dim
 	world_seed = seed_value
-	size = 2048 if dim == Dimension.OVERWORLD else 640
+	revision = world_revision
+	size = (3072 if revision >= 2 else 2048) if dim == Dimension.OVERWORLD else 640
 	_coarse_n = size / COARSE
 
 
 func center() -> Vector2:
-	return Vector2(size * 0.5, size * 0.5)
+	# Keep the campaign coordinates; new islands extend east/south.
+	return Vector2(1024, 1024) if dimension == Dimension.OVERWORLD else Vector2(size * 0.5, size * 0.5)
 
 
 # --- Preparation --------------------------------------------------------------
@@ -100,6 +104,8 @@ func _setup_biome_seeds() -> void:
 			[j.call(Vector2(420, 1050)), Biome.MARSH], [j.call(Vector2(520, 1380)), Biome.MARSH], [j.call(Vector2(480, 740)), Biome.MARSH],
 			[j.call(Vector2(1024, 1700)), Biome.WASTES], [j.call(Vector2(1300, 1660)), Biome.WASTES], [j.call(Vector2(760, 1650)), Biome.WASTES],
 		]
+	elif dimension == Dimension.RYFT:
+		_biome_seeds = [[Vector2(320, 320), Biome.RYFT]]
 	else:
 		_biome_seeds = [
 			[Vector2(320, 320), Biome.ASPHODEL], [Vector2(200, 260), Biome.ASPHODEL],
@@ -146,7 +152,10 @@ func _coarse_rows(row: int) -> void:
 			var d := wp.distance_squared_to(s[0])
 			var w := 1.0 / (d * d + 1.0)
 			total += w
-			shape += BIOME_SHAPE[s[1]] * w
+			var biome_shape: Vector3 = BIOME_SHAPE[s[1]]
+			if revision >= 2 and s[1] == Biome.PEAKS:
+				biome_shape = Vector3(105.0, 22.0, 190.0)
+			shape += biome_shape * w
 			if d < best:
 				best = d
 				best_biome = s[1]
@@ -155,16 +164,27 @@ func _coarse_rows(row: int) -> void:
 		if dimension == Dimension.OVERWORLD:
 			# An island: the sea closes in past ~900 m from the centre.
 			var r := p.distance_to(c)
-			var t := smoothstep(860.0, 990.0, r + warp.get_noise_2dv(p * 2.0) * 60.0)
+			var coast := warp.get_noise_2dv(p * 2.0) * (160.0 if revision >= 2 else 60.0)
+			if revision >= 2:
+				coast += sin((p - c).angle() * 5.0 + 0.7) * 65.0
+			var t := smoothstep(860.0, 990.0, r + coast)
 			shape = shape.lerp(BIOME_SHAPE[Biome.OCEAN], t)
 			if t > 0.5:
 				best_biome = Biome.OCEAN
+			if revision >= 2:
+				# Asymmetric outlying islands, reefs and channels.
+				for island: Vector3 in [Vector3(2290, 1260, 230), Vector3(2180, 2230, 330), Vector3(1210, 2480, 210)]:
+					var edge := p.distance_to(Vector2(island.x, island.y)) + warp2.get_noise_2dv(p * 3.0) * 95.0
+					var land := 1.0 - smoothstep(island.z * 0.65, island.z, edge)
+					shape = shape.lerp(Vector3(32, 12, 18), land)
+					if land > 0.5:
+						best_biome = Biome.FOREST
 			# The Cinder Crater above the Gates of Hades.
 			var cd := p.distance_to(Vector2(_crater.x, _crater.y))
 			shape.x -= 22.0 * (1.0 - smoothstep(0.0, _crater.z, cd))
 			shape.x += 7.0 * exp(-pow((cd - _crater.z) / 14.0, 2.0))
 			shape.z *= smoothstep(_crater.z * 0.6, _crater.z * 1.6, cd)
-		else:
+		elif dimension == Dimension.HELL:
 			var r := p.distance_to(c)
 			shape = shape.lerp(BIOME_SHAPE[Biome.LAKE_OF_FIRE], smoothstep(250.0, 310.0, r))
 		var i := col + row * n
@@ -202,6 +222,8 @@ func smooth_height(x: float, z: float) -> float:
 
 ## Natural terrain height before structures and roads.
 func raw_height(x: int, z: int, detail: FastNoiseLite, ridge: FastNoiseLite) -> float:
+	if dimension == Dimension.RYFT:
+		return ryft_column(Vector2(x, z)).x + detail.get_noise_2d(x, z) * 1.5
 	var h := _coarse_sample(_base, x, z)
 	var amp := _coarse_sample(_amp, x, z)
 	var rid := _coarse_sample(_ridge, x, z)
@@ -351,6 +373,8 @@ func generate_chunk(key: Vector3i) -> PackedByteArray:
 func generate(key: Vector3i) -> Array:
 	if dimension == Dimension.HELL:
 		return _generate_hell(key)
+	if dimension == Dimension.RYFT:
+		return _generate_ryft(key)
 	return _generate_overworld(key)
 
 
@@ -411,6 +435,8 @@ func _generate_overworld(key: Vector3i) -> Array:
 		return [data, PackedByteArray()]
 
 	var caves := o.y < max_h - 3
+	var chamber := CaveBiomes.region(Vector3(o) + Vector3(8, 8, 8), world_seed)
+	var advanced_caves := revision >= 2 and o.y < -8
 	var t1 := PackedByteArray()
 	var t2 := PackedByteArray()
 	var cav := PackedByteArray()
@@ -440,11 +466,17 @@ func _generate_overworld(key: Vector3i) -> Array:
 					if wy < -12 and not cav.is_empty():
 						dc = minf(dc, 0.5 + ((198.0 - depth_factor * 19.0) - float(cav[ni])) / 30.0)
 					d = minf(d, dc)
+				var chamber_distance := 100.0
+				if advanced_caves and wy > Y_MIN + 4 and wy < h - 8:
+					chamber_distance = CaveBiomes.distance_to_chamber(Vector3(o.x + x, wy, o.z + z), chamber)
+					d = minf(d, 0.5 + (chamber_distance - 1.0) * 10.0)
 				var solid := d >= 0.5
 				var b := Blocks.AIR
 				if solid:
 					var st := 128 if strata.is_empty() else int(strata[ni])
 					b = _ground_block(o.x + x, wy, o.z + z, h, biomes[ci], roads[ci], st)
+					if chamber_distance < 1.13 and b != Blocks.BEDROCK:
+						b = CaveBiomes.wall_material(o + Vector3i(x, y, z), int(chamber["kind"]), world_seed)
 				elif wy <= h:
 					b = Blocks.LAVA if wy < -112 else Blocks.AIR  # carved by a cave
 				elif wy <= SEA_LEVEL:
@@ -612,7 +644,7 @@ static func tree_info(trunk_block: int, root: Vector3i) -> Array:
 		Blocks.DEAD_TRUNK:
 			kind = 3
 			height = 5.0 + float(hsh & 7) * 0.45
-		Blocks.CRIMSON_TRUNK:
+		Blocks.CRIMSON_TRUNK, Blocks.EMBERWOOD_TRUNK, Blocks.RYFTWOOD_TRUNK:
 			kind = 1
 			height = 7.0 + float(hsh & 7) * 0.5
 		_:
@@ -641,6 +673,7 @@ func _place_trees(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, det
 				Biome.PEAKS: chance = 0.32
 				Biome.MARSH: chance = 0.16
 				Biome.WASTES: chance = 0.015
+				Biome.RYFT: chance = 0.18
 			if float((hsh >> 4) & 0xff) / 255.0 >= chance:
 				continue
 			if _pads.has(rx + rz * size):
@@ -665,6 +698,13 @@ func _place_trees(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, det
 					trunk_h = 3
 				Biome.PLAINS:
 					trunk = Blocks.OAK_TRUNK if (hsh >> 15) & 1 == 0 else Blocks.CRIMSON_TRUNK
+			if revision >= 2:
+				if biome == Biome.RYFT:
+					trunk = Blocks.RYFTWOOD_TRUNK
+				elif biome == Biome.FOREST and hsh % 19 == 0:
+					trunk = Blocks.IRONWOOD_TRUNK
+				elif biome == Biome.WASTES and hsh % 3 == 0:
+					trunk = Blocks.EMBERWOOD_TRUNK
 			var root := Vector3i(rx, ground + 1, rz)
 			# Only the root's own column matters: the whole trunk sits in this chunk column.
 			var lx := rx - o.x
@@ -689,6 +729,52 @@ static func _set_if(data: PackedByteArray, o: Vector3i, p: Vector3i, block: int,
 	if overwrite or data[i] == Blocks.AIR or data[i] == Blocks.WATER:
 		data[i] = block
 
+
+## x/z, surface height, radius. Narrow arched causeways connect the islands.
+const RYFT_ISLANDS := [Vector4(320, 320, 80, 62), Vector4(442, 302, 106, 42), Vector4(266, 186, 128, 46), Vector4(176, 356, 96, 40)]
+
+static func ryft_column(p: Vector2) -> Vector2:
+	var result := Vector2(-120, -121)
+	for island: Vector4 in RYFT_ISLANDS:
+		var r := p.distance_to(Vector2(island.x, island.y)) / island.w
+		if r < 1.0:
+			var top := island.z - pow(r, 5.0) * 9.0
+			if top > result.x:
+				result = Vector2(top, island.z - 12.0 - sqrt(1.0 - r) * 46.0)
+	for i in range(1, RYFT_ISLANDS.size()):
+		var a := Vector2(320, 320)
+		var b := Vector2(RYFT_ISLANDS[i].x, RYFT_ISLANDS[i].y)
+		var t := clampf((p - a).dot(b - a) / a.distance_squared_to(b), 0.0, 1.0)
+		if p.distance_to(a.lerp(b, t)) < 3.2:
+			var h := lerpf(80, RYFT_ISLANDS[i].z, t) + sin(t * PI) * 6.0
+			if h > result.x:
+				result = Vector2(h, h - 4.5)
+	return result
+
+func _generate_ryft(key: Vector3i) -> Array:
+	var data := Chunk.empty()
+	var dens := Chunk.empty()
+	var o := key * Chunk.SIZE
+	if o.y < 0 or o.y > 160:
+		return [data, dens]
+	var detail := make_detail_noise()
+	var ridge := make_ridge_noise()
+	for z in 16:
+		for x in 16:
+			var span := ryft_column(Vector2(o.x + x, o.z + z))
+			if span.x < 0:
+				continue
+			var h := column_f(o.x + x, o.z + z, detail, ridge).x
+			for y in 16:
+				var wy := o.y + y
+				var d := 0.5 + minf(h + 0.5 - wy, wy - span.y) * 0.5
+				var index := Chunk.index(x, y, z)
+				dens[index] = _dbyte(d, d >= 0.5)
+				if d >= 0.5:
+					data[index] = Blocks.GRASS if wy > h - 2 else (Blocks.AMETHYST if _hash3(o.x + x, wy, o.z + z, world_seed) % 31 == 0 else Blocks.SLATE)
+	_place_trees(data, dens, o, detail, ridge)
+	_stamp_blueprints(data, dens, key)
+	return [data, dens]
 
 func _stamp_blueprints(data: PackedByteArray, dens: PackedByteArray, key: Vector3i) -> void:
 	var o := key * Chunk.SIZE

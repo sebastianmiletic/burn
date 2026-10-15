@@ -75,6 +75,8 @@ func _process(_delta: float) -> void:
 
 
 func _is_open(p: Player) -> bool:
+	if to_dimension == 2:
+		return world().ryft_unlocked
 	if to_dimension == 0:
 		return true
 	for s: String in SEALS:
@@ -84,6 +86,8 @@ func _is_open(p: Player) -> bool:
 
 
 func interact_prompt(p: Player) -> String:
+	if to_dimension == 2:
+		return "Travel to Ryft Island" if _is_open(p) else "Ryft sealed: defeat Hades beyond the Gates"
 	if to_dimension == 0:
 		return "Return to the world above"
 	return "Enter the Gates of Hades" if _is_open(p) else "The Gates are sealed"
@@ -91,6 +95,9 @@ func interact_prompt(p: Player) -> String:
 
 func local_interact(p: Player) -> void:
 	if not _is_open(p):
+		if to_dimension == 2:
+			Events.notify.emit("Defeat Hades beyond the Gates to awaken the Ryft gateway in Emberfall.", "warn")
+			return
 		var missing := PackedStringArray()
 		for s: String in SEALS:
 			if not p.inventory.has(s):

@@ -23,6 +23,8 @@ func _init(world_gen: WorldGen) -> void:
 
 
 func plan() -> Array[Location]:
+	if gen.dimension == WorldGen.Dimension.RYFT:
+		return ExplorationSites.ryft(gen)
 	if gen.dimension == WorldGen.Dimension.HELL:
 		return _plan_hell()
 	return _plan_overworld()
@@ -54,6 +56,8 @@ func _plan_overworld() -> Array[Location]:
 		var loc := Location.new(v[0], v[1], Location.Kind.VILLAGE, Vector3(p.x, g, p.y))
 		loc.major = true
 		Structures.village(loc, rng, v[0] == &"emberfall")
+		if gen.revision >= 2 and gen.biome_at(int(p.x), int(p.y)) == WorldGen.Biome.PEAKS:
+			loc.pad_falloff = 65.0
 		out.append(loc)
 		out.append(_shrine(StringName(String(v[0]) + "_shrine"), "%s Shrine" % v[1], p + Vector2(0, 21)))
 
@@ -91,6 +95,28 @@ func _plan_overworld() -> Array[Location]:
 	out.append_array(_drowned_spire(out, lair_rng))
 	out.append_array(_weeping_hollow(out, lair_rng))
 	out.append_array(_hagsfen(out, lair_rng))
+	if gen.revision >= 2:
+		for site: Array in [["old_ember_mine", "Old Ember Mine", Vector2(1280, 1140)], ["frost_adit", "Frosthold Adit", Vector2(870, 650)]]:
+			var p: Vector2 = site[2]
+			var mine := Location.new(StringName(site[0]), site[1], Location.Kind.CRYPT, Vector3(p.x, _ground(p.x, p.y) + 1, p.y))
+			ExplorationSites.mine(mine)
+			out.append(mine)
+	if gen.revision >= 2:
+		var wreck_count := 0
+		for i in 48:
+			var angle := i * TAU / 48.0
+			var p := gen.center() + Vector2(cos(angle), sin(angle)) * 975.0
+			var h := _ground(p.x, p.y)
+			if h < WorldGen.SEA_LEVEL - 4 and h > -16 and _far_from(out, p, 100):
+				var wreck := Location.new(StringName("wreck_%d" % wreck_count), ["The Cinderwake", "Saltbound Wreck", "The Lost Lantern", "Reefrunner's Rest"][wreck_count], Location.Kind.RUIN, Vector3(p.x, h + 1, p.y))
+				ExplorationSites.shipwreck(wreck)
+				out.append(wreck)
+				wreck_count += 1
+				if wreck_count == 4:
+					break
+	# The endgame gateway exists from the start, visibly sealed until Hades falls.
+	var hub := out[0]
+	hub.add_spawn("portal", hub.center + Vector3(0, 1, -12), {"to": 2, "size": Vector2(3, 5)})
 	for loc in out:
 		loc.dimension = 0
 	return out
@@ -238,7 +264,7 @@ func _mountain_hall(near: Vector2) -> Array[Location]:
 			if lowest > best_score:
 				best_score = lowest
 				best = c
-	var floor_y := clampi(int(best_score) - 22, 30, 80)
+	var floor_y := clampi(int(best_score) - 22, 30, 300 if gen.revision >= 2 else 80)
 	# Tunnel towards whichever side falls away fastest.
 	var dirs := [Vector2i(0, 1), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, -1)]
 	var exit_dir: Vector2i = dirs[0]

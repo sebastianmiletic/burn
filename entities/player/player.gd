@@ -141,10 +141,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				_select((inventory.selected + 1) % Inventory.HOTBAR)
 		elif Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	if event.is_action_pressed("toggle_view"):
-		camera.first_person = not camera.first_person
-		Settings.set_value("gameplay", "first_person", camera.first_person)
-		_apply_view()
 	if event.is_action_pressed("slot_1"):
 		_select(0)
 	elif event.is_action_pressed("slot_2"):
@@ -679,7 +675,7 @@ func _interact() -> void:
 # --- Inventory API (used by the UI) -----------------------------------------------------------------
 
 func held_item() -> String:
-	return inventory.selected_item()
+	return inventory.selected_item() if is_local else _remote_held
 
 
 func give_item(id: String, count: int) -> void:

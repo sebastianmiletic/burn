@@ -83,6 +83,9 @@ func _despawn_far(w: GameWorld) -> void:
 		var ent := e as Entity
 		if ent.dead:
 			continue
+		if ent.dimension == 0 and w.gen_for(0).revision >= 2 and CaveBiomes.sanctuary(ent.global_position, w.gen_for(0).world_seed):
+			w.despawn_entity(ent)
+			continue
 		if w.nearest_player(ent.global_position, ent.dimension, DESPAWN_DISTANCE) == null:
 			w.despawn_entity(ent)
 
@@ -106,12 +109,16 @@ func _populate(w: GameWorld, p: Player) -> void:
 		return
 	var pos := p.global_position
 	var night := w.sky.darkness() > 0.5 if w.sky != null else false
+	if p.dimension == 2:
+		return  # The floating isles have curated encounters.
 	if p.dimension == 1:
 		_spawn_hostiles(w, p, HELL, 7, "cave")
 		return
 	var surface := float(vw.gen.call("ground_level", pos.x, pos.z)) if vw.gen.has_method("ground_level") else float(vw.gen.surface_height(int(pos.x), int(pos.z)))
 	var underground := pos.y < surface - 8
 	if underground:
+		if vw.gen.revision >= 2 and CaveBiomes.sanctuary(pos, vw.gen.world_seed):
+			return
 		var table: Array = CAVE_SHALLOW if pos.y > -20 else (CAVE_MID if pos.y > -60 else CAVE_DEEP)
 		_spawn_hostiles(w, p, table, 5 if pos.y > -20 else 6, "cave")
 		if _rng.randf() < 0.15:
@@ -154,7 +161,7 @@ func _spawn_hostiles(w: GameWorld, p: Player, table: Array, cap: int, where: Str
 	elif where == "water":
 		return
 	var pos := _find_spot(w.world_for(p.dimension), p.global_position, spot_mode, 22.0, 36.0, 4 if kind == "sea_serpent" else 2)
-	if pos == Vector3.INF or _in_location(w, pos, p.dimension):
+	if pos == Vector3.INF or _in_location(w, pos, p.dimension) or (p.dimension == 0 and w.gen_for(0).revision >= 2 and CaveBiomes.sanctuary(pos, w.gen_for(0).world_seed)):
 		return
 	var n := _rng.randi_range(int(pick[2]), int(pick[3]))
 	for i in n:

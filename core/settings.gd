@@ -4,7 +4,7 @@ extends Node
 
 signal changed(section: String, key: String)
 
-const PATH := "user://settings.cfg"
+var PATH := RuntimePaths.file("settings.cfg")
 
 enum Quality { LOW, MEDIUM, HIGH, ULTRA }
 enum Style { EMBER, FULL_COLOUR, CLASSIC, PHOSPHOR, OFF }
@@ -23,15 +23,17 @@ const DEFAULTS := {
 	},
 	"graphics": {
 		"quality": Quality.HIGH,
+		"adaptive_resolution": true,
+		"altitude_blur": true,
 		"render_scale": -1.0,  # -1: follow the quality preset
 		"style": Style.OFF,
-		"cell_preset": 1,
+		"cell_preset": 0,
 		"brightness": 0.85,
 		"fov": 80.0,
 		"fog": 1.0,
 		"bloom": 1.0,
 		"vignette": 0.3,
-		"grain": 0.04,
+		"grain": 0.0,
 		"edges": true,
 		"flicker": false,
 		"shimmer": false,
@@ -49,6 +51,7 @@ const DEFAULTS := {
 		"camera_shake": 1.0,
 		"player_name": "",
 		"first_person": true,
+		"auto_update": true,
 	},
 	"controls": {},
 }
@@ -86,6 +89,7 @@ func set_value(section: String, key: String, value: Variant) -> void:
 
 
 func save() -> void:
+	DirAccess.make_dir_recursive_absolute(PATH.get_base_dir())
 	var cfg := ConfigFile.new()
 	for section: String in _data:
 		for key: String in _data[section]:

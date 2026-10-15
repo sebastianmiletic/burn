@@ -11,13 +11,15 @@ config_version=5
 [application]
 
 config/name="Burn"
-config/description="A 3D action RPG drawn entirely in coloured ASCII."
+config/description="A first-person exploration RPG with sculptable terrain and optional coloured ASCII."
+config/version="0.4.0"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 
 [autoload]
 
 Settings="*res://core/settings.gd"
+Updater="*res://core/updater.gd"
 Ascii="*res://rendering/ascii/ascii_config.gd"
 Events="*res://core/events.gd"
 Audio="*res://audio/audio.gd"
@@ -28,30 +30,17 @@ Game="*res://core/game.gd"
 
 window/size/viewport_width=1600
 window/size/viewport_height=900
-window/dpi/allow_hidpi=true
-window/vsync/vsync_mode=1
-window/stretch/mode="disabled"
 window/stretch/aspect="expand"
-
-[input_devices]
-
-pointing/emulate_touch_from_mouse=false
 
 [rendering]
 
-renderer/rendering_method="forward_plus"
-anti_aliasing/quality/msaa_3d=0
-anti_aliasing/quality/screen_space_aa=0
-anti_aliasing/quality/use_taa=false
-anti_aliasing/screen_space_roughness_limiter/enabled=false
-scaling_3d/mode=0
-scaling_3d/scale=1.0
-lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
-lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
-environment/volumetric_fog/volume_size=96
-environment/volumetric_fog/volume_depth=96
 textures/canvas_textures/default_texture_filter=0
 textures/vram_compression/import_etc2_astc=true
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
+anti_aliasing/screen_space_roughness_limiter/enabled=false
+environment/volumetric_fog/volume_size=96
+environment/volumetric_fog/volume_depth=96
 
 [shader_globals]
 

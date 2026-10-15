@@ -45,6 +45,8 @@ var _dimension := 0
 var _wet := 0.0
 var _snow_cover := 0.0
 var _snow_mix := 0.0      # 0 rain .. 1 snow, smoothed
+## 0 at the foothills .. 1 near the summits of the big mountains (smoothed).
+var altitude := 0.0
 var _dust_mix := 0.0      # 0 .. 1 in the wastes, smoothed
 var _forced_snow := false
 var _time := 0.0
@@ -205,6 +207,11 @@ func _process(delta: float) -> void:
 				snow_target = 1.0
 			elif b == WorldGen.Biome.WASTES:
 				dust_target = 1.0
+	# High up, snow blows whatever the weather below is doing.
+	var alt_target := clampf((player_pos.y - 95.0) / 120.0, 0.0, 1.0) if _dimension == 0 and not _underground else 0.0
+	altitude = move_toward(altitude, alt_target, delta * 0.25)
+	if altitude > 0.05:
+		snow_target = 1.0
 	_snow_mix = move_toward(_snow_mix, snow_target, delta * 0.3)
 	_dust_mix = move_toward(_dust_mix, dust_target, delta * 0.3)
 
@@ -214,6 +221,8 @@ func _process(delta: float) -> void:
 	var precip: float = _current[1]
 	var rain := precip * (1.0 - _snow_mix) * (1.0 - _dust_mix) if outside else 0.0
 	var snow := precip * _snow_mix * (1.0 - _dust_mix) if outside else 0.0
+	if outside:
+		snow = maxf(snow, altitude * 0.85)
 	var dust := dust_amount() if outside else 0.0
 	var wind3 := Vector3(_wind_dir.x, 0.0, _wind_dir.y) * _wind_strength
 	var light := _light_level()
@@ -253,7 +262,7 @@ func _process(delta: float) -> void:
 		else:
 			_wet = move_toward(_wet, wet_target, delta / (260.0 if sun_up and _current[0] < 0.5 else 600.0))
 		if snow > 0.05:
-			_snow_cover = move_toward(_snow_cover, clampf(snow * 1.2, 0.0, 1.0), delta / 90.0)
+			_snow_cover = move_toward(_snow_cover, clampf(maxf(snow * 1.2, altitude * 1.4), 0.0, 1.0), delta / (90.0 if altitude < 0.2 else 20.0))
 		else:
 			_snow_cover = move_toward(_snow_cover, 0.0, delta / (500.0 if _snow_mix > 0.5 else 40.0))
 	else:

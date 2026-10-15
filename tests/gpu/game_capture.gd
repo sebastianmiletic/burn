@@ -13,6 +13,10 @@ var out_dir := ""
 
 const STOPS := {
 	"spawn": [&"emberfall_shrine", 10.0, 0.0],
+	"ryft": [&"ryft_landing", 12.0, -1.4, Vector3(0, 2, 8), -0.1],
+	"geyser": [&"emberfall", 12.0, 0.0, Vector3.ZERO, -0.1],
+	"sanctuary": [&"emberfall", 12.0, 0.0, Vector3.ZERO, -0.1],
+	"mine": [&"old_ember_mine", 12.0, 0.0, Vector3(0, 2, 6), -0.2],
 	"village": [&"emberfall", 10.0, 0.6],
 	"dusk": [&"emberfall", 18.2, 2.4],
 	"night": [&"emberfall", 23.0, 1.2],
@@ -70,7 +74,7 @@ func _run() -> void:
 			_set_graphics("quality", int(a.trim_prefix("--quality=")))
 		elif a.begins_with("--scale="):
 			_set_graphics("render_scale", float(a.trim_prefix("--scale=")))
-	report.append("quality %s, style %s, render scale %.2f" % [Settings.QUALITY_NAMES[int(Settings.get_value("graphics", "quality"))],
+	report.append("quality %s, style %s, preset scale %.2f (actual/adaptive viewport recorded per stop)" % [Settings.QUALITY_NAMES[int(Settings.get_value("graphics", "quality"))],
 			Settings.STYLE_NAMES[int(Settings.get_value("graphics", "style"))], Settings.render_scale()])
 	await _frames(60)
 	for stop: String in tour:
@@ -79,6 +83,8 @@ func _run() -> void:
 		if loc == null:
 			report.append("%s: location missing" % stop)
 			continue
+		if stop == "ryft":
+			w.ryft_unlocked = true  # Capture-only fixture, never normal gameplay.
 		if loc.dimension != w.local_dimension:
 			w.travel(loc.dimension)
 		var target := loc.center
@@ -91,6 +97,19 @@ func _run() -> void:
 		if spec.size() > 3:
 			target = loc.center
 		p.global_position = target + offset
+		if stop in ["geyser", "sanctuary"]:
+			var wanted := CaveBiomes.Kind.GEYSER if stop == "geyser" else CaveBiomes.Kind.CRYSTAL_REFUGE
+			var found := false
+			for z in range(4, 12):
+				for x in range(4, 12):
+					var r := CaveBiomes.region(Vector3(x * 128 + 64, -32, z * 128 + 64), vw.gen.world_seed)
+					if int(r["kind"]) == wanted:
+						p.global_position = r["center"] + Vector3(0, -16, 8)
+						found = true
+						break
+				if found:
+					break
+			p.offhand_light = true
 		if stop in WATER_STOPS:
 			var shore := _find_shore(w, loc)
 			p.global_position = Vector3(shore.x, 0, shore.y)
@@ -141,6 +160,7 @@ func _run() -> void:
 		for i in 30:
 			await get_tree().process_frame
 			gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp_rid) / 30.0
+		report.append("output %s, 3D viewport %s, adaptive %s" % [str(DisplayServer.window_get_size()), str(w.view.viewport.size), str(Settings.get_value("graphics", "adaptive_resolution"))])
 		report.append("%-8s %-28s load %5d ms  avg %.2f ms (%.0f fps) worst %.2f ms  3d gpu %.2f ms  process %.2f ms  draws %d  prims %d" % [stop, loc.name, Time.get_ticks_msec() - t0, stats.x, 1000.0 / stats.x, stats.y, gpu,
 				Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),

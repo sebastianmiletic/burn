@@ -28,7 +28,7 @@ signal join_status(state: String)
 ## Host: the internet address friends outside the LAN can join with (after UPnP).
 signal public_address_changed(address: String)
 
-const PROTOCOL_VERSION := 2
+const PROTOCOL_VERSION := 3
 ## Hello code for players who joined by address instead of runes.
 const ADDRESS_JOIN := -1
 const MAX_PLAYERS := 8
@@ -417,7 +417,8 @@ func _on_peer_connected(id: int) -> void:
 ## of reliable traffic (e.g. the session payload) inflates the round trip. On a
 ## LAN that only loses snapshots, so keep the throttle at maximum.
 func _tune_enet_peer(id: int) -> void:
-	if _enet == null:
+	# Clients see relayed party IDs but have an ENet connection only to host 1.
+	if _enet == null or (not is_server() and id != 1):
 		return
 	var p := _enet.get_peer(id)
 	if p != null:

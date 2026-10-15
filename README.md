@@ -1,147 +1,181 @@
 # BURN
 
-An open-world action RPG with a realistic, smooth 3D world — autumn forests and meadows that sway in the wind,
-villages, castles, sea cliffs, caves you dig into with a pickaxe, the Gates of Hades far below the Cinder Crater and
-the underworld beyond. It can be drawn through a GPU ASCII pass (the default Ember style, glyph by glyph at your
-screen's native resolution) or in full colour with ASCII off. Play solo, or with friends on the same Wi-Fi: the host
-shows four ancient runes, everyone else types them in.
+A first-person exploration and combat RPG built with **Godot 4.7.2 / Forward+**.
+Explore an irregular island chain, sculpt tunnels with a pickaxe, fell trees, forge equipment,
+complete village quests, and battle through the Gates of Hades to unlock **Ryft Island**.
 
-Built with **Godot 4.7** (Forward+, GDScript). Terrain, structures, trees, characters, creatures, sound and music are
-generated procedurally at runtime; shipped assets are two OFL fonts, CC0 PBR textures from Poly Haven (terrain,
-bark, rock) and ~4 MB of CC0 sound recordings (see `CREDITS.md`).
+**Status: playable development preview, not a finished commercial release.** Terrain, villages,
+characters, creatures and effects are procedural. They are not photorealistic assets. See
+[verification and remaining work](docs/RELEASE_STATUS.md) before downloading.
 
-### What's in the world
-* **Smooth terrain over a voxel grid.** Natural ground is a smooth surface (Surface Nets over per-voxel density),
-  textured with photographic PBR materials that blend by slope and height; built walls stay crisp. Mining digs
-  smooth holes; chopping a trunk fells the whole tree.
-* **Strata and ores by depth:** granite, limestone, sandstone, marble, clay, slate, deepslate, basalt; coal, copper
-  and tin near the surface, iron, silver, gold, rubies, sapphires, amethyst, mithril, ember crystal and adamantite
-  deeper down.
-* **Crafting:** workbench, furnace, anvil and alchemy table (place your own or use the village smithy); a
-  wood → stone → copper → bronze → iron → steel → mithril → adamantite → infernal ladder of tools, weapons and armour.
-* **Life:** grass and flowers that bend away from you, autumn oaks, crimson oaks, pines and dead trees, butterflies,
-  fireflies and falling leaves, deer, rabbits, birds and fish; wolves, bears, spiders, bats, golems, scorpions,
-  bog lurkers, sharks and more by biome and depth.
-* **Bosses:** the Warden, the Mountain King, the dragon Ashvane, Vexhira the Broodmother, Old Mother Mire, the
-  Leviathan of the Drowned Spire, Cerberus and Hades.
-* **Weather and light:** physically based sky with clouds, sunrises and moon phases; clear, overcast, rain, storms
-  with lightning, fog, snow in the peaks, dust in the wastes, ash in the underworld; wet ground, puddles and snow
-  cover; volumetric light shafts on High/Ultra.
+## Download and play
 
-## Running
+Download a platform archive from [GitHub Releases](https://github.com/sebastianmiletic/burn/releases).
+Preview releases are listed on that page, not necessarily under `/releases/latest`.
 
-```sh
-# from this directory
-godot --path .            # or open project.godot in the Godot editor and press Play
-```
+| System | Archive | Launch |
+| --- | --- | --- |
+| Windows 10/11, x86_64 | `Burn-0.4.0-Windows.zip` | Extract the entire archive, then run `Burn.exe`. |
+| macOS, Apple Silicon or Intel | `Burn-0.4.0-macOS.zip` | Extract, move `Burn.app` to Applications, then open it. |
+| Linux, x86_64 | `Burn-0.4.0-Linux.tar.gz` | Extract, then run `chmod +x Burn.x86_64 && ./Burn.x86_64`. |
 
-The game opens as a borderless window covering the whole screen (Settings → Display lets you choose windowed or
-true fullscreen). First launch imports resources, which takes a few seconds.
+The builds are not commercially signed/notarized. Review the source and verify the archive against
+`SHA256SUMS.txt` before accepting an OS unknown-publisher warning. On macOS, use the OS's per-app
+**Privacy & Security → Open Anyway** option if available. Do not disable system-wide security.
 
-Useful command-line flags (after `--`):
+A Vulkan-capable GPU on Windows/Linux or a Metal-capable Mac is required. Install current GPU drivers.
+Start with 8 GB RAM and allow at least 1 GB of free disk space for the game, sound cache, saves and updates.
+Windows and Linux exports need native hardware testing; export success alone is not certification.
 
-| Flag | Effect |
-|---|---|
-| `--skip-intro` | straight to the main menu |
-| `--solo [--slot=N] [--seed=N] [--continue]` | jump straight into a solo game |
-| `--host` / `--join=R3-R12-R0-R7` | host or join a LAN party from the terminal (prints the rune code) |
-| `--sim-latency=150 --sim-loss=0.02` | network latency / packet-loss simulator |
-| `--name=Ash` | player name for this run |
+First launch prepares procedural audio. A new world also needs a loading pass. Later launches reuse
+the sound cache. If performance is poor, select **Settings → Graphics → Medium or Low**.
 
-## Multiplayer (LAN)
+### Defaults
 
-1. Host: **Multiplayer → Host**. Four glowing runes appear — that is the party code.
-2. Friends on the same network: **Multiplayer → Join**, click (or type) the same four runes, **Join**.
-3. When everyone is in the lobby, the host presses **Begin campaign**. Players can also join a campaign in progress.
+- First-person gameplay.
+- **ASCII off**, film grain off. The normal 3D renderer is the default.
+- High quality, with adaptive scene resolution targeting 60 FPS. UI stays at native resolution.
+- Mountain snow and distant blur intensify with altitude. Disable distance blur independently in Settings.
 
-The host's machine is the authoritative server (monsters, bosses, loot, block edits); each player's character
-(inventory, rank, quests) is saved on their own machine. Discovery uses UDP broadcast on port 47210 and the game
-itself ENet on 47211; macOS may ask to allow incoming connections the first time you host.
-`tools/launch_party.sh N [--latency 150 --loss 0.02]` starts a host and N clients on one machine for testing.
+There is **no guaranteed 60 FPS minimum**. Frame rate depends on hardware, resolution, streaming,
+scene complexity and settings. The performance overlay is available with F3.
 
-## Controls (rebindable in Settings → Controls)
+## First steps
+
+1. Start a new solo world, or host a multiplayer party.
+2. Follow the `!` marker to the Emberfall shrine and press **E**. This sets your checkpoint.
+3. Speak with Elder Maren, then the blacksmith. The quest tracker and **J** journal explain your objectives.
+4. Select the pickaxe with **2** and hold left mouse on natural ground. Each strike removes a rounded
+   volume, not a cube. Place torches with right mouse and bring food and potions underground.
+5. Mine iron and coal, use the village furnace/anvil, and improve tools before pursuing the three seals.
+
+The main route is **Emberfall → Silent Crypt/Warden → Frost Peaks/Mountain King → Ashvane →
+Gates of Hades → Cerberus → Hades**. Defeating Hades opens the violet gateway in Emberfall.
+The final quest awards Gatebreaker and a mithril axe once per character. Gatebreaker has no resale
+value; the Ryft follow-up quest leads across connected floating islands and rewards exploration.
+The broader story remains provisional.
+
+## World and activities
+
+New worlds use a **3,072 × 3,072 metre** extent with an asymmetric main island, outlying islands and ocean.
+Only nearby detailed terrain is streamed; a coarse horizon keeps distant ridgelines visible.
+
+- **Terrain and mining:** smooth density surfaces, photographic terrain materials, slope blending,
+  rounded excavation, ore veins and material/tool tiers. The internal voxel grid is storage and collision,
+  not the intended visual style. Some legacy structures still need conversion.
+- **Caves:** limestone galleries, geyser caverns with timed steam hazards, glowroot hollows,
+  glacial grottos, and rare crystal sanctuaries with dense, finite, tier-gated resources and no wild spawns.
+  Old Ember Mine and Frosthold Adit provide descending routes into the underground.
+- **Mountains:** larger ridged peaks, snow-covered rock, altitude snowfall, haze and optional distance blur.
+- **Ocean:** kelp beds, four loot-bearing shipwrecks, fish schools, sharks, sea serpents and the Drowned Spire.
+- **Villages:** continuous plaster/timber house meshes and pitched roofs replace cube-rendered houses.
+  NPCs, merchants, smiths, crafting stations, side quests and shrines remain interactive.
+- **Trees:** chopping a trunk fells the whole tree with falling and leaf effects. Ironwood requires
+  an iron-tier tool, emberwood steel, and Ryftwood mithril. Rare woods have crafting uses.
+- **Navigation:** shaded relief, contours, coast/depth colors, roads, building footprints, quest markers,
+  altitude readout and an underground slice sampled from loaded terrain, including edits.
+- **Endgame:** Ryft Island has floating land, walkable stone connections, hostile encounters, loot,
+  a landing shrine and a return gateway.
+
+Older saves retain generation revision 1 to avoid moving terrain underneath existing edits.
+**Start a new world for the larger map, new cave system and taller mountains.** Back up saves before updates.
+
+## Controls
+
+All active gameplay bindings can be changed under Settings → Controls.
 
 | Action | Default |
-|---|---|
-| Move / sprint / jump | WASD / Shift / Space |
-| Look | Mouse · Shift+wheel zooms the camera |
-| Attack · **mine** (hold with a pickaxe) | Left mouse |
-| Place block / torch · use item | Right mouse |
-| Hotbar (3 slots) | 1 · 2 · 3 · mouse wheel |
-| Dodge roll (brief invulnerability) | Ctrl |
-| Fireball · Light burst | Q · R |
+| --- | --- |
+| Move / sprint / jump or swim up | WASD / Shift / Space |
+| Look | Mouse |
+| Attack / hold to excavate with a pick / chop with an axe | Left mouse |
+| Use / place torch or material | Right mouse |
+| Equipment, arranged in a bottom-left triangle | 1, 2, 3 / mouse wheel |
+| Dodge | Ctrl |
+| Fireball / light burst | Q / R |
 | Drink potion | F |
-| Interact (talk, open, rest at shrines, portals) | E |
-| Inventory · Quest log · World map | Tab/I · J · M |
-| Chat (multiplayer) | T |
-| Pause | Esc |
-| Performance overlay | F3 |
+| Interact | E |
+| Inventory / journal / world map | Tab or I / J / M |
+| Multiplayer chat | T |
+| Pause / performance overlay | Esc / F3 |
 
-## The campaign
+## Multiplayer
 
-Rekindle the Emberfall shrine, forge iron, then take the three seals from the **Warden of the Silent Crypt**
-(Blackmarsh, west), the **Mountain King** (his hall inside the Frost Peaks, north) and the dragon **Ashvane**
-(the Dragon's Keep, Cinder Wastes, south). Carry them down — far down — beneath the Cinder Crater to the
-**Gates of Hades**, cross into the underworld, defeat **Cerberus** in Tartarus and finally **Hades** on his throne.
-Six villages offer side quests, a blacksmith forges better tools and blades, merchants trade. Shrines are
-checkpoints. Pickaxes have tiers: stone (stone, coal, iron) → iron (gold, ember crystal) → obsidian (obsidian, hellstone).
+Use the **same game version** on every machine (this preview uses network protocol 3).
 
-## Graphics settings
+**LAN:** Multiplayer → Host. Friends choose Join and enter the host's four runes. The host begins the
+campaign once everyone is in the lobby. Joining an active campaign is also supported.
 
-* **Render style**: Ember (warm sepia duotone), Full colour, Classic (long ASCII ramp), Phosphor (green terminal), ASCII off.
-* **Cell size**: Fine 6×10, Default 8×14, Chunky 12×20 (logical pixels; doubled on Retina screens).
-* **Quality** Low / Medium / High / Ultra: 3D render resolution (50–100 % of the logical window), GI (SDFGI on High+),
-  volumetric fog, SSAO/SSIL/SSR, shadow sizes, view distance. Glyphs are always drawn at native resolution.
+**Internet:** the host attempts UPnP. If a public address appears, share it and use Join by address.
+Otherwise forward the displayed UDP game port (normally **47211**) to the host, or use a private
+VPN such as Tailscale/ZeroTier. Rune discovery uses LAN broadcast UDP **47210**; it is not a global
+matchmaking service. Carrier-grade NAT may prevent direct public hosting.
 
-## How the ASCII renderer works
+The host simulates monsters, bosses, drops, terrain edits and steam damage. Clients receive edit
+reconciliation after loading and party-wide boss unlocks. Characters/inventories remain client-local:
+**this is trusted-friends co-op, not an anti-cheat-secure public server**. Host migration is not supported.
+Allow the game through your firewall only on networks you trust.
 
-1. The world renders into a reduced-resolution SubViewport (`AsciiView`).
-2. `AsciiEffect` (a `CompositorEffect` at PRE_TRANSPARENT) reads colour, depth and normal/roughness and runs compute passes:
-   G-buffer unpack → depth/normal edges → Sobel direction → per-cell glyph choice → adaptive exposure → clear to FX layer.
-3. **Per-material glyph styles**: every material encodes a material class in the low 3 bits of its roughness, which
-   Godot stores in the normal-roughness buffer (`AsciiMaterialId`, verified by `tests/unit/test_material_id.gd`):
-   solid (dense ramp), ground, foliage/leaves (strokes and soft masses), liquid (animated `~ - =`), rain streaks
-   (slanted strokes following the streak), emissive (passed through untouched).
-4. Fire, sparks, spells and telegraphs are transparent materials drawn **after** the ASCII pass, so they stay
-   un-converted and Godot's glow blooms them across the grid.
-5. `ascii_composite.gdshader` draws the glyphs at native resolution from a font atlas generated at startup, applies the
-   render style, glyph glow, vignette and grain, and adds the FX layer.
+## ASCII and graphics
 
-## Project layout
+Settings → Graphics → Render style supports **ASCII off**, **Full colour**, Ember, Classic and Phosphor.
+Full colour preserves scene hues and more background detail. Fine 6×10 glyphs are the initial glyph
+preset. Edges use depth/normal information; fire and spell effects pass through the glyph conversion.
+ASCII remains opt-in. Previous user settings are respected; choose ASCII off manually if an older
+settings file enabled it.
 
-```
-core/        Game state machine, settings, keybinds, saves, event bus
-rendering/   ASCII effect + composite, glyph atlas, materials, quality presets
-world/       GameWorld, voxel engine (world/voxel), structures, sky & weather, replication, director/spawner
-entities/    Entity base, player, NPCs, interactables, enemies, bosses, projectiles
-models/      Procedural creature and character models
-combat/      Damage, cooldowns, telegraph FX
-items/ quests/ ui/ audio/ network/
-tests/       unit tests (headless), GPU capture tools, network integration tests
-docs/        ARCHITECTURE.md — module contracts
-```
+Adaptive resolution adjusts only the 3D view when resolution is set to Follow preset. A fixed resolution
+or a frame cap below 60 disables adaptation. It does not compensate for every CPU or streaming bottleneck.
 
-## Tests
+## Saves, updates and privacy
 
-```sh
-godot --headless --path . --import                         # once, after pulling (also after editing .glsl shaders)
-godot --headless --path . -s res://tests/run_tests.gd      # 58 unit tests (+ boss and enemy fight simulations)
-godot --headless --path . -- --playtest                    # scripted playthrough: quests, mining, combat, boss, hell, save
-godot --headless --path . -s res://tests/game/flow_test.gd # intro -> menu -> new game -> quit -> continue
-tests/net/run_net_test.sh                                  # LAN discovery, lobby, payloads, 150 ms / 2 % loss
-tests/net/run_game_mp_test.sh [--latency 150 --loss 0.02]  # host + client actually playing together
-godot --path . --fullscreen -- --capture-game=/tmp/burn --tour=vista,village,night,dragonfight   # screenshots + timings
-```
+Normal installations save under Godot's platform user-data directory:
 
-Developer flags: `--load-timing` (loading phase timings), `--gfx=noshadow,nofog,nossao,noglow,dist4,noascii`
-(profiling toggles), `--prof` with `--capture-game` (per-subsystem frame cost), `--print-window`.
+- Windows: `%APPDATA%\Godot\app_userdata\Burn`
+- macOS: `~/Library/Application Support/Godot/app_userdata/Burn`
+- Linux: `~/.local/share/godot/app_userdata/Burn` (or the configured XDG data location)
 
-## Exporting
+Copy the `saves` folder to back up progress. Updates do not intentionally delete it.
 
-`export_presets.cfg` defines macOS, Windows and Linux presets. With the Godot 4.7.2 export templates installed:
+Exported builds check `api.github.com` for the latest **stable** release on startup, when auto-update
+is enabled. A matching platform/engine `.pck` is downloaded to user data, checked against GitHub's
+SHA-256 asset digest, and applied by relaunching at the title screen or on the next launch. A running
+campaign is not interrupted. The previous pack is kept for boot-failure rollback. Engine upgrades require
+a full archive download. Missing verification metadata causes an update to be refused.
+
+**Preview releases are not auto-installed.** No telemetry is implemented. The update request reveals the
+usual network information to GitHub. Disable it under Settings → Gameplay → Auto-update, or use `--no-update`.
+The updater still needs exported-build, end-to-end validation on all three operating systems.
+
+## Run from source
+
+Install [Godot 4.7.2](https://godotengine.org/download), then:
 
 ```sh
-godot --headless --path . --export-release "macOS"   build/macos/Burn.zip     # ~59 MB, universal, ad-hoc signed
-godot --headless --path . --export-release "Windows" build/windows/Burn.exe   # ~105 MB, single exe
-godot --headless --path . --export-release "Linux"   build/linux/Burn.x86_64  # ~71 MB, single binary
+git clone https://github.com/sebastianmiletic/burn.git
+cd burn
+godot --headless --path . --import
+godot --path .
 ```
+
+Open `project.godot` in the Godot editor to inspect or develop the game. Assets are local; gameplay
+does not require an asset service. Third-party asset credits/licenses are in [CREDITS.md](CREDITS.md).
+
+Useful flags after `--`:
+
+```text
+--skip-intro
+--solo --seed=1234 --slot=0
+--solo --continue --slot=0
+--host --name=Ash
+--join-address=127.0.0.1:47211 --name=Ember
+--no-update
+--data-dir=/absolute/path/to/sandbox
+```
+
+## Test, build and release
+
+See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for isolated tests, cross-platform exports, release steps,
+profiling commands and checksums. [RELEASE_STATUS.md](docs/RELEASE_STATUS.md) distinguishes tested
+behavior from remaining work. [ARCHITECTURE.md](docs/ARCHITECTURE.md) describes the original modules;
+the current additions are summarized in [WORLD_V2.md](docs/WORLD_V2.md).

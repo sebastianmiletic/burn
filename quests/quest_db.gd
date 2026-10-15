@@ -71,12 +71,23 @@ const MAIN := [
 	},
 	{
 		"id": "throne", "title": "The Throne of Hades", "giver": "",
-		"description": "End it. Climb to the Throne of Hades and take his crown.",
+		"description": "The final battle beyond the Gates of Hades. Break his rule to awaken the sealed Ryft gateway in Emberfall. Your reward is unique, not an endless source of gold.",
 		"objectives": [
 			{"type": "reach", "key": "throne_of_hades", "count": 1, "text": "Approach the Throne of Hades"},
 			{"type": "boss", "key": "hades", "count": 1, "text": "Defeat Hades"},
 		],
-		"rewards": {"xp": 1500, "gold": 500}, "next": "",
+		"rewards": {"xp": 1500, "gold": 500, "items": {"sword_gatebreaker": 1, "axe_mithril": 1}}, "next": "ryft",
+	},
+	{
+		"id": "ryft", "title": "Beyond the Broken Sky", "giver": "",
+		"description": "Return to Emberfall and enter the violet gateway. Follow the narrow stone arches across Ryft Island, rest at the landing shrine, and explore the floating observatory and crown isle. Your mithril axe can harvest Ryftwood.",
+		"objectives": [
+			{"type": "dimension", "key": "2", "count": 1, "text": "Enter the Ryft gateway in Emberfall"},
+			{"type": "reach", "key": "ryft_isle_1", "count": 1, "text": "Explore the Broken Observatory"},
+			{"type": "reach", "key": "ryft_isle_2", "count": 1, "text": "Reach the Crown of the Ryft"},
+			{"type": "collect", "key": "ryftwood", "count": 6, "text": "Harvest Ryftwood with a mithril axe"},
+		],
+		"rewards": {"xp": 800, "gold": 120, "items": {"potion_phoenix": 3}}, "next": "",
 	},
 ]
 

@@ -362,7 +362,7 @@ func test_lairs_planned() -> void:
 		check(bosses.has(kind), "%s has a lair" % kind)
 	if by_id.has(&"drowned_spire"):
 		var spire: Location = by_id[&"drowned_spire"]
-		var c := Vector2(g.size * 0.5, g.size * 0.5)
+		var c := g.center()
 		check(Vector2(spire.center.x, spire.center.z).distance_to(c) > 600.0, "the Drowned Spire is far out at sea")
 		var boss_pos: Vector3 = spire.spawns_of("boss")[0]["pos"]
 		check(boss_pos.y > WorldGen.SEA_LEVEL + 1.5, "the arena platform is above the waves")

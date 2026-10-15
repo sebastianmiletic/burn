@@ -48,7 +48,7 @@ func _ready() -> void:
 	fill.light_volumetric_fog_energy = 0.0
 	add_child(fill)
 	Events.screen_shake.connect(add_trauma)
-	first_person = bool(Settings.get_value("gameplay", "first_person"))
+	first_person = true  # Gameplay is first-person, including saves from older builds.
 	Settings.changed.connect(func(section: String, key: String) -> void:
 		if section == "graphics" and key == "fov":
 			fov = float(Settings.get_value("graphics", "fov")))

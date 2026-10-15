@@ -50,7 +50,7 @@ func show_target(hit: Dictionary, show: bool) -> void:
 	visible = show and not hit.is_empty()
 	if not visible:
 		return
-	_smooth = Blocks.is_smooth(int(hit["block"]))
+	_smooth = true  # A surface contact, never a visible voxel-selection box.
 	_outline.visible = not _smooth
 	_ring.visible = _smooth
 	if _smooth:

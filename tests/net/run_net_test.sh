@@ -1,18 +1,18 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 # LAN party integration test: real host and client processes on localhost,
 # headless. Usage: tests/net/run_net_test.sh   (from the project root)
 # Exits non-zero if any scenario fails. Logs in $TMPDIR/burn_net_test/.
 set -u
 cd "$(dirname "$0")/../.."
 GODOT=${GODOT:-godot}
-LOG=${TMPDIR:-/tmp}/burn_net_test
-rm -rf "$LOG"; mkdir -p "$LOG"
+mkdir -p build/validation
+LOG=$(mktemp -d "$PWD/build/validation/net.XXXXXX")
 H="res://tests/net/net_harness.gd"
 fail=0
 
 run() {  # run <seconds> <logfile> <args...>
   local secs=$1 log=$2; shift 2
-  perl -e "alarm $secs; exec @ARGV" "$GODOT" --headless --path . -s "$H" -- "$@" > "$LOG/$log" 2>&1
+  perl -e "alarm $secs; exec @ARGV" "$GODOT" --headless --path . --log-file "$LOG/$log.engine" -s "$H" -- --data-dir="$LOG/$log.data" "$@" > "$LOG/$log" 2>&1
 }
 
 report() {
@@ -66,4 +66,6 @@ run 60 s6_client.log --role=client --runes=R12-R3-R3-R0 --name=Left --expect-hos
 wait
 report "host leaves" s6_host.log s6_client.log
 
+python3 tools/check_log.py "$LOG"/*.log || fail=1
+echo "logs: $LOG"
 exit $fail

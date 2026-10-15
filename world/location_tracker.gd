@@ -60,6 +60,8 @@ func _process(delta: float) -> void:
 				title = "The Deep"
 			else:
 				title = "Caverns"
+			if g.revision >= 2 and pos.y < -8:
+				title = CaveBiomes.NAMES[CaveBiomes.kind_at(pos, g.world_seed)]
 			subtitle = "%d m below the surface" % int(depth)
 		else:
 			var biome := g.biome_at(int(pos.x), int(pos.z))

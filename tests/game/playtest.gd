@@ -102,9 +102,10 @@ func _run() -> void:
 			break
 	var before := vw.get_block(Vector3i(dig_at.floor()))
 	var dropped_before := _count("drop")
+	p.inventory.select(1)  # Equip the pick, as a real player must.
 	for i in 8:
 		_w.replicator.request_dig(dig_at, 0.9, 0.42, "pickaxe_stone", 0)
-		await _frames(2)
+		await _wait(Player.STRIKE_TIME)
 	var after := vw.ground_below(dig_at.x, dig_at.y + 3.0, dig_at.z, 8.0)
 	_check(absf(g) < 1e6 and after < g - 0.4, "dug a hole into %s (ground %.2f -> %.2f)" % [Blocks.name_of(before), g, after])
 	var drop := _find("drop")
@@ -194,10 +195,34 @@ func _run() -> void:
 			await _wait(1.0)
 			_check(_w.tracker.current_title != "", "location label in hell: %s" % _w.tracker.current_title)
 
+	# --- Endgame travel and persistent unlock ----------------------------------------------
+	_w.travel(2)
+	_check(p.dimension != 2, "Ryft cannot be entered before Hades falls")
+	_w.quests.accept("throne")
+	_w.quests.on_event("reach", "throne_of_hades")
+	var hades := _w.spawn_entity("hades", p.global_position + Vector3(3, 0, 0), p.dimension, {})
+	_check(hades != null, "Hades reward encounter created")
+	if hades != null:
+		# Phase/attack simulations live in test_boss_sim; this checks the real
+		# death -> rewards -> unlock -> travel -> save integration.
+		hades.take_damage(100000, p.net_id)
+		_check(_w.ryft_unlocked, "Hades unlocks the Ryft for the party")
+		_check(p.inventory.has("sword_gatebreaker"), "unique endgame reward granted")
+		_check(_w.quests.is_active("ryft"), "endgame has a clear follow-up quest")
+		_w.travel(2)
+		var ryft := _w.world_for(2)
+		await _wait_for(func() -> bool: return ryft.is_area_loaded(p.global_position) and p.body.on_floor, 30)
+		_check(p.dimension == 2 and p.body.on_floor, "Ryft landing is streamed and walkable")
+		_w.travel(0)
+		_check(p.global_position.distance_to(_w.default_spawn(0)) < 1, "return from Ryft leads home, not the Hades cavern")
+
 	# --- Save -------------------------------------------------------------------------------------
 	Game.save_game()
 	var save := SaveSystem.read(int(Game.session.get("slot", 0)))
 	_check(save.get("bosses_defeated", []).has("warden"), "save contains defeated bosses")
+	_check(bool(save.get("ryft_unlocked", false)), "Ryft unlock is saved")
+	_check(save.get("edits", {}).has(2), "Ryft terrain edits are included in saves")
+	_check(save.get("world_revision", 0) == 2, "world generation revision is saved")
 	_check((save.get("edits", {}).get(0, {}) as Dictionary).size() > 0, "save contains block edits")
 
 	print("%s — %d failures" % ["PLAYTEST PASSED" if _failures == 0 else "PLAYTEST FAILED", _failures])

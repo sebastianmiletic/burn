@@ -189,7 +189,9 @@ func _build_graphics() -> void:
 	_option(p, "graphics", "cell_preset", "Glyph size", UiContext.settings_const("CELL_NAMES"), "Smaller glyphs show more detail.")
 	var scale_names: Array = ["Follow preset", "50%", "62%", "75%", "85%", "100%"]
 	_option_values(p, "graphics", "render_scale", "3D resolution", scale_names, RENDER_SCALES,
-			"Resolution of the scene behind the glyphs. Glyphs are always drawn at full resolution.")
+			"3D scene resolution. UI and ASCII glyphs stay sharp at native resolution.")
+	_check(p, "graphics", "adaptive_resolution", "Adaptive resolution", "With Follow preset selected, adjusts 3D resolution toward 60 FPS. Does not guarantee a minimum frame rate.")
+	_check(p, "graphics", "altitude_blur", "Mountain distance blur", "Softens distant scenery as altitude increases. Turn off for a clearer view; snow remains.")
 	_slider(p, "graphics", "fov", "Field of view", 55, 100, 1, "%d°", 1.0, "How wide the camera sees.")
 	_heading(p, "Image")
 	_slider(p, "graphics", "brightness", "Brightness", 0.5, 1.5, 0.01, "%d%%", 100.0, "Overall brightness of the image.")

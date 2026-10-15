@@ -30,6 +30,14 @@ func _initialize() -> void:
 func _main() -> void:
 	await process_frame
 	net = root.get_node("Net")
+	# This is a transport-only harness. Do not launch GameWorld on the
+	# synthetic session payload and quit while its generation task is alive.
+	var game := root.get_node("Game")
+	for signal_name in ["session_started", "join_failed"]:
+		for connection: Dictionary in net.get_signal_connection_list(signal_name):
+			var callback: Callable = connection["callable"]
+			if callback.get_object() == game:
+				net.disconnect(signal_name, callback)
 	events = root.get_node("Events")
 	events.chat_message.connect(func(from: String, text: String, _ch: String) -> void: chats.append([from, text]))
 	if args.get("role") == "host":

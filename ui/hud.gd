@@ -99,13 +99,13 @@ func _ready() -> void:
 	root.add_child(toasts)
 
 	hotbar = Hotbar.new()
-	hotbar.anchor_left = 0.5
-	hotbar.anchor_right = 0.5
+	hotbar.anchor_left = 0.0
+	hotbar.anchor_right = 0.0
 	hotbar.anchor_top = 1.0
 	hotbar.anchor_bottom = 1.0
-	hotbar.offset_left = -220
-	hotbar.offset_right = 220
-	hotbar.offset_top = -86
+	hotbar.offset_left = 22
+	hotbar.offset_right = 386
+	hotbar.offset_top = -166
 	hotbar.offset_bottom = -22
 	root.add_child(hotbar)
 
@@ -114,8 +114,8 @@ func _ready() -> void:
 	chat.anchor_bottom = 1.0
 	chat.offset_left = 22
 	chat.offset_right = 442
-	chat.offset_top = -280
-	chat.offset_bottom = -22
+	chat.offset_top = -452
+	chat.offset_bottom = -194
 	root.add_child(chat)
 
 	_gameplay_widgets = [crosshair, hotbar]

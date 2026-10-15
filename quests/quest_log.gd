@@ -180,7 +180,7 @@ func _describe(id: String, done: bool) -> Dictionary:
 	for i in objs.size():
 		var target := int(objs[i]["count"])
 		var cur := target if done else progress[i]
-		list.append({"text": objs[i]["text"], "current": cur, "target": target, "done": cur >= target})
+		list.append({"text": objs[i]["text"], "type": objs[i]["type"], "key": objs[i]["key"], "current": cur, "target": target, "done": cur >= target})
 	var rewards := PackedStringArray()
 	var r: Dictionary = q["rewards"]
 	if r.has("xp"):

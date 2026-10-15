@@ -8,7 +8,7 @@ render_mode unshaded, blend_disabled;
 uniform sampler2D cell_color : filter_nearest;        // rgb = exposed linear colour, a = glyph index
 uniform sampler2D cell_color_soft : filter_linear;    // same texture, filtered, for glyph glow
 uniform sampler2D cell_aux : filter_nearest;          // r = mode, g = material, b = edge dir, a = brightness
-uniform sampler2D atlas : filter_nearest;             // one row of glyphs, each cell_px in size
+uniform sampler2D atlas : filter_linear;             // one row of glyphs, each cell_px in size
 uniform sampler2D fx_layer : filter_linear;           // 3D viewport output: FX + glow (or the raw scene)
 
 uniform vec2 target_px = vec2(1920.0, 1080.0);        // physical size of this rect
@@ -77,7 +77,8 @@ float hash12(vec2 p) {
 
 float ink_at(float g, ivec2 local, ivec2 csz) {
 	local = clamp(local, ivec2(0), csz - 1);
-	return texelFetch(atlas, ivec2(int(g + 0.5) * csz.x + local.x, local.y), 0).r;
+	vec2 atlas_size = vec2(textureSize(atlas, 0));
+	return texture(atlas, (vec2(ivec2(int(g + 0.5) * csz.x + local.x, local.y)) + 0.5) / atlas_size).r;
 }
 
 void fragment() {
@@ -116,8 +117,10 @@ void fragment() {
 			fg = to_linear(phosphor(t * 1.1));
 			bg = to_linear(phosphor(t * 0.5)) * bg_fill;
 		} else {
-			fg = aces(lin * glyph_gain);
-			bg = mapped * bg_fill * 0.45;
+			// Preserve hue and low-contrast terrain detail instead of crushing
+			// every cell's background to black in the full-colour style.
+			fg = aces(lin * glyph_gain * 1.15);
+			bg = mapped * max(bg_fill, 0.22);
 		}
 
 		if (shimmer > 0.0 && lum > 0.7) {

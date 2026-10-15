@@ -2,5 +2,12 @@
 /android/
 *.tmp
 build/
+dist/
+.env
+.env.*
+export_credentials.cfg
+*.p12
+*.pfx
+*.pem
 .claude/
 .DS_Store

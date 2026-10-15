@@ -28,6 +28,9 @@ var _cell_color := Texture2DRD.new()
 var _cell_aux := Texture2DRD.new()
 var _published: Array = []
 var _time := 0.0
+var _adaptive_scale := 1.0
+var _frame_average := 1.0 / 60.0
+var _scale_timer := 0.0
 
 
 func _ready() -> void:
@@ -77,6 +80,7 @@ func _exit_tree() -> void:
 
 
 func _process(delta: float) -> void:
+	_update_adaptive_resolution(delta)
 	_time += delta
 	flash = maxf(0.0, flash - delta * 4.0)
 	if source_camera != null and is_instance_valid(source_camera):
@@ -119,11 +123,38 @@ func unproject(world: Vector3) -> Vector2:
 func _resize() -> void:
 	var window := DisplayServer.window_get_size() if DisplayServer.get_name() != "headless" else Vector2i(1280, 720)
 	var logical := Vector2(window) / Ascii.screen_scale()
-	viewport.size = Vector2i((logical * Settings.render_scale()).round()).max(Vector2i(64, 64))
+	var scale := Settings.render_scale()
+	if Ascii.style() == Settings.Style.OFF and float(Settings.get_value("graphics", "render_scale")) < 0:
+		scale = [0.65, 0.8, 1.0, 1.25][int(Settings.get_value("graphics", "quality"))]
+	viewport.size = Vector2i((logical * scale * _adaptive_scale).round()).max(Vector2i(64, 64))
 	Ascii.effect.output_size = window
 	Ascii.effect.output_cell = Ascii.atlas_cell if Ascii.atlas_cell != Vector2i.ZERO else Ascii.output_cell_size()
 	_material.set_shader_parameter(&"target_px", Vector2(window))
 
+
+func _update_adaptive_resolution(delta: float) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var enabled := bool(Settings.get_value("graphics", "adaptive_resolution")) and float(Settings.get_value("graphics", "render_scale")) < 0
+	var cap := int(Settings.get_value("display", "fps_cap"))
+	if not enabled or (cap > 0 and cap < 60):
+		if _adaptive_scale != 1.0:
+			_adaptive_scale = 1.0
+			_resize()
+		return
+	# Ignore loading stalls and cap adaptation to one small step each second.
+	_frame_average = lerpf(_frame_average, minf(delta, 0.05), 1.0 - exp(-delta * 2.0))
+	_scale_timer += delta
+	if _scale_timer < 1.0:
+		return
+	_scale_timer = 0
+	var old := _adaptive_scale
+	if _frame_average > 0.018:
+		_adaptive_scale = maxf(0.6, _adaptive_scale - 0.05)
+	elif _frame_average < 0.0169:
+		_adaptive_scale = minf(1.0, _adaptive_scale + 0.025)
+	if old != _adaptive_scale:
+		_resize()
 
 func _on_atlas(texture: ImageTexture, cell: Vector2i) -> void:
 	_material.set_shader_parameter(&"atlas", texture)
@@ -142,4 +173,5 @@ func _apply_settings() -> void:
 	_material.set_shader_parameter(&"bg_fill", float(Settings.get_value("graphics", "bg_fill")))
 	_material.set_shader_parameter(&"glyph_glow", 0.35 * float(Settings.get_value("graphics", "bloom")))
 	if viewport != null:
+		viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if style == Settings.Style.OFF else Viewport.SCREEN_SPACE_AA_DISABLED
 		_resize()

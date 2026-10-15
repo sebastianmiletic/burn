@@ -111,6 +111,10 @@ const STATIONS := {
 }
 
 const BASE := {
+	"ironwood": {"name": "Ironwood", "category": "material", "glyph": "=", "color": Color(0.35, 0.3, 0.22), "stack": 99, "value": 4, "rarity": 2, "desc": "Dense old-growth timber. Requires an iron axe or better."},
+	"emberwood": {"name": "Emberwood", "category": "material", "glyph": "=", "color": Color(0.7, 0.28, 0.12), "stack": 99, "value": 6, "rarity": 3, "desc": "Heat-hardened timber. Requires a steel axe or better."},
+	"ryftwood": {"name": "Ryftwood", "category": "material", "glyph": "=", "color": Color(0.55, 0.4, 0.8), "stack": 99, "value": 9, "rarity": 4, "desc": "Timber from the floating isles. Requires a mithril axe or better."},
+	"sword_gatebreaker": {"name": "Gatebreaker", "category": "weapon", "kind": "sword", "glyph": "/", "color": Color(0.8, 0.42, 0.22), "damage": 62.0, "speed": 0.85, "reach": 3.3, "burn": 8.0, "stack": 1, "value": 0, "rarity": 4, "tier": "infernal", "heavy": true, "desc": "Hades' one-time reward. Powerful, heavy and bound: merchants will not buy it."},
 	# Legacy and unique gear ---------------------------------------------------
 	"sword_rusty": {"name": "Rusty Sword", "category": "weapon", "kind": "sword", "glyph": "/", "color": Color(0.62, 0.45, 0.35),
 		"damage": 9.0, "speed": 1.0, "reach": 2.6, "stack": 1, "value": 5, "rarity": 0, "tier": "stone",
@@ -249,6 +253,9 @@ const BASE := {
 const BASE_RECIPES := {
 	# By hand
 	"planks": {"inputs": {"wood": 1}, "count": 4, "station": "", "group": "basics"},
+	"ironwood_coal": {"result": "charcoal", "inputs": {"ironwood": 1}, "count": 4, "station": "furnace", "group": "smelting"},
+	"emberwood_crystal": {"result": "ember_crystal", "inputs": {"emberwood": 4, "coal": 2}, "station": "furnace", "group": "smelting"},
+	"ryftwood_amethyst": {"result": "amethyst", "inputs": {"ryftwood": 3, "silver_ingot": 1}, "station": "alchemy", "group": "basics"},
 	"stick": {"inputs": {"planks": 1}, "count": 4, "station": "", "group": "basics"},
 	"torch": {"inputs": {"stick": 1, "coal": 1}, "count": 4, "station": "", "group": "basics"},
 	"workbench": {"inputs": {"wood": 2, "planks": 4}, "station": "", "group": "stations"},
@@ -514,7 +521,7 @@ static func mine_time(item_id: String, block: int) -> float:
 		if is_wood_block(block):
 			speed *= 0.6
 	elif kind == "axe":
-		tier = 0
+		tier = int(TIERS.get(String(inf.get("tier", "wood")), {}).get("mine_tier", 1)) if is_wood_block(block) else 0
 		speed = float(inf.get("chop_speed", 1.0)) if is_wood_block(block) else float(inf.get("chop_speed", 1.0)) * 0.6
 	elif inf.get("category", "") == "tool" and inf.has("mine_tier"):
 		tier = int(inf["mine_tier"])

@@ -45,6 +45,7 @@ var _mesh_pending := {}
 var _mesh_version := {}
 var _dirty := {}
 var _column_top := {}
+var _column_low := {}
 var _lock := Mutex.new()
 var _gen_results: Array = []
 var _mesh_results: Array = []
@@ -530,11 +531,18 @@ func _column_top_cy(cx: int, cz: int) -> int:
 	if _column_top.has(k):
 		return _column_top[k]
 	var top := -1000
-	for s: Vector2i in [Vector2i(0, 0), Vector2i(15, 0), Vector2i(0, 15), Vector2i(15, 15), Vector2i(8, 8), Vector2i(4, 11), Vector2i(11, 4)]:
-		var x := cx * 16 + s.x
-		var z := cz * 16 + s.y
-		if gen.in_bounds(x, z):
-			top = maxi(top, gen.surface_height(x, z))
+	var low := 1000
+	# Include the neighbour edge: steep mountain faces span many vertical
+	# chunks, not just the two chunks below a column's highest sample.
+	for sz in [-1, 4, 8, 12, 16]:
+		for sx in [-1, 4, 8, 12, 16]:
+			var x: int = cx * 16 + sx
+			var z: int = cz * 16 + sz
+			if gen.in_bounds(x, z):
+				var height := gen.surface_height(x, z)
+				top = maxi(top, height)
+				low = mini(low, height)
+	_column_low[k] = floori(float(low) / 16.0) - 1
 	var sea := WorldGen.SEA_LEVEL if dimension == 0 else WorldGen.LAVA_LEVEL
 	top = maxi(top, sea) + 12
 	var cy := floori(top / 16.0)
@@ -545,8 +553,8 @@ func _column_top_cy(cx: int, cz: int) -> int:
 func _rebuild_wanted(fkey: Vector3i) -> void:
 	_wanted_mesh.clear()
 	_wanted_data.clear()
-	var surface_cy := _column_top_cy(fkey.x, fkey.z)
-	var underground := focus.y < surface_cy * 16 - 40
+	# Nearby peaks are not a ceiling above the player. Use the exact column.
+	var underground := dimension != 2 and focus.y < gen.ground_level(focus.x, focus.z) - 8.0
 	var radius := view_radius if not underground else mini(view_radius, 6)
 	var seen := {}
 	var candidates: Array = []
@@ -565,10 +573,13 @@ func _rebuild_wanted(fkey: Vector3i) -> void:
 			for y in range(fkey.y - down, fkey.y + 3):
 				ys[y] = true
 			if not underground or d2 <= 9:
-				for y in range(top - 2, top + 1):
+				var low := int(_column_low.get(Vector2i(cx, cz), top - 2))
+				if dimension == 2:
+					low = maxi(0, low - 4)  # Floating islands also expose their underside.
+				for y in range(maxi(low, WorldGen.Y_MIN / 16), top + 1):
 					ys[y] = true
 			for y: int in ys:
-				if y * 16 > 160 or y * 16 < -144:
+				if y * 16 > WorldGen.Y_MAX + 32 or y * 16 < WorldGen.Y_MIN - 16:
 					continue
 				var k := Vector3i(cx, y, cz)
 				candidates.append([d2 + absi(y - fkey.y) * 2, k])
@@ -722,6 +733,7 @@ func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) 
 	# Emissive blocks become light sources.
 	var center: PackedByteArray = neighbours[13]
 	var lights: Array = []
+	var light_cells := {}
 	if not center.is_empty():
 		for i in Chunk.VOLUME:
 			var b := center[i]
@@ -729,6 +741,16 @@ func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) 
 				var y := i / Chunk.AREA
 				var z := (i % Chunk.AREA) / Chunk.SIZE
 				var x := i % Chunk.SIZE
+				if Blocks.is_smooth(b):
+					# A buried vein contributes emission to its surface material,
+					# not thousands of point lights. Only exposed deposits qualify.
+					if x > 0 and x < 15 and y > 0 and y < 15 and z > 0 and z < 15:
+						if center[i - 1] != 0 and center[i + 1] != 0 and center[i - 16] != 0 and center[i + 16] != 0 and center[i - 256] != 0 and center[i + 256] != 0:
+							continue
+					var light_cell := (x >> 3) + (z >> 3) * 2 + (y >> 3) * 4
+					if light_cells.has(light_cell):
+						continue
+					light_cells[light_cell] = true
 				lights.append([Vector3(o) + Vector3(x + 0.5, y + 0.6, z + 0.5), Blocks.color(b), Blocks.light(b)])
 	result["lights"] = lights
 	_lock.lock()
@@ -911,7 +933,9 @@ func _update_lights() -> void:
 				if pts == null:
 					continue
 				for p: Array in pts:
-					found.append([focus.distance_squared_to(p[0]), p])
+					var distance := focus.distance_squared_to(p[0])
+					if distance < 32.0 * 32.0:
+						found.append([distance, p])
 	found.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
 	while _light_nodes.size() < max_point_lights:
 		var l := OmniLight3D.new()

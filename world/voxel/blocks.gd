@@ -144,6 +144,10 @@ const DATA := [
 	["Ruby ore", Color(0.7, 0.15, 0.18), AsciiMaterialId.SOLID, 2.6, 3, "ruby", 0.3, true, true, false, Shape.CUBE],
 	["Sapphire ore", Color(0.2, 0.3, 0.75), AsciiMaterialId.SOLID, 2.6, 3, "sapphire", 0.3, true, true, false, Shape.CUBE],
 	["Amethyst", Color(0.6, 0.35, 0.85), AsciiMaterialId.EMISSIVE, 2.0, 3, "amethyst", 1.0, true, true, false, Shape.CUBE],
+	["Building", Color(0.52, 0.46, 0.35), AsciiMaterialId.SOLID, -1.0, 99, "", 0.0, true, true, false, Shape.NONE],
+	["Ironwood", Color(0.25, 0.22, 0.18), AsciiMaterialId.SOLID, 3.0, 3, "ironwood", 0.0, true, true, false, Shape.NONE],
+	["Emberwood", Color(0.42, 0.16, 0.08), AsciiMaterialId.SOLID, 4.0, 4, "emberwood", 0.0, true, true, false, Shape.NONE],
+	["Ryftwood", Color(0.28, 0.22, 0.42), AsciiMaterialId.SOLID, 5.0, 5, "ryftwood", 0.0, true, true, false, Shape.NONE],
 ]
 
 ## Blocks drawn as the smooth terrain surface.
@@ -261,7 +265,7 @@ static func sound_family(id: int) -> String:
 			return "sand"
 		SNOW:
 			return "snow"
-		LOG, PINE_LOG, PLANKS, CHEST, OAK_TRUNK, CRIMSON_TRUNK, PINE_TRUNK, DEAD_TRUNK:
+		LOG, PINE_LOG, PLANKS, CHEST, OAK_TRUNK, CRIMSON_TRUNK, PINE_TRUNK, DEAD_TRUNK, IRONWOOD_TRUNK, EMBERWOOD_TRUNK, RYFTWOOD_TRUNK:
 			return "wood"
 		ICE, CRYSTAL, AMETHYST, EMBER_ORE, RUBY_ORE, SAPPHIRE_ORE:
 			return "crystal"
@@ -275,7 +279,7 @@ static func family_table() -> PackedByteArray:
 
 
 static func is_breakable(id: int) -> bool:
-	return id != AIR and DATA[id][3] >= 0.0
+	return id > AIR and id < DATA.size() and DATA[id][3] >= 0.0
 
 
 ## Lookup tables for the mesher (thread-safe: read-only after static init).

@@ -34,7 +34,7 @@ static func village(loc: Location, rng: RandomNumberGenerator, is_start: bool) -
 		for dx in range(-8, 9):
 			var d := Vector2(dx, dz).length()
 			if d <= 8.2:
-				bp.set_local(cx + dx, fy, cz + dz, Blocks.COBBLE if d > 6.8 or (dx + dz) % 3 == 0 else Blocks.GRAVEL)
+				bp.set_local(cx + dx, fy, cz + dz, Blocks.GRAVEL)  # Continuous plaza, not alternating cube-shaped depressions.
 	bp.cylinder(Vector3i(cx, fy + 1, cz), 2.3, 2, Blocks.MOSSY_COBBLE, true)
 	bp.cylinder(Vector3i(cx, fy - 4, cz), 1.3, 5, Blocks.WATER)
 	for corner: Vector2i in [Vector2i(-2, -2), Vector2i(2, -2), Vector2i(-2, 2), Vector2i(2, 2)]:
@@ -54,7 +54,7 @@ static func village(loc: Location, rng: RandomNumberGenerator, is_start: bool) -
 		var to_plaza := Vector2(cx - hp.x, cz - hp.y)
 		var door := Vector2i(signi(int(to_plaza.x)), 0) if absf(to_plaza.x) > absf(to_plaza.y) else Vector2i(0, signi(int(to_plaza.y)))
 		if i == 0:
-			_house(bp, Vector3i(hp.x, fy, hp.y), 11, 9, 5, door, true)
+			_house(loc, bp, Vector3i(hp.x, fy, hp.y), 11, 9, 5, door, true)
 			var door_w := _w(bp, Vector3(hp.x + door.x * 6, fy + 1, hp.y + door.y * 6))
 			loc.add_spawn("npc", door_w, {"role": "elder" if is_start else "chief"})
 			loc.add_spawn("chest", _w(bp, Vector3(hp.x - door.x * 3, fy + 1, hp.y - door.y * 3)), {"tier": 1})
@@ -66,7 +66,7 @@ static func village(loc: Location, rng: RandomNumberGenerator, is_start: bool) -
 			loc.add_spawn("station", _w(bp, Vector3(hp.x - 2, fy + 1, hp.y + 2)), {"station": "furnace", "yaw": PI})
 			loc.add_spawn("station", _w(bp, Vector3(hp.x + 3, fy + 1, hp.y - 2)), {"station": "workbench", "yaw": 0.0})
 		else:
-			_house(bp, Vector3i(hp.x, fy, hp.y), 7 + 2 * rng.randi_range(0, 1), 6 + rng.randi_range(0, 2), 4, door, false)
+			_house(loc, bp, Vector3i(hp.x, fy, hp.y), 7 + 2 * rng.randi_range(0, 1), 6 + rng.randi_range(0, 2), 4, door, false)
 	for i in 4:
 		var ang := rng.randf() * TAU
 		loc.add_spawn("npc", _w(bp, Vector3(cx + cos(ang) * 10.0, fy + 1, cz + sin(ang) * 10.0)), {"role": "villager"})
@@ -74,7 +74,7 @@ static func village(loc: Location, rng: RandomNumberGenerator, is_start: bool) -
 	loc.add_spawn("guard_post", _w(bp, Vector3(cx, fy + 1, cz)), {})
 
 
-static func _house(bp: Blueprint, c: Vector3i, w: int, d: int, wall_h: int, door: Vector2i, hall: bool) -> void:
+static func _house(loc: Location, bp: Blueprint, c: Vector3i, w: int, d: int, wall_h: int, door: Vector2i, hall: bool) -> void:
 	var x0 := c.x - w / 2
 	var x1 := x0 + w - 1
 	var z0 := c.z - d / 2
@@ -103,6 +103,7 @@ static func _house(bp: Blueprint, c: Vector3i, w: int, d: int, wall_h: int, door
 		bp.fill(Vector3i(c.x - dw, y0 + 1, dz), Vector3i(c.x + dw, y0 + 3 if hall else y0 + 2, dz), Blueprint.CARVE)
 	bp.gable_roof(Vector3i(x0 - 1, y0 + wall_h + 1, z0 - 1), Vector3i(x1 + 1, y0 + wall_h + 1, z1 + 1), Blocks.THATCH)
 	bp.set_local(c.x, y0 + wall_h, c.z, Blocks.LANTERN)
+	Architecture.house(loc, bp, c, w, d, wall_h)
 
 
 static func _forge(bp: Blueprint, c: Vector3i) -> void:

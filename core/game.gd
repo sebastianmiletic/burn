@@ -7,7 +7,7 @@ enum State { BOOT, INTRO, MENU, LOBBY, LOADING, PLAYING }
 
 const PARTY_SLOT := 9            ## the host's shared party world
 const AUTOSAVE_SECONDS := 300.0
-const CHARACTER_PATH := "user://saves/party_character.burn"
+var CHARACTER_PATH := RuntimePaths.file("saves/party_character.burn")
 
 var state := State.BOOT
 var session := {}
@@ -172,10 +172,18 @@ func start_solo(slot: int, new_game: bool) -> void:
 func start_campaign() -> void:
 	var save := SaveSystem.read(PARTY_SLOT)
 	var seed_value := int(save.get("seed", randi()))
-	# Players who join mid-campaign get the live world state, not the start state.
+	# Clients loading with the host need the saved generation revision too,
+	# not just late joiners. Otherwise an old host world and new client differ.
+	var initial_state := {
+		"edits": save.get("edits", {}), "bosses_defeated": save.get("bosses_defeated", []),
+		"world_revision": save.get("world_revision", 2 if save.is_empty() else 1),
+		"ryft_unlocked": save.get("ryft_unlocked", false),
+		"time_of_day": save.get("time_of_day", 8.5), "day": save.get("day", 1),
+	}
 	Net.late_join_info = func() -> Dictionary:
-		return {"seed": seed_value, "join_state": join_state()}
-	Net.start_campaign({"seed": seed_value, "host_save": save.has("seed")})
+		var live := join_state()
+		return {"seed": seed_value, "join_state": live if not live.is_empty() else initial_state}
+	Net.start_campaign({"seed": seed_value, "host_save": save.has("seed"), "join_state": initial_state})
 
 
 func _on_session_started(info: Dictionary) -> void:
@@ -194,6 +202,8 @@ func _on_session_started(info: Dictionary) -> void:
 		var js: Dictionary = info.get("join_state", {})
 		save["edits"] = js.get("edits", {})
 		save["bosses_defeated"] = js.get("bosses_defeated", [])
+		save["world_revision"] = js.get("world_revision", 2)
+		save["ryft_unlocked"] = js.get("ryft_unlocked", false)
 		save["time_of_day"] = js.get("time_of_day", 8.5)
 		save["day"] = js.get("day", 1)
 	_load_world({"seed": int(info.get("seed", 1)), "mode": "host" if host else "client", "slot": PARTY_SLOT, "save": save})

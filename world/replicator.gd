@@ -20,6 +20,7 @@ const MAX_REACH := 7.5
 var _snap_accum := 0.0
 var _state_accum := 0.0
 var _peer_dim := {}        # peer -> dimension (server)
+var _dig_at := {}         # peer -> last accepted sculpt strike (seconds)
 var _known := {}           # peer -> {net_id: true} spawned on that peer (server)
 
 
@@ -93,12 +94,24 @@ func _send_local_state() -> void:
 
 @rpc("any_peer", "unreliable_ordered")
 func _player_state(state: Array) -> void:
-	if not multiplayer.is_server():
+	if not multiplayer.is_server() or not valid_player_state(state):
 		return
 	var peer := multiplayer.get_remote_sender_id()
+	if not _ready_peers.has(peer) or not gw().worlds.has(int(state[0])) or (int(state[0]) == 2 and not gw().ryft_unlocked):
+		return
 	_apply_player_state(peer, state)
 	_relay_player_state(peer, state)
 
+
+static func valid_player_state(state: Array) -> bool:
+	if state.size() != 11 or not state[0] is int or not state[1] is Vector3:
+		return false
+	if not (state[1] as Vector3).is_finite() or (state[1] as Vector3).length() > 20000:
+		return false
+	for index in [2, 3, 4, 6, 7, 8]:
+		if not (state[index] is float or state[index] is int) or not is_finite(float(state[index])):
+			return false
+	return state[5] is String and state[9] is String and state[10] is bool and String(state[9]).length() <= 64 and float(state[7]) > 0 and float(state[7]) <= 10000 and float(state[6]) >= 0 and float(state[6]) <= float(state[7])
 
 func _relay_player_state(peer: int, state: Array) -> void:
 	_peer_dim[peer] = int(state[0])
@@ -137,6 +150,7 @@ func _on_peer_disconnected(peer: int) -> void:
 	_ready_peers.erase(peer)
 	_peer_dim.erase(peer)
 	_known.erase(peer)
+	_dig_at.erase(peer)
 
 
 func notify_dimension(dim: int) -> void:
@@ -148,7 +162,7 @@ func notify_dimension(dim: int) -> void:
 
 @rpc("any_peer", "reliable")
 func _client_dimension(dim: int) -> void:
-	if multiplayer.is_server():
+	if multiplayer.is_server() and gw().worlds.has(dim) and (dim != 2 or gw().ryft_unlocked):
 		_peer_dim[multiplayer.get_remote_sender_id()] = dim
 
 
@@ -160,15 +174,27 @@ func client_ready() -> void:
 
 @rpc("any_peer", "reliable")
 func _client_ready(dim: int) -> void:
-	if not multiplayer.is_server():
+	if not multiplayer.is_server() or not gw().worlds.has(dim) or (dim == 2 and not gw().ryft_unlocked):
 		return
 	var peer := multiplayer.get_remote_sender_id()
 	_peer_dim[peer] = dim
 	_known[peer] = {}
 	_ready_peers[peer] = true
+	# Reconcile changes made while this peer was loading. One chunk per
+	# reliable message avoids a giant packet and preserves edit ordering.
+	for dimension: int in gw().worlds:
+		var edits := gw().world_for(dimension).get_edits()
+		for key: Vector3i in edits:
+			_sync_edits.rpc_id(peer, dimension, {key: edits[key]})
 	_sync_bosses.rpc_id(peer, gw().bosses_defeated.keys())
 	_clock.rpc_id(peer, gw().sky.time_of_day, gw().sky.day, gw().weather.state_name())
 
+
+@rpc("authority", "reliable")
+func _sync_edits(dim: int, edits: Dictionary) -> void:
+	var vw := gw().world_for(dim)
+	if vw != null:
+		vw.apply_edits(edits)
 
 # --- Spawning ------------------------------------------------------------------------
 
@@ -392,6 +418,8 @@ func _boss_state(id: int, engaged: bool, kind: String, defeated: bool) -> void:
 			Events.boss_disengaged.emit(boss)
 		if defeated:
 			w.bosses_defeated[kind] = true
+			if kind == "hades":
+				w.ryft_unlocked = true
 			Events.boss_defeated.emit(kind, boss.display_name if boss != null else kind)
 			Events.slow_motion.emit(1.4, 0.3)
 			w.quests.on_event("boss", kind)
@@ -407,6 +435,8 @@ func sync_bosses_defeated(defeated: Dictionary) -> void:
 func _sync_bosses(kinds: Array) -> void:
 	for k in kinds:
 		gw().bosses_defeated[String(k)] = true
+		if String(k) == "hades":
+			gw().ryft_unlocked = true
 
 
 func broadcast_victory() -> void:
@@ -415,6 +445,8 @@ func broadcast_victory() -> void:
 
 @rpc("authority", "reliable", "call_local")
 func _victory() -> void:
+	gw().ryft_unlocked = true
+	Events.notify.emit("The Ryft gateway in Emberfall is open. Your journey continues beyond the sky.", "quest")
 	gw().get_tree().create_timer(4.0).timeout.connect(func() -> void: Events.campaign_won.emit())
 
 
@@ -481,7 +513,7 @@ func _request_station(kind: String, pos: Vector3, yaw: float, dim: int) -> void:
 func _request_station_on_server(peer: int, kind: String, pos: Vector3, yaw: float, dim: int) -> void:
 	var w := gw()
 	var p := w.entity(player_net_id(peer)) as Player
-	if p == null or p.dimension != dim or pos.distance_to(p.global_position) > MAX_REACH + 1.0:
+	if not Net.is_server() or p == null or p.dead or p.dimension != dim or not pos.is_finite() or not is_finite(yaw) or not ItemDB.STATIONS.has(kind) or pos.distance_to(p.global_position) > MAX_REACH + 1.0:
 		return
 	w.place_station(kind, pos, yaw, dim)
 
@@ -505,10 +537,18 @@ func _request_dig(point: Vector3, radius: float, seconds: float, item_id: String
 func _resolve_dig(peer: int, point: Vector3, radius: float, seconds: float, item_id: String, dim: int) -> void:
 	var w := gw()
 	var p := w.entity(player_net_id(peer)) as Player
-	if p == null or p.dimension != dim or point.distance_to(p.global_position + Vector3(0, 1.4, 0)) > MAX_REACH:
+	if p == null or p.dead or p.dimension != dim or not point.is_finite() or not is_finite(radius) or not is_finite(seconds) or point.distance_to(p.global_position + Vector3(0, 1.4, 0)) > MAX_REACH:
 		return
+	var info := ItemDB.info(item_id)
+	if info.get("category", "") != "tool" or item_id != p.held_item():
+		return
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - float(_dig_at.get(peer, -100.0)) < 0.32:
+		return
+	_dig_at[peer] = now
 	var vw := w.world_for(dim)
-	var plan := vw.plan_dig(point, clampf(radius, 0.3, 1.6), clampf(seconds, 0.0, 1.0), item_id)
+	var allowed_radius := 0.8 + int(info.get("mine_tier", 1)) * 0.06
+	var plan := vw.plan_dig(point, clampf(radius, 0.3, allowed_radius), clampf(seconds, 0.0, Player.STRIKE_TIME), item_id)
 	var changes: PackedInt32Array = plan["changes"]
 	if changes.is_empty():
 		return
@@ -538,7 +578,7 @@ func _request_fill(point: Vector3, radius: float, block: int, dim: int) -> void:
 func _resolve_fill(peer: int, point: Vector3, radius: float, block: int, dim: int) -> void:
 	var w := gw()
 	var p := w.entity(player_net_id(peer)) as Player
-	if p == null or p.dimension != dim or not Blocks.is_smooth(block):
+	if p == null or p.dead or p.dimension != dim or block <= 0 or block >= Blocks.COUNT or not point.is_finite() or not is_finite(radius) or not Blocks.is_smooth(block):
 		return
 	if point.distance_to(p.global_position + Vector3(0, 1.4, 0)) > MAX_REACH:
 		return
@@ -589,7 +629,7 @@ func _request_block(pos: Vector3i, block: int, dim: int) -> void:
 func _resolve_block(peer: int, pos: Vector3i, block: int, dim: int) -> void:
 	var w := gw()
 	var p := w.entity(player_net_id(peer)) as Player
-	if p == null or p.dimension != dim:
+	if p == null or p.dead or p.dimension != dim or block < 0 or block >= Blocks.COUNT:
 		return
 	if (Vector3(pos) + Vector3(0.5, 0.5, 0.5)).distance_to(p.global_position + Vector3(0, 1.4, 0)) > MAX_REACH:
 		if OS.is_debug_build() and "--mp-test=host" in OS.get_cmdline_user_args():
@@ -600,9 +640,14 @@ func _resolve_block(peer: int, pos: Vector3i, block: int, dim: int) -> void:
 	if current < 0:
 		return
 	if block == Blocks.AIR:
+		# Natural terrain can only be excavated through the density brush.
+		if Blocks.is_smooth(current):
+			return
 		if not Blocks.is_breakable(current):
 			return
 		if Blocks.is_trunk(current):
+			if not ItemDB.can_mine(p.held_item(), current):
+				return
 			_fell_tree(p, pos, current, dim)
 			return
 		broadcast_block(pos, Blocks.AIR, dim)

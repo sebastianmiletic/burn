@@ -3,7 +3,7 @@ extends RefCounted
 ## Save slots in user://saves. A save holds the world seed, every block edit,
 ## the player, quests, discoveries, defeated bosses and the clock.
 
-const DIR := "user://saves"
+static var DIR := RuntimePaths.file("saves")
 const SLOTS := 3
 const VERSION := 1
 
@@ -30,16 +30,19 @@ static func write(slot: int, data: Dictionary) -> bool:
 	f.store_buffer(bytes)
 	f.close()
 	# Atomic-ish replace so a crash mid-write never destroys the old save.
-	DirAccess.rename_absolute(tmp, path(slot))
-	return true
+	return DirAccess.rename_absolute(tmp, path(slot)) == OK
 
 
 static func read(slot: int) -> Dictionary:
 	var f := FileAccess.open(path(slot), FileAccess.READ)
 	if f == null:
 		return {}
+	if f.get_length() < 8:
+		return {}
 	var size := f.get_32()
 	var raw_size := f.get_32()
+	if size <= 0 or size > f.get_length() - 8 or raw_size <= 0 or raw_size > 256 * 1024 * 1024:
+		return {}
 	var bytes := f.get_buffer(size)
 	f.close()
 	var raw := bytes.decompress(raw_size, FileAccess.COMPRESSION_ZSTD)

@@ -7,7 +7,7 @@ var failures: PackedStringArray = []
 var _current := ""
 
 
-func check(condition: bool, message: String) -> void:
+func check(condition: bool, message := "condition should be true") -> void:
 	if not condition:
 		failures.append("%s: %s" % [_current, message])
 

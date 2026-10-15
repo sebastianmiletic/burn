@@ -25,7 +25,7 @@ const MUFFLE_MIN_HZ := 650.0
 const UNDERWATER_HZ := 450.0
 ## Bump when recordings change (the source hash covers the scripts).
 const CACHE_VERSION := "3"
-const CACHE_ROOT := "user://audio_cache"
+var CACHE_ROOT := RuntimePaths.file("audio_cache")
 
 ## Mix gain of each ambience bed at level 1 (dB; beds are rendered at equal RMS).
 ## (Wind, rain, cave, lava, fire and village match the loudness of the beds
@@ -667,7 +667,9 @@ func _track(sound: String, player: Node) -> void:
 func _steal_voice(sound: String) -> Node:
 	var active: Array = _voices.get(sound, [])
 	var still: Array = []
-	for p: Node in active:
+	# A previous world may have freed its positional players. Do not cast a
+	# stale object to Node before checking validity (new-game/continue flow).
+	for p in active:
 		if is_instance_valid(p) and p.get("playing"):
 			still.append(p)
 	_voices[sound] = still

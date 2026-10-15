@@ -87,19 +87,31 @@ func _client() -> void:
 	for e in left:
 		print("MP CLIENT note: still near: %s hp %.0f at %s (me %s)" % [e.kind, e.health, e.global_position, me.global_position])
 	_check(left.is_empty(), "killed it (state replicated back)")
-	var target := Vector3i(me.global_position.floor()) + EDIT_OFFSET
-	# Pick a breakable ground block within reach (the spawn may be on a shrine's runestones).
-	var feet := Vector3i(me.global_position.floor())
-	var best_d := 1e9
-	for dz in range(-4, 5):
-		for dx in range(-4, 5):
-			for dy in [-1, -2]:
-				var c: Vector3i = feet + Vector3i(dx, dy, dz)
-				var d := (Vector3(c) + Vector3(0.5, 0.5, 0.5)).distance_to(me.global_position + Vector3(0, 1.4, 0))
-				if d > 2.0 and d < 5.5 and d < best_d and Blocks.is_breakable(_w.world_for(0).get_block(c)):
-					best_d = d
-					target = c
-	var before := _w.world_for(0).get_block(target)
-	_w.request_set_block(target, Blocks.AIR, 0)
-	var echoed := await _wait_for(func() -> bool: return _w.world_for(0).get_block(target) == Blocks.AIR, 10.0)
-	_check(Blocks.is_breakable(before) and echoed, "mined %s through the server" % Blocks.name_of(before))
+	# Smooth terrain must use the same brush as the first-person pickaxe.
+	me.inventory.select(1)
+	var vw := _w.world_for(0)
+	var point := Vector3.INF
+	for radius in range(3, 14):
+		for i in 16:
+			var q := me.global_position + Vector3(cos(i * TAU / 16), 0, sin(i * TAU / 16)) * radius
+			var ground := vw.ground_below(q.x, q.y + 5, q.z, 20)
+			if not is_finite(ground):
+				continue
+			var b := vw.get_block(Vector3i(Vector3(q.x, ground - 0.3, q.z).floor()))
+			if b > 0 and Blocks.is_smooth(b) and ItemDB.can_mine("pickaxe_stone", b):
+				point = Vector3(q.x, ground - 0.25, q.z)
+				break
+		if point.is_finite():
+			break
+	_check(point.is_finite(), "found sculptable ground")
+	if point.is_finite():
+		me.global_position = point + Vector3(1.8, 1.5, 0)
+		await get_tree().create_timer(1.2).timeout
+		var old := vw.field(point)
+		_w.request_set_block(Vector3i(point.floor()), Blocks.AIR, 0)
+		await get_tree().create_timer(0.8).timeout
+		_check(is_equal_approx(old, vw.field(point)), "host rejects cube deletion of natural terrain")
+		for i in 6:
+			_w.replicator.request_dig(point, 0.9, Player.STRIKE_TIME, "pickaxe_stone", 0)
+			await get_tree().create_timer(0.5).timeout
+		_check(vw.field(point) < old, "smooth excavation replicated back from the host")

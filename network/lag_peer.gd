@@ -41,7 +41,15 @@ func _drop(mode: int) -> bool:
 
 
 func _poll() -> void:
+	if inner.get_connection_status() == CONNECTION_DISCONNECTED:
+		_in.clear()
+		_out.clear()
+		return
 	inner.poll()
+	if inner.get_connection_status() == CONNECTION_DISCONNECTED:
+		_in.clear()
+		_out.clear()
+		return
 	var now := Time.get_ticks_usec()
 	while inner.get_available_packet_count() > 0:
 		var peer := inner.get_packet_peer()
@@ -56,6 +64,9 @@ func _poll() -> void:
 
 
 func _flush_out(now: int) -> void:
+	if inner.get_connection_status() != CONNECTION_CONNECTED:
+		_out.clear()
+		return
 	while not _out.is_empty() and int(_out[0][0]) <= now:
 		var p: Array = _out.pop_front()
 		inner.set_target_peer(p[1])
@@ -98,6 +109,8 @@ func _get_packet_mode() -> TransferMode:
 
 
 func _put_packet_script(buffer: PackedByteArray) -> Error:
+	if inner.get_connection_status() != CONNECTION_CONNECTED:
+		return ERR_UNAVAILABLE
 	if _drop(_mode):
 		dropped_out += 1
 		return OK

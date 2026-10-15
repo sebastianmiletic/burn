@@ -1,6 +1,6 @@
 class_name Hotbar
-extends HBoxContainer
-## Bottom-centre: the three held-item slots and the ability cooldowns.
+extends Control
+## Bottom-left triangular equipment cluster; abilities sit beside it.
 
 const ABILITIES := [
 	["fireball", "ability_fire", "✶", "Fireball"],
@@ -17,8 +17,7 @@ var _name_timer := 0.0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_theme_constant_override("separation", 6)
-	alignment = BoxContainer.ALIGNMENT_CENTER
+	custom_minimum_size = Vector2(364, 144)
 	# Render every item icon in the background (a few per frame) so the
 	# inventory and crafting screens open with icons ready.
 	(func() -> void: ItemIcons.prewarm()).call_deferred()
@@ -27,18 +26,20 @@ func _ready() -> void:
 		s.index = i
 		s.key_hint = str(i + 1)
 		s.custom_minimum_size = Vector2(66, 66)
+		s.size = Vector2(66, 66)
+		s.position = [Vector2(37, 0), Vector2(0, 76), Vector2(74, 76)][i]
 		add_child(s)
 		_slots.append(s)
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(22, 0)
-	add_child(gap)
+	var ability_index := 0
 	for a: Array in ABILITIES:
 		var w := AbilityIcon.new()
 		w.glyph = a[2]
 		w.action = a[1]
 		w.tooltip_name = a[3]
 		w.custom_minimum_size = Vector2(46, 46)
-		w.size_flags_vertical = Control.SIZE_SHRINK_END
+		w.size = Vector2(46, 46)
+		w.position = Vector2(158 + ability_index * 52, 96)
+		ability_index += 1
 		add_child(w)
 		_abilities[a[0]] = w
 	_name_label = UiTheme.label("", UiTheme.SIZE_BODY, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
@@ -83,7 +84,8 @@ func _process(delta: float) -> void:
 	_name_label.modulate.a = clampf(_name_timer / 0.4, 0.0, 1.0)
 	if _name_label.modulate.a > 0.0:
 		_name_label.size = Vector2(300, 20)
-		_name_label.global_position = global_position + Vector2(_slots[1].position.x + 31 - 150, -26)
+		_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_name_label.global_position = global_position + Vector2(0, -26)
 
 
 ## First binding of an input action as short text ("Q", "Ctrl", "M2").

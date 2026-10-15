@@ -25,6 +25,10 @@ var _angle := 0.0
 var _player_pos := Vector3.ZERO
 var _markers: Array = []   # [Vector2 screen offset (unit circle), glyph, colour, size]
 var _time := 0.0
+var _cave_poll := 0.0
+var _cave_tex: ImageTexture
+var _cave_center := Vector3.ZERO
+var _readout: Label
 
 
 func _ready() -> void:
@@ -41,6 +45,9 @@ func _ready() -> void:
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_overlay.draw.connect(_draw_overlay)
 	add_child(_overlay)
+	_readout = UiTheme.label("", 10, UiTheme.TEXT_DIM, HORIZONTAL_ALIGNMENT_CENTER)
+	_readout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_readout)
 	resized.connect(_layout)
 	_layout()
 
@@ -50,6 +57,8 @@ func _layout() -> void:
 	_map_rect.size = size - Vector2(16, 16)
 	_overlay.position = Vector2.ZERO
 	_overlay.size = size
+	_readout.position = Vector2(0, size.y + 3)
+	_readout.size = Vector2(size.x, 18)
 
 
 func _process(delta: float) -> void:
@@ -73,12 +82,27 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter(&"center_uv", Vector2(_player_pos.x, _player_pos.z) / world_size)
 	_mat.set_shader_parameter(&"span", RADIUS_METRES * 2.0 * zoom / world_size)
 	_mat.set_shader_parameter(&"angle", _angle)
-	_mat.set_shader_parameter(&"style", 0 if int(UiContext.setting("graphics", "style")) in [0, 4] else 1)
+	_mat.set_shader_parameter(&"style", 0 if int(UiContext.setting("graphics", "style")) == 0 else 1)
 	var surface: Variant = UiContext.call_on(world, "surface_height_at", [_player_pos.x, _player_pos.z], null)
 	var under := 0.0
 	if surface != null:
 		under = clampf((float(surface) - _player_pos.y - 6.0) / 12.0, 0.0, 1.0)
 	_mat.set_shader_parameter(&"underground", under)
+	_cave_poll -= delta
+	var cave_mode := under > 0.5 and world is GameWorld
+	_mat.set_shader_parameter(&"cave_mode", cave_mode)
+	if cave_mode:
+		if _cave_poll <= 0:
+			_cave_poll = 1.0
+			_cave_center = _player_pos
+			var image := MapImage.cave_slice((world as GameWorld).world_for(dimension), _cave_center)
+			if _cave_tex == null:
+				_cave_tex = ImageTexture.create_from_image(image)
+			else:
+				_cave_tex.update(image)
+			_mat.set_shader_parameter(&"cave_tex", _cave_tex)
+		_mat.set_shader_parameter(&"cave_offset", Vector2(_player_pos.x - _cave_center.x, _player_pos.z - _cave_center.z) / 192.0)
+	_readout.text = "%s  %dm  |  Y %d" % ["CAVE" if cave_mode else "RANGE", int(RADIUS_METRES * zoom), int(_player_pos.y)]
 	_collect_markers(world, player)
 	queue_redraw()
 	_overlay.queue_redraw()
@@ -96,8 +120,7 @@ func _refresh_image(world: Node) -> void:
 	if _tex == null or id != _image_id or _tex.get_width() != image.get_width():
 		_tex = ImageTexture.create_from_image(image)
 		_image_id = id
-	else:
-		_tex.update(image)
+	# The world image is immutable: do not re-upload megabytes every half second.
 	_mat.set_shader_parameter(&"map_tex", _tex)
 	_mat.set_shader_parameter(&"has_map", true)
 
@@ -110,6 +133,19 @@ func _to_circle(p: Vector3) -> Vector2:
 
 func _collect_markers(world: Node, player: Object) -> void:
 	_markers.clear()
+	if world is GameWorld:
+		var gw := world as GameWorld
+		for q: Dictionary in gw.quests.tracked():
+			for objective: Dictionary in q["objectives"]:
+				if objective["done"]:
+					continue
+				var key := String(objective.get("key", ""))
+				if objective.get("type", "") == "interact":
+					key = key.get_slice("@", 1)
+				var target := gw.location_by_id(StringName(key))
+				if target != null and target.dimension == dimension:
+					_markers.append([_to_circle(target.center), "!", UiTheme.FROST, 16, true])
+					break
 	var discovered: Variant = world.get("discovered")
 	var locs: Variant = UiContext.call_on(world, "locations", [dimension], [])
 	if locs is Array:
@@ -128,6 +164,8 @@ func _collect_markers(world: Node, player: Object) -> void:
 		for e: Object in enemies:
 			if e == null or e.get("dead") == true:
 				continue
+			if absf((e as Node3D).global_position.y - _player_pos.y) > 24.0:
+				continue  # Do not show surface enemies as if they occupied a cave.
 			var is_boss: bool = e.has_method("is_boss") and e.call("is_boss")
 			_markers.append([_to_circle((e as Node3D).global_position), "◆" if is_boss else "•", UiTheme.DANGER, 14 if is_boss else 11, false])
 	var players: Variant = UiContext.call_on(world, "players_in", [dimension], [])
