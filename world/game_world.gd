@@ -29,6 +29,8 @@ var bosses_defeated := {}    # boss kind -> true
 var opened_chests := {}      # chest key -> true
 var lit_shrines := {}        # location id -> true
 var play_time := 0.0
+## Wounded bosses remembered across despawns and reloads (entities/bosses/boss_ledger.gd).
+var boss_ledger := BossLedger.new()
 var replicator: Replicator
 var director: LocationDirector
 var spawner: WildSpawner
@@ -824,6 +826,7 @@ func save_data() -> Dictionary:
 		"quests": quests.to_dict(),
 		"discovered": discovered.keys(),
 		"bosses_defeated": bosses_defeated.keys(),
+		"boss_wounds": boss_ledger.to_save(play_time),
 		"opened_chests": opened_chests.keys(),
 		"lit_shrines": lit_shrines.keys(),
 		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits(), 2: world_for(2).get_edits()},
@@ -842,6 +845,9 @@ func _load_world_state(save: Dictionary) -> void:
 		discovered[StringName(id)] = true
 	for k in save.get("bosses_defeated", []):
 		bosses_defeated[String(k)] = true
+	var wounds: Variant = save.get("boss_wounds", {})
+	if wounds is Dictionary:
+		boss_ledger.from_save(wounds)
 	for k in save.get("opened_chests", []):
 		opened_chests[String(k)] = true
 	for k in save.get("lit_shrines", []):

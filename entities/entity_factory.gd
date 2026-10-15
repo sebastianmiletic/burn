@@ -3,7 +3,8 @@ extends RefCounted
 ## Creates any entity by kind name (used by GameWorld on server and clients).
 
 const ENEMY_KINDS := ["skeleton", "archer", "ghoul", "troll", "imp", "shade"]
-const BOSS_KINDS := ["warden", "mountain_king", "dragon", "cerberus", "hades", "leviathan", "broodmother", "bog_hag"]
+const BOSS_KINDS := ["warden", "mountain_king", "dragon", "cerberus", "hades", "leviathan", "broodmother", "bog_hag",
+		"ryft_sentinel", "void_sovereign"]
 ## Hostile creatures with their own behaviours (entities/enemies/beast.gd, stats in mob_db.gd).
 const BEAST_KINDS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "giant_spider", "spiderling",
 		"cave_bat", "cave_crawler", "rock_golem", "scorpion", "fire_elemental", "bog_lurker", "shark",

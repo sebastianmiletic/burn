@@ -73,7 +73,7 @@ func test_bosses_simulate() -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	var boss_script: GDScript = load("res://entities/bosses/boss.gd")
 	var entity_script: GDScript = load("res://entities/entity.gd")
-	for kind in ["warden", "mountain_king", "dragon", "cerberus", "hades"]:
+	for kind in ["warden", "mountain_king", "dragon", "cerberus", "hades", "ryft_sentinel", "void_sovereign"]:
 		var sim := SimWorld.new()
 		var arena := Node3D.new()
 		tree.root.add_child(arena)

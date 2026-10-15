@@ -42,6 +42,10 @@ func _on_engaged(boss: Node, display_name: String) -> void:
 		if h != null and mx != null:
 			_health = float(h)
 			_max = maxf(float(mx), 1.0)
+		# A wounded boss re-engages in the phase it was left in.
+		var ph: Variant = boss.get("phase")
+		if ph != null:
+			_phase = clampi(int(ph), 1, 3)
 	_shown = _health / _max
 	_trail = _shown
 
