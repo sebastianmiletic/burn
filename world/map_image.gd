@@ -34,7 +34,7 @@ static func build(gen: WorldGen) -> Image:
 			var c: Color = BIOME_COLORS.get(gen._biome[i], Color.GRAY)
 			if gen._biome[i] == WorldGen.Biome.FOREST:
 				c = WorldGen.FOREST_COLORS[gen.forest_region(x * 4 + 2, z * 4 + 2)]
-			if gen.dimension == 0 and h > 100:
+			if gen.dimension == 0 and h > 100 and gen._biome[i] != WorldGen.Biome.VOLCANIC and gen._biome[i] != WorldGen.Biome.CANYON:
 				c = c.lerp(Color(0.88, 0.9, 0.91), smoothstep(100, 180, h))
 			var left := heights[maxi(x - 1, 0) + z * n]
 			var up := heights[x + maxi(z - 1, 0) * n]

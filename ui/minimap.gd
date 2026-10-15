@@ -8,7 +8,7 @@ extends Control
 const SHADER := preload("res://ui/shaders/minimap.gdshader")
 const RADIUS_METRES := 96.0
 const KIND_GLYPHS := {
-	0: "■", 1: "▲", 2: "▲", 3: "Ω", 4: "†", 5: "*", 6: "i", 7: "◆", 8: "Ω", 9: "▲", 10: "♛",
+	0: "■", 1: "▲", 2: "▲", 3: "Ω", 4: "†", 5: "*", 6: "i", 7: "◆", 8: "Ω", 9: "▲", 10: "♛", 11: "▼",
 }
 
 var dimension := 0

@@ -40,7 +40,7 @@ const LATEST_REVISION := 3
 const SEA_LEVEL := 12
 const LAVA_LEVEL := 0  ## hell
 const COARSE := 4      ## metres per coarse map cell
-const BLEND := 16      ## revision 3: metres per biome-blend cell
+const BLEND := 32      ## revision 3: metres per biome-blend cell
 const Y_MIN := -128
 const Y_MAX := 383
 
@@ -138,8 +138,11 @@ var _b_shape := PackedVector3Array()
 var _b_w := PackedColorArray()
 var _b_s := PackedFloat32Array()
 var _b_near := PackedInt32Array()
+var _b_warp := PackedVector2Array()
 ## While locations are planned the ravines are not cut yet (they avoid the planned sites).
 var _planning := false
+var _seed_pos := PackedVector2Array()
+var _seed_biome := PackedByteArray()
 var _roads: Array[PackedVector2Array] = []
 var _bp_index := {}  # Vector2i chunk column -> Array[Blueprint]
 # Shared noise (FastNoiseLite sampling is read-only and safe across threads).
@@ -227,6 +230,7 @@ func prepare(progress: Callable = Callable(), timing := false) -> void:
 	_b_w = PackedColorArray()
 	_b_s = PackedFloat32Array()
 	_b_near = PackedInt32Array()
+	_b_warp = PackedVector2Array()
 	_report(progress, 1.0, "Done")
 	if timing or "--load-timing" in OS.get_cmdline_user_args():
 		print("[load]   dim %d: coarse %d ms, plan %d ms, caves %d ms, pads/roads %d ms" % [dimension, t_coarse, t_plan, t_caves, Time.get_ticks_msec() - t1])
@@ -361,8 +365,17 @@ func _build_maps_v3() -> void:
 	_b_w.resize(_bn * _bn)
 	_b_s.resize(_bn * _bn)
 	_b_near.resize(_bn * _bn * 2)
+	_b_warp.resize(_bn * _bn)
+	_seed_pos.clear()
+	_seed_biome.clear()
+	for sd: Array in _biome_seeds:
+		_seed_pos.append(sd[0])
+		_seed_biome.append(sd[1])
+	var tb := Time.get_ticks_msec()
 	var task := WorkerThreadPool.add_group_task(_blend_rows, _bn, -1, true, "biome blend")
 	WorkerThreadPool.wait_for_group_task_completion(task)
+	if "--load-timing" in OS.get_cmdline_user_args():
+		print("[load]   blend grid %d ms (%d cpus)" % [Time.get_ticks_msec() - tb, OS.get_processor_count()])
 	var n := _coarse_n
 	_base.resize(n * n)
 	_amp.resize(n * n)
@@ -395,7 +408,8 @@ func _blend_rows(row: int) -> void:
 	var c := center()
 	for col in _bn:
 		var p := Vector2(col * BLEND + BLEND * 0.5, row * BLEND + BLEND * 0.5)
-		var wp := p + Vector2(warp.get_noise_2dv(p), warp2.get_noise_2dv(p)) * 130.0
+		var wo := Vector2(warp.get_noise_2dv(p), warp2.get_noise_2dv(p)) * 130.0
+		var wp := p + wo
 		var total := 0.0
 		var shape := Vector3.ZERO
 		var w := Color(0, 0, 0, 0)
@@ -443,6 +457,7 @@ func _blend_rows(row: int) -> void:
 		_b_shape[i] = shape
 		_b_w[i] = w
 		_b_s[i] = _smin(s_land, s_new, 60.0) if s_new < 400.0 else s_land
+		_b_warp[i] = wo
 		_b_near[i * 2] = i1
 		_b_near[i * 2 + 1] = i2
 
@@ -450,8 +465,6 @@ func _blend_rows(row: int) -> void:
 ## One row of the 4 m terrain maps: the blend grid interpolated, the nearest biome resolved at
 ## full resolution, then the sculpted features (massifs, mesas, the volcano, fjords, the coast).
 func _rows_v3(row: int) -> void:
-	var warp := _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.0025, 3, 11)
-	var warp2 := _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.0025, 3, 12)
 	var mwarp := _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.0032, 2, 51)
 	var mwarp2 := _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.0032, 2, 52)
 	var mridge := _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.0034, 3, 53)
@@ -461,12 +474,15 @@ func _rows_v3(row: int) -> void:
 	var cwarp := _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.006, 2, 57)
 	var n := _coarse_n
 	var bn := _bn
-	var fz := clampf(float(row) * COARSE / BLEND - 0.5 + 0.125, 0.0, bn - 1.001)
+	var near := _b_near
+	var seed_pos := _seed_pos
+	var seed_biome := _seed_biome
+	var fz := clampf((float(row) + 0.5) * COARSE / BLEND - 0.5, 0.0, bn - 1.001)
 	var iz := int(fz)
 	var tz := fz - iz
 	for col in n:
 		var p := Vector2(col * COARSE + COARSE * 0.5, row * COARSE + COARSE * 0.5)
-		var fx := clampf(float(col) * COARSE / BLEND - 0.5 + 0.125, 0.0, bn - 1.001)
+		var fx := clampf((float(col) + 0.5) * COARSE / BLEND - 0.5, 0.0, bn - 1.001)
 		var ix := int(fx)
 		var tx := fx - ix
 		var i00 := ix + iz * bn
@@ -477,27 +493,24 @@ func _rows_v3(row: int) -> void:
 		var wc := (_b_w[i00] * (1.0 - tx) + _b_w[i10] * tx) * (1.0 - tz) + (_b_w[i01] * (1.0 - tx) + _b_w[i11] * tx) * tz
 		var s := lerpf(lerpf(_b_s[i00], _b_s[i10], tx), lerpf(_b_s[i01], _b_s[i11], tx), tz)
 		# Nearest seed among the corners' two nearest (exact, warped Voronoi boundaries).
-		var wp := p + Vector2(warp.get_noise_2dv(p), warp2.get_noise_2dv(p)) * 130.0
-		var best := 1e20
-		var biome := 0
-		for k in 8:
-			var corner := i00
-			match k >> 1:
-				1: corner = i10
-				2: corner = i01
-				3: corner = i11
-			var si := _b_near[corner * 2 + (k & 1)]
-			var sd := wp.distance_squared_to(_biome_seeds[si][0])
+		var wp := p + (_b_warp[i00] * (1.0 - tx) + _b_warp[i10] * tx) * (1.0 - tz) + (_b_warp[i01] * (1.0 - tx) + _b_warp[i11] * tx) * tz
+		var s0 := near[i00 * 2]
+		var best := wp.distance_squared_to(seed_pos[s0])
+		var biome := seed_biome[s0]
+		for si in [near[i00 * 2 + 1], near[i10 * 2], near[i10 * 2 + 1], near[i01 * 2], near[i01 * 2 + 1], near[i11 * 2], near[i11 * 2 + 1]]:
+			if si == s0:
+				continue
+			var sd := wp.distance_squared_to(seed_pos[si])
 			if sd < best:
 				best = sd
-				biome = _biome_seeds[si][1]
+				biome = seed_biome[si]
 		var base := shape.x
 		# Mountains: sculpted massifs.
-		if wc.r > 0.004:
+		if wc.r > 0.01:
 			base += wc.r * _massif(p, mwarp, mwarp2, mridge, mridge2)
 		# Mesas and canyons.
-		if wc.g > 0.004:
-			base = lerpf(base, _mesa(p, canyon, basin, cwarp), smoothstep(0.0, 0.6, wc.g))
+		if wc.g > 0.02:
+			base = lerpf(base, _mesa(p, canyon, basin, cwarp), smoothstep(0.02, 0.6, wc.g))
 		# The caldera volcano.
 		if wc.b > 0.004:
 			base += _volcano(p) * smoothstep(0.0, 0.5, wc.b)
@@ -532,6 +545,13 @@ func _rows_v3(row: int) -> void:
 
 ## Peak envelope with ridgelines and erosion (metres above the biome base).
 func _massif(p: Vector2, mwarp: FastNoiseLite, mwarp2: FastNoiseLite, mridge: FastNoiseLite, mridge2: FastNoiseLite) -> float:
+	var near := false
+	for pk: Vector4 in PEAKS:
+		if absf(p.x - pk.x) < pk.w + 110.0 and absf(p.y - pk.y) < pk.w + 110.0:
+			near = true
+			break
+	if not near:
+		return 0.0
 	var wp := p + Vector2(mwarp.get_noise_2dv(p), mwarp2.get_noise_2dv(p)) * 105.0
 	var env := 0.0
 	for pk: Vector4 in PEAKS:
@@ -635,7 +655,7 @@ func _plan_lakes() -> void:
 				var hq := smooth_height(q.x, q.y)
 				ring_min = minf(ring_min, hq)
 				ring_max = maxf(ring_max, hq)
-			if ring_min < SEA_LEVEL + 8 or ring_max - ring_min > radius * 0.9 or hc > ring_min + 3.0:
+			if ring_min < SEA_LEVEL + 8 or ring_max - ring_min > radius * 1.5 or hc > ring_min + 8.0:
 				continue
 			var level := ring_min - 1.8
 			lakes.append([p, radius, level, Blocks.ICE if biome == Biome.TUNDRA else Blocks.WATER])
@@ -735,8 +755,25 @@ func height_map() -> PackedFloat32Array:
 func _hmap_rows(row: int) -> void:
 	var detail := make_detail_noise()
 	var ridge := make_ridge_noise()
-	for col in _coarse_n:
-		_hmap[col + row * _coarse_n] = column_f(col * COARSE + 2, row * COARSE + 2, detail, ridge).x
+	if not _v3():
+		for col in _coarse_n:
+			_hmap[col + row * _coarse_n] = column_f(col * COARSE + 2, row * COARSE + 2, detail, ridge).x
+		return
+	# Revision 3: the macro surface plus its detail and the pads (fine couloirs and ravines are
+	# narrower than a map texel anyway).
+	var n := _coarse_n
+	for col in n:
+		var i := col + row * n
+		var x := col * COARSE + 2
+		var z := row * COARSE + 2
+		var h := _base[i] + detail.get_noise_2d(x, z) * _amp[i]
+		if _ridge[i] > 0.5:
+			var r := 1.0 - absf(ridge.get_noise_2d(x, z))
+			h += r * r * _ridge[i]
+		var pad: Variant = _pads.get(x + z * size)
+		if pad != null:
+			h = lerpf(h, (pad as Vector3).x, (pad as Vector3).y)
+		_hmap[i] = h
 
 
 # --- Column queries (thread-safe) ---------------------------------------------
@@ -915,7 +952,68 @@ func in_bounds(x: int, z: int) -> bool:
 func forest_region(x: int, z: int) -> int:
 	if revision < 2:
 		return 0
+	if revision >= 3:
+		# Organic stands instead of 256 m squares: warp the cells with smooth value noise.
+		var wx := x + int((_vnoise(x, z, 97.0, world_seed + 61) - 0.5) * 190.0)
+		var wz := z + int((_vnoise(x, z, 97.0, world_seed + 62) - 0.5) * 190.0)
+		return _hash3(wx >> 8, 0, wz >> 8, world_seed + 771) % FOREST_NAMES.size()
 	return _hash3(x >> 8, 0, z >> 8, world_seed + 771) % FOREST_NAMES.size()
+
+
+## Climate at a point for the weather (revision 3): x = snowfall 0..1 (cold biomes and above
+## their snowline, never over the badlands or mesas), y = dust 0..1, z = high-altitude haze 0..1.
+func climate_at(pos: Vector3) -> Vector3:
+	var biome := biome_at(int(pos.x), int(pos.z))
+	var snow := 0.0
+	var dust := 0.0
+	match biome:
+		Biome.PEAKS:
+			snow = 1.0
+		Biome.TUNDRA:
+			snow = 0.7
+		Biome.ALPINE:
+			snow = smoothstep(110.0, 160.0, pos.y)
+		Biome.FJORD:
+			snow = smoothstep(95.0, 140.0, pos.y)
+		Biome.WASTES:
+			dust = 1.0
+		Biome.CANYON:
+			dust = 0.45
+		Biome.VOLCANIC:
+			dust = 0.7
+	var haze := clampf((pos.y - 170.0) / 180.0, 0.0, 1.0) if not biome in [Biome.VOLCANIC, Biome.CANYON] else 0.0
+	return Vector3(snow, dust, haze)
+
+
+## Ground colour seen from afar (horizon mesh): follows the surface rules, so snow lies only
+## above the snowline on slopes that hold it, faces show rock, scree is grey. slope = rise/run.
+func horizon_color(x: int, z: int, h: float, slope: float) -> Color:
+	var biome := biome_at(x, z)
+	var top := _surface_v3(x, z, int(h), biome, 0, slope) & 255 if revision >= 3 else -1
+	match top:
+		Blocks.SNOW:
+			return Color(0.86, 0.88, 0.92)
+		Blocks.STONE, Blocks.GRANITE:
+			return Color(0.42, 0.41, 0.4) if top == Blocks.STONE else Color(0.5, 0.45, 0.43)
+		Blocks.GRAVEL:
+			return Color(0.5, 0.49, 0.47)
+		Blocks.RED_ROCK, Blocks.UMBER_ROCK:
+			return Color(0.62, 0.34, 0.22)
+		Blocks.RED_SAND:
+			return Color(0.74, 0.47, 0.3)
+		Blocks.BASALT, Blocks.SCORIA, Blocks.OBSIDIAN:
+			return Color(0.2, 0.18, 0.18)
+		Blocks.ASH:
+			return Color(0.3, 0.28, 0.27)
+		Blocks.DRY_GRASS, Blocks.PERMAFROST:
+			return Color(0.5, 0.46, 0.34)
+		Blocks.SAND:
+			return Color(0.72, 0.64, 0.45)
+		Blocks.MUD:
+			return Color(0.24, 0.22, 0.16)
+	if biome == Biome.FOREST:
+		return FOREST_COLORS[forest_region(x, z)] * 0.8
+	return Color(BIOME_COLORS[biome]) * 0.85
 
 
 ## Water (or ice / lava) surface level of a lake at a column, -INF when there is none.
@@ -1076,14 +1174,14 @@ func _add_road_v3(points: PackedVector2Array, width: float, bank: float, detail:
 			continue
 		var side := dirs[i].orthogonal()
 		var road_h := smooth[i]
-		for s in range(-int(reach * 2.0), int(reach * 2.0) + 1):
+		for s in range(-int(reach * 1.4), int(reach * 1.4) + 1):
 			for along: float in [0.0, 1.0]:
-				var q := p + side * (s * 0.5) + dirs[i] * along
+				var q := p + side * (s * 0.7) + dirs[i] * along
 				var x := int(q.x)
 				var z := int(q.y)
 				if not in_bounds(x, z):
 					continue
-				var d := absf(s * 0.5)
+				var d := absf(s * 0.7)
 				var key := x + z * size
 				var existing: Variant = _pads.get(key)
 				if d <= width:
@@ -1545,11 +1643,12 @@ func _surface_v3(x: int, z: int, h: int, biome: int, road: int, s: float) -> int
 				return (Blocks.GRANITE if _vnoise(x, z, 7.0, 8) < 0.45 else Blocks.STONE) | (Blocks.STONE << 8)
 			if h > snowline and s < 0.95:
 				return Blocks.SNOW | ((Blocks.SNOW if h > snowline + 12 else Blocks.STONE) << 8)
-			if s > 0.62 and h > snowline - 70.0:
+			if s > 0.72 and h > snowline - 70.0:
 				# Scree fans below the faces.
-				return Blocks.GRAVEL | (Blocks.STONE << 8)
-			if h > snowline - 25.0:
-				return (Blocks.GRAVEL if n < 0.4 else Blocks.STONE) | (Blocks.STONE << 8)
+				return (Blocks.GRAVEL if n < 0.55 else Blocks.STONE) | (Blocks.STONE << 8)
+			if h > snowline - 18.0:
+				# Fell-field: bare rock between patches of alpine turf.
+				return (Blocks.STONE if n < 0.45 else (Blocks.GRAVEL if n < 0.55 else Blocks.GRASS)) | (Blocks.STONE << 8)
 			if steep:
 				return Blocks.STONE | (Blocks.STONE << 8)
 			return Blocks.GRASS | (Blocks.DIRT << 8)

@@ -222,7 +222,7 @@ func _log_time(what: String, t0: int) -> void:
 
 func _prepare_dimension(dim: int, seed_value: int, p0: float, p1: float) -> void:
 	var saved: Dictionary = session.get("save", {})
-	var revision := int(saved.get("world_revision", 2 if saved.is_empty() else 1))
+	var revision := int(saved.get("world_revision", WorldGen.LATEST_REVISION if saved.is_empty() else 1))
 	var gen := WorldGen.new(dim, seed_value, revision)
 	gens[dim] = gen
 	var done := [false]

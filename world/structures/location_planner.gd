@@ -165,9 +165,19 @@ func _drowned_spire(existing: Array[Location], lrng: RandomNumberGenerator) -> A
 				break
 		if not deep:
 			continue
-		var islet := c + d * (r + 60.0)
+		var islet := c + d * (r + (85.0 if gen.revision >= 3 else 60.0))
 		if not _far_from(existing, islet, 170.0) or not _far_from(existing, c + d * (r_land - 8.0), 70.0):
 			continue
+		if gen.revision >= 3:
+			# Open water all round the islet for the Leviathan to circle in.
+			var open_sea := true
+			for k in 12:
+				var q := islet + Vector2.from_angle(TAU * k / 12.0) * 30.0
+				if gen.smooth_height(q.x, q.y) > WorldGen.SEA_LEVEL - 9:
+					open_sea = false
+					break
+			if not open_sea:
+				continue
 		var score := r + lrng.randf() * 40.0
 		if score < best_score:
 			best_score = score

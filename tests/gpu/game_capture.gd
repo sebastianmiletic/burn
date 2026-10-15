@@ -109,6 +109,10 @@ func _run() -> void:
 							pitch = -0.12
 						spec = [vloc.id, 11.0, atan2(-look.x, -look.z), pos - vloc.center, pitch]
 					k += 1
+		if stop.begins_with("w_"):
+			# World-generation stops (exact, no ground snapping): see _world_stop().
+			spec = _world_stop(w, stop)
+			inside = true
 		if spec.is_empty():
 			report.append("%s: unknown stop" % stop)
 			continue
@@ -340,6 +344,165 @@ func _find_shore(w: GameWorld, loc: Location) -> Vector3:
 	p += dir * 3.0
 	# Face the water: forward = (-sin(yaw), 0, -cos(yaw)) = -dir.
 	return Vector3(p.x, p.y, atan2(dir.x, dir.y))
+
+
+## World-generation stops, as a spec relative to Emberfall (exact feet position, no snapping):
+##   w_look_<x>_<z>_<tx>_<tz>[_<eye>]  stand on the ground at x,z (raised by eye m) facing tx,tz
+##   w_at_<x>_<y>_<z>_<yaw>_<pitch>    exact feet position and view
+##   w_mouth_<n> / w_mouthin_<n>       outside / inside the n-th natural cave entrance
+##   w_mine_<n> / w_minein_<n> / w_gallery_<n>   the n-th mine: portal, a drift, the deep gallery
+## Add --torch to hold a torch underground. --time= still overrides the hour (default 11).
+func _world_stop(w: GameWorld, stop: String) -> Array:
+	var g := w.gen_for(0)
+	var hub := w.location_by_id(&"emberfall")
+	var parts := stop.split("_")
+	var pos := Vector3.ZERO
+	var yaw := 0.0
+	var pitch := -0.1
+	var face := func(d: Vector3) -> float: return atan2(-d.x, -d.z)
+	# Vistas hover (a capture-only fixture): eye heights above 3 m float instead of falling.
+	w.local_player.body.fly = (parts[1] == "look" and parts.size() > 6 and float(parts[6]) > 3.0) or parts[1] in ["peak", "vista"]
+	match parts[1]:
+		"peak":
+			# peak_<index into WorldGen.PEAKS, -1 = the volcano>_<bearing deg>_<distance>_<eye height>
+			var i := int(parts[2])
+			var pk: Vector4 = WorldGen.VOLCANO if i < 0 else WorldGen.PEAKS[i]
+			var dir := Vector2.from_angle(deg_to_rad(float(parts[3])))
+			var at := Vector2(pk.x, pk.y) + dir * float(parts[4])
+			pos = Vector3(at.x, g.ground_level(at.x, at.y) + float(parts[5]), at.y)
+			var top := Vector3(pk.x, g.ground_level(pk.x, pk.y) * 0.75 + pos.y * 0.25, pk.y)
+			var d := top - pos
+			yaw = face.call(d)
+			pitch = clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.6, 0.5)
+		"look":
+			var x := float(parts[2])
+			var z := float(parts[3])
+			var t := Vector3(float(parts[4]), 0, float(parts[5]))
+			t.y = g.ground_level(t.x, t.z)
+			pos = Vector3(x, g.ground_level(x, z) + (float(parts[6]) if parts.size() > 6 else 0.05), z)
+			var d := t - (pos + Vector3(0, 1.6, 0))
+			yaw = face.call(d)
+			pitch = clampf(atan2(d.y, Vector2(d.x, d.z).length()), -1.2, 0.6)
+		"vista", "face":
+			# vista_<biome>[_k]: a rim with the biggest drop in front; face_<biome>[_k]: below the
+			# most dramatic relief, looking up at it. k picks the k-th best (spread out) site.
+			var biome := int(parts[2])
+			var k := int(parts[3]) if parts.size() > 3 else 0
+			var hm := g.height_map()
+			var n := g.size / WorldGen.COARSE
+			var cands: Array = []
+			for iz in range(10, n - 10, 6):
+				for ix in range(10, n - 10, 6):
+					if g._biome[ix + iz * n] != biome:
+						continue
+					var h := hm[ix + iz * n]
+					if h < WorldGen.SEA_LEVEL + 2 or g.lake_level(ix * 4.0, iz * 4.0).x > -INF:
+						continue
+					var lo := h
+					var hi := h
+					var lo_dir := Vector2.ZERO
+					var hi_dir := Vector2.ZERO
+					for a in 12:
+						var d := Vector2.from_angle(TAU * a / 12.0)
+						for r: int in [10, 20, 30]:
+							var q := Vector2i(Vector2(ix, iz) + d * r)
+							if q.x < 0 or q.y < 0 or q.x >= n or q.y >= n:
+								continue
+							var hq := hm[q.x + q.y * n]
+							if hq < lo:
+								lo = hq
+								lo_dir = d
+							if hq > hi:
+								hi = hq
+								hi_dir = d
+					var slope := absf(hm[ix + 1 + iz * n] - hm[ix - 1 + iz * n]) + absf(hm[ix + (iz + 1) * n] - hm[ix + (iz - 1) * n])
+					if parts[1] == "vista" and slope < 3.0:
+						cands.append([h - lo, Vector2(ix, iz) * WorldGen.COARSE, lo_dir])
+					elif parts[1] == "face" and slope < 6.0:
+						cands.append([hi - h, Vector2(ix, iz) * WorldGen.COARSE, hi_dir])
+			cands.sort_custom(func(a: Array, b: Array) -> bool: return a[0] > b[0])
+			var picked: Array = []
+			for c: Array in cands:
+				var ok := true
+				for p2: Array in picked:
+					if (p2[1] as Vector2).distance_to(c[1]) < 300.0:
+						ok = false
+				if ok:
+					picked.append(c)
+				if picked.size() > k:
+					break
+			if picked.size() <= k:
+				return []
+			var c: Array = picked[k]
+			var xz: Vector2 = c[1]
+			var dir: Vector2 = c[2]
+			pos = Vector3(xz.x, g.ground_level(xz.x, xz.y) + (9.0 if parts[1] == "vista" else 0.1), xz.y)
+			yaw = face.call(Vector3(dir.x, 0, dir.y))
+			pitch = -0.3 if parts[1] == "vista" else 0.18
+			printerr("[game-capture] %s at %s relief %.0f m" % [stop, str(Vector3i(pos)), float(c[0])])
+		"at":
+			pos = Vector3(float(parts[2]), float(parts[3]), float(parts[4]))
+			yaw = float(parts[5])
+			pitch = float(parts[6])
+		"mouth", "mouthin":
+			var list: Array = []
+			for e: Array in g.caves.entrances:
+				if e[2] == "mouth":
+					list.append(e)
+			if list.is_empty():
+				return []
+			var e: Array = list[int(parts[2]) % list.size()]
+			var into: Vector3 = e[1]
+			into.y = 0.0
+			into = into.normalized()
+			var at: Vector3 = e[0]
+			if parts[1] == "mouth":
+				pos = at - into * 15.0
+				pos.y = g.ground_level(pos.x, pos.z) + 0.6
+				yaw = face.call(into)
+				pitch = -0.12
+			else:
+				pos = at + into * 11.0 + Vector3(0, -1.6, 0)
+				yaw = face.call(into)
+				pitch = -0.15
+		"mine", "minein", "gallery":
+			var mines: Array[Location] = []
+			for loc in w.locations(0):
+				if loc.has_meta(&"mine"):
+					mines.append(loc)
+			if mines.is_empty():
+				return []
+			var m: Location = mines[int(parts[2]) % mines.size()]
+			var meta: Dictionary = m.get_meta(&"mine")
+			var heading: Vector2 = meta["heading"]
+			var entrance: Vector3 = meta["entrance"]
+			var into := Vector3(heading.x, 0, heading.y)
+			if parts[1] == "mine":
+				pos = entrance - into * 14.0
+				pos.y = g.ground_level(pos.x, pos.z) + 0.6
+				yaw = face.call(into)
+				pitch = -0.08
+			elif parts[1] == "minein":
+				var sets: Array = []
+				for prop: Dictionary in meta["props"]:
+					if prop["type"] == "timber_set":
+						sets.append(prop)
+				var prop: Dictionary = sets[int(sets.size() * 0.45)]
+				var along := Vector3(sin(float(prop["yaw"])), 0, cos(float(prop["yaw"])))
+				pos = (prop["at"] as Vector3) - along * 1.6 + Vector3(0, 0.05, 0)
+				yaw = face.call(along)
+				pitch = -0.05
+			else:
+				for s in m.spawns_of("enemy"):
+					if s.get("guardian", false):
+						pos = (s["pos"] as Vector3) + Vector3(7, -0.4, 6)
+						yaw = face.call((s["pos"] as Vector3) - pos)
+						pitch = -0.08
+	if pos == Vector3.ZERO:
+		return []
+	if pos.y < g.ground_level(pos.x, pos.z) - 4.0 and "--torch" in OS.get_cmdline_user_args():
+		w.local_player.offhand_light = true
+	return [hub.id, 11.0, yaw, pos - hub.center, pitch]
 
 
 func _frames(n: int) -> void:

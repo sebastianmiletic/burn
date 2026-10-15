@@ -245,7 +245,7 @@ func _run() -> void:
 	_check(save.get("bosses_defeated", []).has("warden"), "save contains defeated bosses")
 	_check(bool(save.get("ryft_unlocked", false)), "Ryft unlock is saved")
 	_check(save.get("edits", {}).has(2), "Ryft terrain edits are included in saves")
-	_check(save.get("world_revision", 0) == 2, "world generation revision is saved")
+	_check(save.get("world_revision", 0) == WorldGen.LATEST_REVISION, "world generation revision is saved")
 	_check((save.get("edits", {}).get(0, {}) as Dictionary).size() > 0, "save contains block edits")
 
 	print("%s — %d failures" % ["PLAYTEST PASSED" if _failures == 0 else "PLAYTEST FAILED", _failures])

@@ -19,6 +19,8 @@ static func arrays_for(world_gen: WorldGen) -> Array:
 	normals.resize(n * n)
 	var detail := world_gen.make_detail_noise()
 	var ridge := world_gen.make_ridge_noise()
+	var hm := world_gen.height_map() if world_gen.revision >= 3 else PackedFloat32Array()
+	var cn := world_gen.size / WorldGen.COARSE
 	for z in n:
 		for x in n:
 			var wx := mini(x * STEP, world_gen.size - 1)
@@ -26,7 +28,12 @@ static func arrays_for(world_gen: WorldGen) -> Array:
 			var h := world_gen.column_f(wx, wz, detail, ridge).x + 0.4
 			vertices[x + z * n] = Vector3(wx, h, wz)
 			var color: Color = MapImage.BIOME_COLORS.get(world_gen.biome_at(wx, wz), Color(0.4, 0.4, 0.35))
-			if h > 85:
+			if world_gen.revision >= 3:
+				# Snow, rock faces and scree as on the detailed terrain (WorldGen.horizon_color).
+				var ci := mini(wx / WorldGen.COARSE, cn - 2) + mini(wz / WorldGen.COARSE, cn - 2) * cn
+				var s := maxf(absf(hm[ci + 1] - hm[ci]), absf(hm[ci + cn] - hm[ci])) / WorldGen.COARSE
+				color = world_gen.horizon_color(wx, wz, h, s)
+			elif h > 85:
 				color = color.lerp(Color(0.84, 0.87, 0.9), smoothstep(85, 180, h))
 			colors[x + z * n] = color
 	for z in n:
