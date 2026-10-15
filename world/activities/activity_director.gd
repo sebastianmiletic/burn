@@ -156,7 +156,7 @@ func _broadcast(method: StringName, args: Array, local := false) -> void:
 	var w := gw()
 	if w == null or w.replicator == null:
 		return
-	for peer: int in w.replicator.call("_targets"):
+	for peer: int in w.replicator.ready_peers():
 		callv("rpc_id", [peer, method] + args)
 
 
