@@ -936,7 +936,7 @@ func _pose_dead(_delta: float) -> void:
 		fk(int(leg["foot"]), Vector3(bend * 0.8, 0, 0))
 		fk(int(leg["toe"]), Vector3(0.3, 0, 0))
 	for b in bone_count:
-		gb[b] = _dead_gb[b].slerp(gb[b], f).orthonormalized()
+		gb[b] = Basis(_dead_gb[b].get_rotation_quaternion().slerp(gb[b].get_rotation_quaternion(), f))
 		gp[b] = _dead_gp[b].lerp(gp[b], f)
 
 
