@@ -54,9 +54,10 @@ func _flesh_materials() -> Array:
 	var skin: ShaderMaterial
 	match kind:
 		"troll":
-			skin = CreatureSkin.hide(skin_color, belly, {"use_rest": true, "pattern_scale": 4.5, "bump": 0.85, "bump_distance": 30.0,
-				"roughness": 0.72, "rim": 0.22, "accent": skin_color.darkened(0.35), "accent_mode": 2, "accent_amount": 0.5, "accent_scale": 2.6,
-				"specular_amount": 0.25})
+			# Thick, creased, warty hide: fine wrinkles over large mottling.
+			skin = CreatureSkin.hide(skin_color.darkened(0.08), belly, {"use_rest": true, "pattern_scale": 8.0, "bump": 1.05, "bump_distance": 30.0,
+				"roughness": 0.78, "rim": 0.18, "accent": skin_color.darkened(0.45), "accent_mode": 2, "accent_amount": 0.6, "accent_scale": 3.4,
+				"specular_amount": 0.22, "belly_mix": 0.45})
 		"ghoul":
 			var grey := skin_color.lerp(Color(0.5, 0.5, 0.47), 0.3)
 			skin = CreatureSkin.hide(grey.darkened(0.12), grey, {"use_rest": true, "pattern_scale": 6.0, "bump": 0.6, "bump_distance": 20.0,

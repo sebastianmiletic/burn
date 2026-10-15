@@ -117,7 +117,7 @@ static func _humanoid_mob(kind: String, rng: RandomNumberGenerator) -> CreatureM
 			var tribe := rng.randi() % 3
 			var skins := [Color(0.36, 0.42, 0.3), Color(0.45, 0.45, 0.47), Color(0.4, 0.33, 0.28)]
 			style = {"skin": skins[tribe], "cloth": Color(0.3, 0.22, 0.15), "cloth2": Color(0.22, 0.16, 0.1),
-				"height": rng.randf_range(2.9, 3.6), "bulk": snappedf(rng.randf_range(1.55, 1.85), 0.3), "hunch": -0.3, "arm_length": 1.25,
+				"height": rng.randf_range(2.9, 3.6), "bulk": snappedf(rng.randf_range(1.55, 1.85), 0.3), "hunch": -0.45, "arm_length": 1.25,
 				"eyes": Color(1.0, 0.75, 0.2), "held": "club" if tribe != 1 else "giant_club"}
 			return FleshMobModel.new("troll", style, {"tribe": tribe, "hair": Color(0.18, 0.14, 0.1)})
 		"drowned":
