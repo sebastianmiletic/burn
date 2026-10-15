@@ -81,7 +81,7 @@ static func build(gen: WorldGen) -> Image:
 	var l1 := Vector3(-0.62, 0.62, -0.48).normalized()
 	var l2 := Vector3(0.5, 0.75, -0.42).normalized()
 	# Gradients over +-2 texels: broad landforms, not every noise ripple.
-	var exaggerate := 1.5 / mpp
+	var exaggerate := 2.4 / mpp
 	var colors := {}
 	for z in n:
 		var zu := maxi(z - 2, 0) * n
@@ -102,13 +102,7 @@ static func build(gen: WorldGen) -> Image:
 			if gen.dimension == 0:
 				if h > 95.0:
 					c = c.lerp(SNOW, smoothstep(95.0, 165.0, h))
-				# Beaches only along actual shores; then the sea floor (the
-				# shader lays the water over it).
-				if h < sea + 2.5 and h >= sea:
-					var shore := minf(minf(heights[maxi(x - 2, 0) + z * n], heights[mini(x + 2, n - 1) + z * n]),
-							minf(heights[x + maxi(z - 2, 0) * n], heights[x + mini(z + 2, n - 1) * n]))
-					if shore < sea:
-						c = c.lerp(SAND, 1.0 - smoothstep(sea + 0.8, sea + 2.5, h))
+				# The sea floor (the shader lays the water and beaches over it).
 				if h < sea:
 					c = SAND.lerp(Color(0.3, 0.32, 0.3), smoothstep(sea, sea - 16.0, h))
 			var hl := heights[maxi(x - 2, 0) + z * n]

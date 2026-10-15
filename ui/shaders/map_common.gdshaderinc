@@ -31,6 +31,26 @@ vec4 _cubic(float v) {
 	return vec4(x, y, z, w) * (1.0 / 6.0);
 }
 
+// Cubic B-spline sample of a texture from four bilinear taps: smooth curves
+// instead of texel stair-steps when magnified.
+vec4 bicubic(sampler2D tex, vec2 uv, vec2 tsize) {
+	vec2 st = uv * tsize - 0.5;
+	vec2 f = fract(st);
+	st -= f;
+	vec4 xc = _cubic(f.x);
+	vec4 yc = _cubic(f.y);
+	vec4 c = st.xxyy + vec2(-0.5, 1.5).xyxy;
+	vec4 s = vec4(xc.xz + xc.yw, yc.xz + yc.yw);
+	vec4 o = (c + vec4(xc.yw, yc.yw) / s) / tsize.xxyy;
+	vec4 s0 = texture(tex, o.xz);
+	vec4 s1 = texture(tex, o.yz);
+	vec4 s2 = texture(tex, o.xw);
+	vec4 s3 = texture(tex, o.yw);
+	float sx = s.x / (s.x + s.y);
+	float sy = s.z / (s.z + s.w);
+	return mix(mix(s3, s2, sx), mix(s1, s0, sx), sy);
+}
+
 // Cubic B-spline height from four bilinear taps.
 float map_height(vec2 uv) {
 	vec2 st = uv * height_size - 0.5;
@@ -77,7 +97,7 @@ vec3 map_colour(vec2 uv) {
 		return vec3(0.05, 0.045, 0.045);
 	}
 	vec2 cuv = clamp(uv, vec2(0.0), vec2(1.0));
-	vec3 col = texture(color_tex, cuv).rgb;
+	vec3 col = bicubic(color_tex, cuv, vec2(textureSize(color_tex, 0))).rgb;
 	vec2 wpos = uv * world_size;
 	if (has_height) {
 		float h = map_height(cuv);
@@ -89,6 +109,11 @@ vec3 map_colour(vec2 uv) {
 			float line = 1.0 - smoothstep(0.35, 1.2, d / fw);
 			float major = mod(floor(h / 10.0 + 0.5), 5.0) < 0.5 ? 1.7 : 1.0;
 			col *= 1.0 - line * contour_strength * major * smoothstep(-1.0, 1.0, -depth);
+		}
+		// Beaches: a smooth sand band just above the waterline.
+		if (liquid == 0) {
+			float sand = 1.0 - smoothstep(0.3, 1.7, -depth);
+			col = mix(col, vec3(0.7, 0.64, 0.48) * (0.85 + 0.25 * dot(col, vec3(0.33))), sand * 0.85);
 		}
 		float wet = clamp(depth / fw + 0.5, 0.0, 1.0);
 		vec3 liq;

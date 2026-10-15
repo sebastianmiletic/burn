@@ -44,6 +44,7 @@ var _quest := {}
 func _init() -> void:
 	panel_size = Vector2(1180, 720)
 	panel_title = "JOURNAL"
+	scrim_alpha = 0.78
 
 
 func _build() -> void:

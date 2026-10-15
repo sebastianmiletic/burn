@@ -399,6 +399,7 @@ class MapOverlay:
 				var rank := 2 if String(place["boss"]) != "" else (1 if place["major"] else 0)
 				order.append([rank, pos, place])
 			order.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+			var cands: Array = []
 			for e: Array in order:
 				var pos: Vector2 = e[1]
 				var place: Dictionary = e[2]
@@ -411,19 +412,30 @@ class MapOverlay:
 					hovered = place
 					hovered_pos = pos
 				if boss or place["major"] or zoom > 4.0:
-					var fs := 13 if (boss or place["major"]) else 11
-					var text := String(place["name"])
-					var ts := title.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-					var rect := Rect2(pos + Vector2(-ts.x * 0.5, r + 4), Vector2(ts.x, fs + 2))
-					var clash := false
-					for o in labels:
-						if o.intersects(rect):
-							clash = true
-							break
-					if not clash:
-						labels.append(rect)
-						var col := UiTheme.TEXT if place["state"] != MapIcons.State.DEFEATED else UiTheme.TEXT_DIM
-						_label(pos + Vector2(0, r + 4 + fs), text, fs, col, title)
+					cands.append([e[0], pos, place, r])
+			# Labels: most important first, skipping any that would collide.
+			cands.reverse()
+			for cd: Array in cands:
+				var pos: Vector2 = cd[1]
+				var place: Dictionary = cd[2]
+				var r: float = cd[3]
+				var big: bool = cd[0] > 0
+				var fs := 13 if big else 11
+				var text := String(place["name"])
+				var ts := title.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+				var rect := Rect2(pos + Vector2(-ts.x * 0.5 - 3, r + 3), Vector2(ts.x + 6, fs + 4))
+				var clash := false
+				for o in labels:
+					if o.intersects(rect):
+						clash = true
+						break
+				if clash:
+					continue
+				labels.append(rect)
+				var col := UiTheme.TEXT if place["state"] != MapIcons.State.DEFEATED else UiTheme.TEXT_DIM
+				if not big:
+					col = UiTheme.TEXT_DIM
+				_label(pos + Vector2(0, r + 4 + fs), text, fs, col, title)
 		# Quest objectives.
 		var markers := QuestMarkers.all(world)
 		var active: Variant = UiContext.call_on(UiContext.quests(), "active", [], [])
@@ -466,7 +478,8 @@ class MapOverlay:
 				else:
 					Minimap._chevron(self, pos, -float(pyaw) if pyaw != null else 0.0, 8.0, col, 1.0)
 				var pname := str(p.get("display_name")) if p.get("display_name") != null else ""
-				_label(pos + Vector2(0, 22), pname, 12, col, font)
+				var ns := font.get_string_size(pname, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
+				_label(pos + Vector2(14 + ns.x * 0.5, 4), pname, 12, col, font)
 		if me != null:
 			var pos := screen.world_to_view((me as Node3D).global_position)
 			var yaw := float(UiContext.call_on(world, "camera_yaw", [], me.get("yaw") if me.get("yaw") != null else 0.0))

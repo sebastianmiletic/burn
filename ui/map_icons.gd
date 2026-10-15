@@ -189,30 +189,26 @@ static func draw_glyph(ci: CanvasItem, icon: StringName, at: Vector2, r: float, 
 			for x in [-0.14, 0.14]:
 				ci.draw_line(at + Vector2(x, 0.48) * r, at + Vector2(x, 0.76) * r, ink, maxf(1.0, r * 0.09), true)
 		&"serpent":
+			_poly(ci, _pts(&"fin"), at, r, fill, outline)
 			_poly(ci, _pts(&"fish"), at, r, fill, outline)
-			ci.draw_circle(at + Vector2(-0.5, -0.2) * r, 0.085 * r, ink, true, -1.0, true)
-			var wave := PackedVector2Array()
-			for i in 13:
-				var f := i / 12.0
-				wave.append(at + Vector2(lerpf(-0.9, 0.9, f), 0.62 + sin(f * TAU * 1.5) * 0.11) * r)
-			if outline.a > 0.0:
-				ci.draw_polyline(wave, outline, w + 2.0, true)
-			ci.draw_polyline(wave, fill, w, true)
+			ci.draw_circle(at + Vector2(-0.5, -0.06) * r, 0.09 * r, ink, true, -1.0, true)
+			ci.draw_arc(at + Vector2(-0.3, 0.0) * r, 0.2 * r, -1.2, 1.2, 8, ink, maxf(1.0, r * 0.07), true)
 		&"dragon":
 			_poly(ci, _pts(&"dragon"), at, r, fill, outline)
 			ci.draw_circle(at + Vector2(-0.2, -0.08) * r, 0.09 * r, ink, true, -1.0, true)
-			ci.draw_line(at + Vector2(-0.78, 0.17) * r, at + Vector2(-0.3, 0.19) * r, ink, maxf(1.0, r * 0.07), true)
 		&"spider":
 			for side in [-1.0, 1.0]:
-				for y0 in [-0.12, 0.05, 0.2, 0.35]:
-					var leg := PackedVector2Array([at + Vector2(side * 0.2, y0) * r, at + Vector2(side * 0.62, y0 - 0.4 + absf(y0) * 0.4) * r,
-						at + Vector2(side * 0.95, y0 + 0.25 + y0 * 0.6) * r])
+				for k in 4:
+					var y0 := -0.22 + k * 0.14
+					var knee := Vector2(side * (0.58 + k * 0.04), y0 - 0.42 + k * 0.2)
+					var foot := Vector2(side * (0.98 - k * 0.04), y0 + 0.12 + k * 0.22)
+					var leg := PackedVector2Array([at + Vector2(side * 0.14, y0) * r, at + knee * r, at + foot * r])
 					if outline.a > 0.0:
-						ci.draw_polyline(leg, outline, w + 2.0, true)
-					ci.draw_polyline(leg, fill, w, true)
-			_circle(ci, at + Vector2(0, 0.22) * r, 0.36 * r, fill, outline)
-			_circle(ci, at + Vector2(0, -0.3) * r, 0.22 * r, fill, outline)
-			ci.draw_line(at + Vector2(0, 0.02) * r, at + Vector2(0, 0.42) * r, ink, maxf(1.0, r * 0.08), true)
+						ci.draw_polyline(leg, outline, w * 0.8 + 2.0, true)
+					ci.draw_polyline(leg, fill, w * 0.8, true)
+			_circle(ci, at + Vector2(0, 0.3) * r, 0.32 * r, fill, outline)
+			_circle(ci, at + Vector2(0, -0.16) * r, 0.2 * r, fill, outline)
+			ci.draw_line(at + Vector2(0, 0.14) * r, at + Vector2(0, 0.48) * r, ink, maxf(1.0, r * 0.08), true)
 		&"crown":
 			_poly(ci, _pts(&"crown"), at, r, fill, outline)
 			ci.draw_line(at + Vector2(-0.8, 0.32) * r, at + Vector2(0.8, 0.32) * r, ink, maxf(1.0, r * 0.1), true)
@@ -228,7 +224,7 @@ static func draw_glyph(ci: CanvasItem, icon: StringName, at: Vector2, r: float, 
 		&"witch":
 			_poly(ci, _pts(&"hat"), at, r, fill, outline)
 			_poly(ci, _pts(&"brim"), at, r, fill, outline)
-			ci.draw_line(at + Vector2(-0.44, 0.32) * r, at + Vector2(0.44, 0.32) * r, ink, maxf(1.0, r * 0.12), true)
+			ci.draw_line(at + Vector2(-0.38, 0.3) * r, at + Vector2(0.38, 0.3) * r, ink, maxf(1.0, r * 0.13), true)
 		&"crystal":
 			_poly(ci, _pts(&"crystal"), at, r, fill, outline)
 			var facet := PackedVector2Array([at + Vector2(-0.5, -0.3) * r, at + Vector2(0, 0.0) * r, at + Vector2(0.5, -0.3) * r])
@@ -341,15 +337,18 @@ static func _init_shapes() -> void:
 	s[&"skull_nose"] = PackedVector2Array([Vector2(0, 0.1), Vector2(0.1, 0.3), Vector2(-0.1, 0.3)])
 	var fish := PackedVector2Array()
 	for i in 17:
-		var a := lerpf(PI * 0.16, PI * 1.84, i / 16.0)
-		fish.append(Vector2(-0.12 + cos(a) * 0.66, -0.2 + sin(a) * 0.36))
-	fish.append(Vector2(0.92, -0.62))
-	fish.append(Vector2(0.78, -0.2))
-	fish.append(Vector2(0.92, 0.22))
+		var a := lerpf(PI * 0.2, PI * 1.8, i / 16.0)
+		fish.append(Vector2(-0.05 + cos(a) * 0.62, sin(a) * 0.34 * (1.0 - 0.25 * absf(cos(a)))))
+	fish.append(Vector2(0.95, -0.5))
+	fish.append(Vector2(0.78, 0.0))
+	fish.append(Vector2(0.95, 0.5))
 	s[&"fish"] = fish
-	s[&"dragon"] = PackedVector2Array([Vector2(-0.95, 0.05), Vector2(-0.6, -0.12), Vector2(-0.3, -0.32), Vector2(-0.05, -0.38),
-		Vector2(0.3, -0.92), Vector2(0.22, -0.4), Vector2(0.62, -0.3), Vector2(0.9, 0.05), Vector2(0.72, 0.42),
-		Vector2(0.58, 0.95), Vector2(0.12, 0.95), Vector2(0.08, 0.5), Vector2(-0.3, 0.36), Vector2(-0.9, 0.3)])
+	s[&"fin"] = PackedVector2Array([Vector2(-0.25, -0.2), Vector2(0.05, -0.62), Vector2(0.28, -0.22)])
+	s[&"dragon"] = PackedVector2Array([Vector2(-0.95, -0.04), Vector2(-0.56, -0.2), Vector2(-0.26, -0.34),
+		Vector2(0.1, -0.96), Vector2(0.06, -0.4), Vector2(0.58, -0.86), Vector2(0.4, -0.3), Vector2(0.8, -0.1),
+		Vector2(0.98, 0.16), Vector2(0.74, 0.26), Vector2(0.9, 0.5), Vector2(0.64, 0.58), Vector2(0.64, 0.96),
+		Vector2(0.12, 0.96), Vector2(0.1, 0.5), Vector2(-0.3, 0.42), Vector2(-0.86, 0.34), Vector2(-0.42, 0.15),
+		Vector2(-0.95, 0.1)])
 	s[&"crown"] = PackedVector2Array([Vector2(-0.82, 0.58), Vector2(-0.82, -0.42), Vector2(-0.42, 0.04), Vector2(0, -0.72),
 		Vector2(0.42, 0.04), Vector2(0.82, -0.42), Vector2(0.82, 0.58)])
 	s[&"flame"] = PackedVector2Array([Vector2(0.02, -0.98), Vector2(0.28, -0.52), Vector2(0.58, -0.2), Vector2(0.64, 0.26),
@@ -357,8 +356,14 @@ static func _init_shapes() -> void:
 		Vector2(-0.32, 0.02), Vector2(-0.24, -0.46)])
 	s[&"flame_core"] = PackedVector2Array([Vector2(0.02, -0.12), Vector2(0.26, 0.24), Vector2(0.22, 0.56), Vector2(0, 0.7),
 		Vector2(-0.22, 0.56), Vector2(-0.26, 0.28)])
-	s[&"hat"] = PackedVector2Array([Vector2(-0.5, 0.5), Vector2(-0.12, -0.36), Vector2(0.5, -0.88), Vector2(0.22, -0.22), Vector2(0.5, 0.5)])
-	s[&"brim"] = PackedVector2Array([Vector2(-0.95, 0.52), Vector2(0.95, 0.52), Vector2(0.8, 0.7), Vector2(-0.8, 0.7)])
+	s[&"hat"] = PackedVector2Array([Vector2(-0.46, 0.46), Vector2(-0.26, 0.0), Vector2(-0.1, -0.42), Vector2(0.12, -0.76),
+		Vector2(0.42, -0.94), Vector2(0.74, -0.86), Vector2(0.88, -0.66), Vector2(0.66, -0.7), Vector2(0.4, -0.66),
+		Vector2(0.24, -0.3), Vector2(0.3, 0.06), Vector2(0.46, 0.46)])
+	var brim := PackedVector2Array()
+	for i in 20:
+		var a := TAU * i / 20.0
+		brim.append(Vector2(cos(a) * 0.96, 0.52 + sin(a) * 0.17))
+	s[&"brim"] = brim
 	s[&"crystal"] = PackedVector2Array([Vector2(0, -0.98), Vector2(0.5, -0.3), Vector2(0.4, 0.6), Vector2(0, 0.96),
 		Vector2(-0.4, 0.6), Vector2(-0.5, -0.3)])
 	s[&"house"] = PackedVector2Array([Vector2(-0.74, 0.82), Vector2(-0.74, -0.06), Vector2(0, -0.8), Vector2(0.74, -0.06), Vector2(0.74, 0.82)])
