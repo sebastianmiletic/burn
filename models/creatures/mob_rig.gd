@@ -15,7 +15,8 @@ extends RefCounted
 ##
 ## Every bone's rest rotation is identity and its rest position is given in
 ## model space ("rig space"), so poses are plain rotations (see MobModel).
-## Vertices carry their rest position in CUSTOM0 (creature_skin `use_rest`),
+## Vertices carry their rest position in CUSTOM0.xyz (creature_skin `use_rest`)
+## and param() in CUSTOM0.w (the fur mask),
 ## so fur, scales and stone patterns stay glued to the body while it moves,
 ## and UV in metres (u around, v along) for patterns that need a direction.
 
@@ -28,6 +29,7 @@ var parents := PackedInt32Array()
 var rest := PackedVector3Array()
 var _slots: Array = []
 var _slot := 0
+var _param := 0.0
 ## Rings of the last tube (for tufts()).
 var _last := {}
 
@@ -51,6 +53,13 @@ func bone(bone_name: String, parent: int, pos: Vector3) -> int:
 	parents.append(parent)
 	rest.append(pos)
 	return names.size() - 1
+
+
+## Per-vertex parameter for following geometry, stored in CUSTOM0.w: the fur
+## mask (0 full coat .. 1 bare: faces, pads, horns) for fur_shell.gdshader.
+func param(v: float) -> MobRig:
+	_param = v
+	return self
 
 
 ## Following geometry goes into material slot `i` (one surface per slot).
@@ -461,7 +470,7 @@ func _append(s: Dictionary, pos: PackedVector3Array, nor: PackedVector3Array, uv
 	n.append_array(nor)
 	uv.append_array(uvs)
 	for i in pos.size():
-		c.append_array([pos[i].x, pos[i].y, pos[i].z, 0.0])
+		c.append_array([pos[i].x, pos[i].y, pos[i].z, _param])
 		var bw: Array = ws[i]
 		b.append_array(bw[0])
 		w.append_array(bw[1])

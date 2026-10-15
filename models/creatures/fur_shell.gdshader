@@ -46,10 +46,11 @@ void vertex() {
 	float d = length(wpos - CAMERA_POSITION_WORLD);
 	// Clumps vary the length a little; strands droop and lie back.
 	float clump = n_value3(v_local * clump_scale);
-	float len = fur_length * layer * (0.7 + 0.6 * clump);
+	// CUSTOM0.w (MobRig.param) shortens the coat: 0 full fur .. 1 bare skin.
+	float len = fur_length * layer * (0.7 + 0.6 * clump) * (use_rest ? 1.0 - CUSTOM0.w : 1.0);
 	VERTEX += NORMAL * len;
 	VERTEX.y -= droop * len * layer;
-	if (d > fur_distance) {
+	if (d > fur_distance || (use_rest && CUSTOM0.w > 0.97)) {
 		VERTEX = vec3(0.0);
 	}
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -57,16 +58,14 @@ void vertex() {
 }
 
 void fragment() {
-	// Strands: cells of the rest-pose grid, each with its own height; clumps
-	// gather them so the coat parts into locks.
-	vec3 q = v_local * density;
-	float strand = n_hash13(floor(q));
+	// Strands: fine fibrous noise in the rest pose (no lattice), gathered
+	// into clumps so the coat parts into locks; fewer strands reach the
+	// outer shells, so they taper.
+	vec3 q = v_local * density * 2.0;
+	float strand = n_value3(q) * 0.55 + n_value3(q * 2.37 + vec3(7.1, 3.3, 1.7)) * 0.45;
 	float clump = n_value3(v_local * clump_scale);
-	float h = strand * 0.65 + clump * 0.55;
-	// Thin towards the tip of each strand (round cross-section in the cell).
-	vec3 f = fract(q) - 0.5;
-	float core = 1.0 - smoothstep(0.25, 0.55, length(f) * (0.75 + layer * 0.6));
-	if (h * core < layer * 0.75 + 0.12) {
+	float h = strand * 0.9 + clump * 0.22;
+	if (h < layer * 0.5 + 0.28) {
 		discard;
 	}
 	if (dissolve > 0.0) {

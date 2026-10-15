@@ -170,8 +170,8 @@ func _materials() -> Array:
 		extra["accent_amount"] = 0.35
 		extra["accent_scale"] = 3.0
 		body = CreatureSkin.scales(back, spec["belly"], 9.0, extra)
-	var dark := CreatureSkin.hide(Color(0.05, 0.045, 0.045), Color(0.08, 0.07, 0.07), {"use_rest": true, "pattern_scale": 60.0,
-		"roughness": 0.3, "wet": 0.5, "specular_amount": 0.6, "bump": 0.4})
+	var dark := CreatureSkin.hide(Color(0.05, 0.045, 0.045), Color(0.08, 0.07, 0.07), {"use_rest": true, "pattern_scale": 30.0,
+		"roughness": 0.42, "wet": 0.3, "specular_amount": 0.45, "bump": 0.12})
 	var horn_col := Color(0.12, 0.1, 0.09)
 	if species == "goat":
 		horn_col = Color(0.2, 0.18, 0.16)
@@ -293,10 +293,13 @@ func _rig_data() -> Dictionary:
 		r.slot(S_BODY).limb(pts, [root, up, up + 1, up + 2], scaled, 22, 12, Vector3.BACK, 0.05 * float(fam["gait"]["cycle"]),
 			{root: 1.0}, pts[0].distance_to(pts[1]) * 1.1)
 		_leg_tufts(r, front)
+		r.param(0.5)
 		_foot(r, pts, up + 3, (scaled[scaled.size() - 1] as Array)[1], li % 2 == 0)
+		r.param(0.0)
 
 	# --- Head.
 	_head(r, hp, jaw_at)
+	r.param(0.0)
 	return r.build(key)
 
 
@@ -457,6 +460,8 @@ func _put(pos: Vector3, rot := Vector3.ZERO, scl := Vector3.ONE) -> Transform3D:
 
 func _head(r: MobRig, hp: Vector3, jaw_at: Vector3) -> void:
 	var kind := String(fam["head"])
+	# Short fur on the face and ears so the eyes, nose and lips show.
+	r.param(0.7)
 	var jl := jaw_at - hp
 	var g := {}
 	match kind:
@@ -526,7 +531,7 @@ func _head(r: MobRig, hp: Vector3, jaw_at: Vector3) -> void:
 		var er := float(ev[1])
 		# Sink the eyeball into the skull surface so only its front shows.
 		var surf_x := _surface_x(skull, ep.y, ep.z)
-		ep.x = maxf(surf_x - er * 0.45, er * 0.6) * side
+		ep.x = maxf(surf_x - er * 0.35, er * 0.6) * side
 		var out_dir := Vector3(side * float(ev[2]), 0.1, -1.0).normalized()
 		_hp(r, S_EYE, ModelKit.sphere(er, 10), hp, _put(ep), HEAD)
 		if not _eye_glow:

@@ -72,7 +72,7 @@ const MOBS := [["wolf", "", 0.0, 35.0], ["wolf", "attack", 0.3, 20.0], ["dire_wo
 	["skeleton_2", "", 0.0, 30.0], ["archer_0", "shoot", 0.5, 30.0], ["ghoul_0", "attack", 0.35, 25.0], ["drowned", "", 0.0, 35.0],
 	["troll_a", "", 0.0, 25.0], ["troll_b", "slam", 0.5, 30.0], ["birds", "", 0.0, 20.0],
 	# Head close-ups (5th value: distance in metres to the model's head_point()).
-	["wolf", "", 0.0, 30.0, 0.9], ["bear", "", 0.0, 30.0, 1.4], ["stag", "", 0.0, 40.0, 1.1], ["deer", "", 0.0, 60.0, 0.9],
+	["wolf", "", 0.0, 30.0, 0.9], ["bear", "", 0.0, 30.0, 0.7], ["stag", "", 0.0, 40.0, 1.1], ["deer", "", 0.0, 60.0, 0.9],
 	["goat", "", 0.0, 40.0, 0.9], ["boar", "", 0.0, 35.0, 1.0], ["lurker", "", 0.0, 30.0, 1.4], ["hellhound", "", 0.0, 30.0, 1.1],
 	["rabbit", "", 0.0, 40.0, 0.5]]
 
