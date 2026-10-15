@@ -123,15 +123,17 @@ static func build(neighbours: Array, densities: Array, surface: PackedInt32Array
 				var gy := (fv[4] - fv[0]) + (fv[5] - fv[1]) + (fv[6] - fv[2]) + (fv[7] - fv[3])
 				var nrm := -Vector3(gx, gy, gz)
 				nrm = nrm.normalized() if nrm.length_squared() > 1e-8 else Vector3.UP
-				# Material: the highest solid corner (grass over dirt, ceilings over walls).
+				# Material: the solid corner nearest the vertex, with a bias upwards
+				# (grass tops a slope; the walls of a dug hole show the dirt and
+				# stone they cut through).
 				var best := -1
-				var best_y := -1
+				var best_d := 1e9
 				for k in 8:
 					var idx := base + corner_ofs[k]
 					if sol[idx] == 1:
-						var ky := k >> 2
-						if ky > best_y:
-							best_y = ky
+						var dd := cpos[k].distance_squared_to(p) - float(k >> 2) * 0.35
+						if dd < best_d:
+							best_d = dd
 							best = pb[idx]
 				# Pad index -> chunk-local: sample i sits at voxel i-1, centre +0.5.
 				var local := Vector3(cx - 0.5, cy - 0.5, cz - 0.5) + p

@@ -187,6 +187,17 @@ func _run() -> void:
 					Input.action_press(act)
 				await get_tree().create_timer(1.2).timeout
 		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--dig="):
+				# Look down a little and dig N strikes into what the crosshair hits.
+				p.camera.pitch = -0.55
+				await _frames(5)
+				for i in int(arg.trim_prefix("--dig=")):
+					var hit: Dictionary = p.call("_block_target")
+					if not hit.is_empty():
+						p.call("_sculpt_strike", hit, int(hit["block"]))
+					await get_tree().create_timer(0.45).timeout
+				await _frames(30)
+		for arg in OS.get_cmdline_user_args():
 			if arg.begins_with("--action="):
 				# Freeze-frame an action mid-swing (first-person viewmodel checks).
 				p.call("_start_action", arg.trim_prefix("--action="), 0.6)
