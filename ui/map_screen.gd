@@ -315,6 +315,26 @@ func _rebuild_objectives() -> void:
 			b.disabled = mdim != _dim
 			_objectives.add_child(b)
 			count += 1
+	for pt: Dictionary in QuestMarkers.points(world):
+		if str(pt.get("quest_id", "")) != "" or count >= 9:
+			continue
+		var b := Button.new()
+		b.text = "✦  " + str(pt.get("text", ""))
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		b.custom_minimum_size = Vector2(SIDEBAR_W, 0)
+		b.add_theme_font_size_override("font_size", 13)
+		b.add_theme_color_override("font_color", MapIcons.point_colour(pt))
+		var pos: Vector3 = pt["pos"]
+		var mdim := int(pt.get("dim", 0))
+		b.pressed.connect(func() -> void:
+			if mdim == _dim:
+				_center_goal = _uv(pos)
+				_zoom_goal = maxf(_zoom_goal, 4.0)
+				UiContext.sound("ui_click"))
+		b.disabled = mdim != _dim
+		_objectives.add_child(b)
+		count += 1
 	if count == 0:
 		_objectives.add_child(UiTheme.label("No marked objectives.", 12, UiTheme.TEXT_FAINT))
 
@@ -326,7 +346,8 @@ class Legend:
 	const ROWS := [
 		[&"quest", "Objective"], [&"skull", "Boss"], [&"dead", "Boss defeated"], [&"village", "Village"],
 		[&"shrine", "Shrine"], [&"cave", "Cave"], [&"mine", "Mine"], [&"portal", "Portal"],
-		[&"tower", "Watchtower"], [&"ruin", "Ruins"], [&"keep", "Stronghold"], [&"mate", "Companion"],
+		[&"tower", "Watchtower"], [&"ruin", "Ruins"], [&"keep", "Stronghold"], [&"activity", "Activity / event"],
+		[&"mate", "Companion"],
 	]
 
 	func _init() -> void:
@@ -346,6 +367,8 @@ class Legend:
 					MapIcons.draw_badge(self, &"skull", at, 9.5, true)
 				&"mate":
 					Minimap._chevron(self, at, 0.0, 7.0, UiTheme.FROST, 1.0)
+				&"activity":
+					MapIcons.draw_point(self, {"kind": "activity", "icon": "treasure"}, at, 8.5, 0.0)
 				_:
 					var col := MapIcons.STONE
 					match row[0]:
@@ -436,25 +459,37 @@ class MapOverlay:
 				if not big:
 					col = UiTheme.TEXT_DIM
 				_label(pos + Vector2(0, r + 4 + fs), text, fs, col, title)
-		# Quest objectives.
-		var markers := QuestMarkers.all(world)
-		var active: Variant = UiContext.call_on(UiContext.quests(), "active", [], [])
-		if active is Array:
-			for quest: Dictionary in active:
-				var id := str(quest.get("id", ""))
-				if not markers.has(id) or int(markers[id].get("dim", 0)) != screen._dim:
+		# Quest objectives, hand-ins and activities; search areas underneath.
+		var px_per_m := screen._side() / screen.world_size()
+		var pts: Array = []
+		for pt: Dictionary in QuestMarkers.points(world):
+			if int(pt.get("dim", 0)) == screen._dim:
+				pts.append(pt)
+		for pt: Dictionary in pts:
+			if float(pt.get("radius", 0.0)) > 0.0:
+				MapIcons.draw_area(self, pt, screen.world_to_view(pt["pos"]), float(pt["radius"]) * px_per_m)
+		pts.sort_custom(func(x: Dictionary, y: Dictionary) -> bool:
+			return (1 if x.get("tracked", true) else 0) * 10.0 + float(x.get("priority", 1.0)) < (1 if y.get("tracked", true) else 0) * 10.0 + float(y.get("priority", 1.0)))
+		for pt: Dictionary in pts:
+			var pos := screen.world_to_view(pt["pos"])
+			var tracked: bool = pt.get("tracked", true)
+			var inside := Rect2(Vector2.ZERO, size).grow(-14).has_point(pos)
+			if not inside:
+				if not tracked:
 					continue
-				var pos := screen.world_to_view(markers[id]["pos"])
-				var tracked: bool = quest.get("tracked", false)
-				var col := MapIcons.QUEST if tracked else Color(0.85, 0.75, 0.55, 0.75)
-				var inside := Rect2(Vector2.ZERO, size).grow(-14).has_point(pos)
-				if not inside:
-					pos = pos.clamp(Vector2(14, 14), size - Vector2(14, 14))
-				MapIcons.draw_quest(self, pos, 10.0 if tracked else 8.0, screen._time, col)
-				if pos.distance_to(hover) < best_d:
-					best_d = pos.distance_to(hover)
-					hovered = {"name": str(quest.get("title", "")), "sub": str(markers[id].get("text", ""))}
-					hovered_pos = pos
+				pos = pos.clamp(Vector2(14, 14), size - Vector2(14, 14))
+			var quest_kind := String(pt.get("kind", "")) in ["main", "side", "turn_in"]
+			MapIcons.draw_point(self, pt, pos, (10.0 if tracked else 8.0) if quest_kind else 10.0, screen._time, not inside)
+			if pos.distance_to(hover) < best_d:
+				best_d = pos.distance_to(hover)
+				var name := str(pt.get("text", ""))
+				var sub := ""
+				var qid := str(pt.get("quest_id", ""))
+				if qid != "":
+					sub = name
+					name = _quest_title(qid)
+				hovered = {"name": name, "sub": sub}
+				hovered_pos = pos
 		# Companions and you.
 		var me := UiContext.player()
 		var players: Variant = UiContext.call_on(world, "players_in", [screen._dim], [])
@@ -490,6 +525,14 @@ class MapOverlay:
 			_tooltip(hovered_pos, hovered)
 		_scale_bar()
 		_compass()
+
+	func _quest_title(id: String) -> String:
+		var active: Variant = UiContext.call_on(UiContext.quests(), "active", [], [])
+		if active is Array:
+			for q: Dictionary in active:
+				if str(q.get("id", "")) == id:
+					return str(q.get("title", id))
+		return id
 
 	func _tooltip(at: Vector2, place: Dictionary) -> void:
 		var title := UiTheme.title_font(700)

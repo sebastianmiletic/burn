@@ -202,6 +202,32 @@ func _refresh() -> void:
 		for quest: Dictionary in active:
 			var cat := category_of(quest)
 			(_by_tab[Tab.SIDE if cat == Tab.DONE else cat] as Array).append(quest)
+	# Activities and live events in progress (ActivityDirector.tracker_entries()).
+	var w := UiContext.world()
+	var acts: Node = w.get_node_or_null(^"Activities") if w != null else null
+	var entries: Variant = UiContext.call_on(acts, "tracker_entries", [], [])
+	if entries is Array:
+		var points: Array = QuestMarkers.points(w).filter(func(pt: Dictionary) -> bool: return str(pt.get("quest_id", "")) == "")
+		var i := 0
+		for e: Dictionary in entries:
+			i += 1
+			var lines: Array = Array(e.get("lines", PackedStringArray()))
+			var objectives: Array = []
+			var rewards := ""
+			for line: Variant in lines:
+				var t := str(line)
+				if t.begins_with("Reward:"):
+					rewards = t.trim_prefix("Reward:").strip_edges()
+				else:
+					objectives.append({"text": t, "current": 0, "target": 1, "done": false})
+			var title := str(e.get("title", ""))
+			var aq := {"id": "act:%s" % title, "title": title, "objectives": objectives, "rewards": rewards, "category": "activity",
+				"activity": true, "tracked": true, "event": e.get("kind", "") == "event",
+				"description": "A live event — it will not wait for you." if e.get("kind", "") == "event" else ""}
+			var m := _match_point(title, points)
+			if not m.is_empty():
+				aq["marker"] = {"pos": m["pos"], "dim": m["dim"], "text": m.get("text", "")}
+			(_by_tab[Tab.ACTIVITY] as Array).append(aq)
 	if done is Array:
 		for quest: Dictionary in done:
 			var d := quest.duplicate()
@@ -215,6 +241,36 @@ func _refresh() -> void:
 	for t in 4:
 		_tabs[t].count = (_by_tab[t] as Array).size()
 	_rebuild_list()
+
+
+## The activity map point that best matches an activity title (shared words).
+static func _match_point(title: String, points: Array) -> Dictionary:
+	var words := {}
+	for wd in title.to_lower().replace(":", " ").split(" ", false):
+		if wd.length() > 3:
+			words[wd] = true
+	var best: Dictionary = {}
+	var best_n := 0
+	for pt: Dictionary in points:
+		var n := 0
+		for wd in str(pt.get("text", "")).to_lower().replace(":", " ").split(" ", false):
+			if words.has(wd):
+				n += 1
+		if n > best_n:
+			best_n = n
+			best = pt
+	if best.is_empty() and points.size() == 1:
+		best = points[0]
+	return best
+
+
+## Where a journal entry points: its own marker (activities) or the quest's.
+static func marker_of(quest: Dictionary) -> Dictionary:
+	if quest.has("marker"):
+		return quest["marker"]
+	if quest.get("activity", false):
+		return {}
+	return QuestMarkers.of(UiContext.world(), str(quest.get("id", "")))
 
 
 func _set_tab(t: int) -> void:
@@ -279,7 +335,7 @@ func _show(id: String) -> void:
 	var done: bool = _quest.get("completed", false)
 	var cat := category_of(_quest)
 	var kinds := ["MAIN STORY", "SIDE QUEST", "ACTIVITY", "COMPLETED"]
-	_kind.text = kinds[cat] + ("" if done else ("  ·  TRACKED" if _quest.get("tracked", false) else ""))
+	_kind.text = ("LIVE EVENT" if _quest.get("event", false) else kinds[cat]) + ("" if done or _quest.get("activity", false) else ("  ·  TRACKED" if _quest.get("tracked", false) else ""))
 	_title.text = str(_quest.get("title", ""))
 	_title.add_theme_color_override("font_color", UiTheme.TEXT_DIM if done else UiTheme.ACCENT_HOT)
 	_objective_box.screen = self
@@ -305,9 +361,9 @@ func _show(id: String) -> void:
 	_rewards_head.visible = not parts.is_empty()
 	for p in parts:
 		_rewards.add_child(_chip(p.strip_edges(), done))
-	_track_btn.visible = not done
+	_track_btn.visible = not done and not _quest.get("activity", false)
 	_track_btn.text = "UNTRACK   [T]" if _quest.get("tracked", false) else "TRACK   [T]"
-	var marker := QuestMarkers.of(UiContext.world(), str(_quest.get("id", "")))
+	var marker := marker_of(_quest)
 	_map_btn.visible = not done
 	_map_btn.disabled = marker.is_empty()
 	_map_btn.text = "SHOW ON MAP   [M]"
@@ -335,7 +391,7 @@ func _chip(text: String, faded: bool) -> Control:
 
 
 func _toggle_track() -> void:
-	if _quest.is_empty() or _quest.get("completed", false):
+	if _quest.is_empty() or _quest.get("completed", false) or _quest.get("activity", false):
 		return
 	var id := str(_quest.get("id", ""))
 	var on := not bool(_quest.get("tracked", false))
@@ -347,7 +403,7 @@ func _toggle_track() -> void:
 
 
 func _show_on_map() -> void:
-	var marker := QuestMarkers.of(UiContext.world(), str(_quest.get("id", "")))
+	var marker := marker_of(_quest)
 	if marker.is_empty():
 		return
 	var map: MapScreen = null
@@ -414,7 +470,7 @@ func _process(_delta: float) -> void:
 func nav_to(quest: Dictionary) -> Dictionary:
 	var world := UiContext.world()
 	var player := UiContext.player()
-	var m := QuestMarkers.of(world, str(quest.get("id", "")))
+	var m := marker_of(quest)
 	if m.is_empty() or player == null:
 		return {}
 	var pdim: Variant = player.get("dimension")

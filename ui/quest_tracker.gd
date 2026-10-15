@@ -1,8 +1,10 @@
 class_name QuestTracker
 extends VBoxContainer
-## Top-right: the tracked quests, compact. Each shows its title, the current
-## step (with a counter) and, when the step has a place, a live arrow with
-## the distance. A finished step flashes before the next one appears.
+## Top-right: what you are doing, compact and right-aligned. Live events (a
+## raid, a falling star, the Proving Ring) first, then tracked quests (title,
+## current step with a counter, and a live arrow with the distance when the
+## step has a place), then activities in progress (treasure maps, bounties)
+## from ActivityDirector.tracker_entries() -> [{title, lines, kind}].
 
 const MAX_SHOWN := 3
 const WIDTH := 320.0
@@ -10,6 +12,8 @@ const WIDTH := 320.0
 var _dirty := true
 var _flash := {}
 var _entries: Array[Entry] = []
+var _activity_sig := ""
+var _poll := 0.0
 
 
 func _ready() -> void:
@@ -27,6 +31,13 @@ func _process(delta: float) -> void:
 		_flash[k] = float(_flash[k]) - delta
 		if _flash[k] <= 0.0:
 			_flash.erase(k)
+	_poll -= delta
+	if _poll <= 0.0:
+		_poll = 0.4
+		var sig := str(_activities())
+		if sig != _activity_sig:
+			_activity_sig = sig
+			_dirty = true
 	if _dirty:
 		_dirty = false
 		_rebuild()
@@ -35,26 +46,46 @@ func _process(delta: float) -> void:
 		e.queue_redraw()
 
 
+func _activities() -> Array:
+	var w := UiContext.world()
+	if w == null:
+		return []
+	var acts := w.get_node_or_null(^"Activities")
+	var out: Variant = UiContext.call_on(acts, "tracker_entries", [], [])
+	return out if out is Array else []
+
+
 func _rebuild() -> void:
 	for c in get_children():
 		c.queue_free()
 	_entries.clear()
 	var tracked: Variant = UiContext.call_on(UiContext.quests(), "tracked", [], [])
-	if not (tracked is Array) or (tracked as Array).is_empty():
+	var quests: Array = tracked if tracked is Array else []
+	var acts := _activities()
+	var events: Array = acts.filter(func(e: Dictionary) -> bool: return e.get("kind", "") == "event")
+	var others: Array = acts.filter(func(e: Dictionary) -> bool: return e.get("kind", "") != "event")
+	if quests.is_empty() and acts.is_empty():
 		return
-	var head := Header.new()
-	add_child(head)
+	add_child(Header.new())
+	for e: Dictionary in events:
+		_add(Entry.activity(e, Color(1.0, 0.55, 0.35), false))
 	var shown := 0
-	for quest: Dictionary in tracked:
+	for quest: Dictionary in quests:
 		if shown >= MAX_SHOWN:
 			break
 		shown += 1
 		var e := Entry.new()
 		e.quest = quest
-		add_child(e)
-		_entries.append(e)
-	if (tracked as Array).size() > MAX_SHOWN:
-		add_child(UiTheme.label("+%d more in the journal" % ((tracked as Array).size() - MAX_SHOWN), 11, UiTheme.TEXT_FAINT, HORIZONTAL_ALIGNMENT_RIGHT))
+		_add(e)
+	if quests.size() > MAX_SHOWN:
+		add_child(UiTheme.label("+%d more in the journal" % (quests.size() - MAX_SHOWN), 11, UiTheme.TEXT_FAINT, HORIZONTAL_ALIGNMENT_RIGHT))
+	for e: Dictionary in others:
+		_add(Entry.activity(e, Color(1.0, 0.82, 0.45), true))
+
+
+func _add(e: Entry) -> void:
+	add_child(e)
+	_entries.append(e)
 
 
 class Header:
@@ -84,12 +115,28 @@ class Entry:
 
 	var quest := {}
 	var flash := 0.0
-	var _lines: Array = []   # [text, done]
+	## Activity / event entries: a title and plain lines instead of a quest.
+	var title_override := ""
+	var colour := UiTheme.ACCENT_HOT
+	var _lines: Array = []   # [text, done, good]
+
+	static func activity(e: Dictionary, col: Color, dim_first: bool) -> Entry:
+		var en := Entry.new()
+		en.title_override = String(e.get("title", ""))
+		en.colour = col
+		var lines: Variant = e.get("lines", PackedStringArray())
+		var arr: Array = Array(lines) if (lines is PackedStringArray or lines is Array) else []
+		for i in arr.size():
+			en._lines.append([str(arr[i]), dim_first and i == 0 and arr.size() > 1, false])
+		return en
 
 	func _init() -> void:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	func _ready() -> void:
+		if title_override != "":
+			custom_minimum_size = Vector2(WIDTH, 26 + _lines.size() * 18 + 4)
+			return
 		_lines.clear()
 		if quest.get("ready", false):
 			_lines.append(["Return to " + str(quest.get("turn_in", "the quest giver")), false, true])
@@ -110,23 +157,24 @@ class Entry:
 		var band := PackedVector2Array([Vector2(w * 0.15, 0), Vector2(w + 8, 0), Vector2(w + 8, size.y), Vector2(w * 0.15, size.y)])
 		draw_polygon(band, PackedColorArray([Color(0, 0, 0, 0), Color(0, 0, 0, 0.5), Color(0, 0, 0, 0.5), Color(0, 0, 0, 0)]))
 		var tf := UiTheme.title_font(700)
-		var title := str(quest.get("title", ""))
-		var col := UiTheme.ACCENT_HOT.lerp(Color(1, 1, 0.92), clampf(flash, 0.0, 1.0))
+		var title := title_override if title_override != "" else str(quest.get("title", ""))
+		var col := colour.lerp(Color(1, 1, 0.92), clampf(flash, 0.0, 1.0))
 		var ts := tf.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 16)
 		draw_string_outline(tf, Vector2(w - ts.x - 4, 19), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, 4, Color(0, 0, 0, 0.6))
 		draw_string(tf, Vector2(w - ts.x - 4, 19), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, col)
-		MapIcons.draw_glyph(self, &"quest", Vector2(w - ts.x - 18, 13), 6.0, MapIcons.QUEST, Color(0, 0, 0, 0.8))
+		if title_override == "":
+			MapIcons.draw_glyph(self, &"quest", Vector2(w - ts.x - 18, 13), 6.0, MapIcons.QUEST, Color(0, 0, 0, 0.8))
 		var y := 38.0
 		for line: Array in _lines:
 			var text: String = line[0]
-			var c := UiTheme.GOOD if line[2] else UiTheme.TEXT
+			var c := UiTheme.GOOD if line[2] else (UiTheme.TEXT_DIM if line[1] else UiTheme.TEXT)
 			var ls := UiTheme.MONO.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
 			var x := maxf(4.0, w - ls.x - 4)
 			draw_string_outline(UiTheme.MONO, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, w - 8, 13, 4, Color(0, 0, 0, 0.6))
 			draw_string(UiTheme.MONO, Vector2(x, y), text, HORIZONTAL_ALIGNMENT_LEFT, w - 8, 13, c)
 			y += 18.0
 		# Live direction and distance to the step's place.
-		var nav := _nav()
+		var nav := _nav() if title_override == "" else {}
 		if not nav.is_empty():
 			var t: String = nav["text"]
 			var ds := UiTheme.MONO_BOLD.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)

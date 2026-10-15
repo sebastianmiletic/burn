@@ -49,6 +49,9 @@ func setup() -> void:
 		e.global_position = local_player.global_position + Vector3(cos(i * 1.3) * 40.0, 0, sin(i * 1.3) * 40.0)
 		_enemies.append(e)
 	view.source_camera.current = true
+	var acts := MockActivities.new()
+	acts.name = "Activities"
+	add_child(acts)
 
 
 func map_image(_dim: int) -> Image:
@@ -162,6 +165,9 @@ class MockQuests:
 			{"quest_id": "embers", "pos": Vector3(1090, 20, 1010), "dim": 0, "text": "Speak with Hale the blacksmith"},
 			{"quest_id": "mountain_king", "pos": Vector3(1020, 60, 640), "dim": 0, "text": "Find the Hall beneath the Frost Peaks"},
 			{"quest_id": "hunt", "pos": Vector3(1180, 22, 1120), "dim": 0, "text": "Track the ash stag"},
+			{"pos": Vector3(985, 20, 1105), "dim": 0, "label": "Search for the X", "kind": "activity", "icon": "treasure", "radius": 14.0, "priority": 2},
+			{"pos": Vector3(1110, 20, 1150), "dim": 0, "label": "Hunt: Old Greymaw (last seen)", "kind": "activity", "icon": "bounty", "radius": 30.0, "priority": 1},
+			{"pos": Vector3(1250, 20, 900), "dim": 0, "label": "Starfall crater", "kind": "activity", "icon": "star", "priority": 4},
 		]
 
 	func tracked() -> Array:
@@ -187,3 +193,13 @@ class MockView:
 
 	func unproject(p: Vector3) -> Vector2:
 		return source_camera.unproject_position(p)
+
+
+class MockActivities:
+	extends Node
+
+	func tracker_entries() -> Array:
+		return [
+			{"title": "Starfall", "lines": PackedStringArray(["A star fell east of Emberfall", "Reach the crater (2:10)"]), "kind": "event"},
+			{"title": "Bounty: Old Greymaw", "lines": PackedStringArray(["Last seen in the Emberwood", "Reward: 60 gold, trophy"]), "kind": "activity"},
+		]

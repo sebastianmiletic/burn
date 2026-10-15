@@ -76,11 +76,28 @@ func _run() -> void:
 			_set_graphics("render_scale", float(a.trim_prefix("--scale=")))
 	report.append("quality %s, style %s, preset scale %.2f (actual/adaptive viewport recorded per stop)" % [Settings.QUALITY_NAMES[int(Settings.get_value("graphics", "quality"))],
 			Settings.STYLE_NAMES[int(Settings.get_value("graphics", "style"))], Settings.render_scale()])
+	if "--no-bosses" in OS.get_cmdline_user_args():
+		for k in ["warden", "mountain_king", "dragon", "cerberus", "hades", "leviathan", "broodmother", "bog_hag"]:
+			w.bosses_defeated[k] = true
+	if "--no-spawns" in OS.get_cmdline_user_args():
+		# Architecture captures: no creatures wandering into the frame.
+		w.director.process_mode = Node.PROCESS_MODE_DISABLED
+		w.spawner.process_mode = Node.PROCESS_MODE_DISABLED
+	if "--no-hud" in OS.get_cmdline_user_args() and w.hud != null:
+		w.hud.visible = false
 	await _frames(60)
 	for stop: String in tour:
 		# "arena_<location id>": stand 18 m in front of that location's boss spawn.
 		var arena := stop.begins_with("arena_")
 		var spec: Array = [StringName(stop.trim_prefix("arena_")), 13.0, 0.0, Vector3(0, 2.5, 18), -0.12] if arena else STOPS.get(stop, [])
+		# "cam:<location id>:ox:oy:oz:yaw:pitch[:time]": hover at an offset from the boss spawn
+		# (or the location centre), e.g. close-ups of arena architecture.
+		var cam := stop.begins_with("cam:")
+		if cam:
+			var cparts := stop.split(":")
+			spec = [StringName(cparts[1]), float(cparts[7]) if cparts.size() > 7 else 13.0, float(cparts[5]),
+					Vector3(float(cparts[2]), float(cparts[3]), float(cparts[4])), float(cparts[6])]
+			stop = "cam_%s_%02d" % [cparts[1], tour.find(stop)]
 		# "site_<location id>": 16 m south of a location, looking north.
 		# "bld_<village>_<n>" / "in_<village>_<n>": the n-th building of a
 		# village from outside its door, or from just inside it.
@@ -116,7 +133,7 @@ func _run() -> void:
 		if loc == null:
 			report.append("%s: location missing" % stop)
 			continue
-		if stop == "ryft":
+		if stop == "ryft" or loc.dimension == 2:
 			w.ryft_unlocked = true  # Capture-only fixture, never normal gameplay.
 		if loc.dimension != w.local_dimension:
 			w.travel(loc.dimension)
@@ -129,10 +146,11 @@ func _run() -> void:
 		var offset: Vector3 = spec[3] if spec.size() > 3 else Vector3(0, 2, 4)
 		if spec.size() > 3:
 			target = loc.center
-		if arena:
+		if arena or cam:
 			for s in loc.spawns_of("boss"):
 				target = s["pos"]
 		p.global_position = target + offset
+		p.body.fly = cam
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--hold="):
 				p.give_item(a.trim_prefix("--hold="), 1)
@@ -174,6 +192,8 @@ func _run() -> void:
 			if loc.half_height > 0.0:
 				y = loc.center.y
 			p.global_position.y = y + 0.05
+		if cam:
+			p.global_position = target + offset
 		p.body.velocity = Vector3.ZERO
 		if stop.ends_with("fight"):
 			var kind := "dragon" if stop == "dragonfight" else "mountain_king"
@@ -190,7 +210,9 @@ func _run() -> void:
 				await get_tree().create_timer(1.0).timeout
 			await _shot(stop + "_a")
 			await get_tree().create_timer(2.5).timeout
+		_unpause(w)
 		await _frames(90)
+		_unpause(w)
 		# Falls and landings move the camera; frame the shot as specified.
 		p.camera.yaw = float(spec[2])
 		p.camera.pitch = float(spec[4]) if spec.size() > 4 else -0.18
@@ -245,6 +267,19 @@ func _run() -> void:
 						await _shot(stop + "_" + screen_name)
 						(screen as UiModal).close()
 						await _frames(5)
+		if "--arena-cost" in OS.get_cmdline_user_args():
+			# GPU time with the modelled arenas hidden (needs --rendering-driver vulkan on macOS).
+			var arenas := w.find_children("ArenaDirector", "", true, false)
+			for a: Node3D in arenas:
+				a.visible = false
+			await _frames(20)
+			var gpu_off := 0.0
+			for i in 30:
+				await get_tree().process_frame
+				gpu_off += RenderingServer.viewport_get_measured_render_time_gpu(vp_rid) / 30.0
+			for a: Node3D in arenas:
+				a.visible = true
+			report.append("   arena gpu cost %.2f ms (%.2f with, %.2f without)" % [gpu - gpu_off, gpu, gpu_off])
 		if "--gpu-breakdown" in OS.get_cmdline_user_args():
 			await _gpu_breakdown(w, report, gpu if gpu > 0.0 else (await _measure(2.0)).x)
 		if "--raw" in OS.get_cmdline_user_args():
@@ -269,7 +304,7 @@ func _run() -> void:
 				break
 		printerr("[game-capture] visible meshes ", nvis, " entity root vis ", w.get_node("Entities").visible, " gw vis ", w.visible)
 		printerr("[game-capture] model meshes ", meshes.size(), " first ", first.global_position if first else Vector3.ZERO, " in tree vis ", first.is_visible_in_tree() if first else false, " layers ", (first as VisualInstance3D).layers if first else 0, " cam mask ", w.view.camera.cull_mask, " cam pos ", w.view.camera.global_position)
-		printerr("[game-capture] player at ", p.global_position, " cam ", p.camera.global_position, " model ", p.model, " vis ", p.visible, " model vis ", p.model.visible if p.model else false)
+		printerr("[game-capture] player at ", p.global_position, " cam ", p.camera.global_position, " fwd ", -p.camera.global_basis.z, " proc ", p.is_processing(), " state ", Game.state, " dead ", p.dead, " pm ", p.process_mode, " can ", p.can_process(), " model ", p.model, " vis ", p.visible, " model vis ", p.model.visible if p.model else false)
 	if "--prof" in OS.get_cmdline_user_args():
 		await _profile(w, report)
 	for line in report:
@@ -316,6 +351,14 @@ func _gpu_breakdown(w: GameWorld, report: PackedStringArray, all_on: float) -> v
 		line += "  -%s %.2f" % [label, all_on - g]
 	report.append(line)
 	await _frames(20)
+
+
+## A pause menu opened by focus changes (other windows) would freeze the player.
+func _unpause(w: GameWorld) -> void:
+	var pm: Variant = w.hud.get("pause_menu") if w.hud != null else null
+	if pm != null and bool(pm.get("is_open")):
+		pm.call("close")
+	get_tree().paused = false
 
 
 ## Changes a graphics setting for this run only (Settings.set_value would save it).

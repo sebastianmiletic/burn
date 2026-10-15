@@ -143,7 +143,8 @@ func _save_character() -> void:
 		var d := world.local_player.to_dict()
 		d.erase("pos")
 		d.erase("dim")
-		f.store_var({"player": d, "quests": world.quests.to_dict(), "discovered": world.discovered.keys()})
+		f.store_var({"player": d, "quests": world.quests.to_dict(), "discovered": world.discovered.keys(),
+			"map_fog": MapFog.save_dict(world), "map_fog_seed": int(session.get("seed", 0))})
 
 
 func _load_character() -> Dictionary:
@@ -199,6 +200,9 @@ func _on_session_started(info: Dictionary) -> void:
 		var character := _load_character()
 		save = {"player": character.get("player", {}), "quests": character.get("quests", {}),
 			"discovered": character.get("discovered", [])}
+		# The explored map belongs to the world it was explored in.
+		if int(character.get("map_fog_seed", -1)) == int(info.get("seed", -2)):
+			save["map_fog"] = character.get("map_fog", {})
 		var js: Dictionary = info.get("join_state", {})
 		save["edits"] = js.get("edits", {})
 		save["bosses_defeated"] = js.get("bosses_defeated", [])

@@ -33,6 +33,11 @@ static func player_net_id(peer: int) -> int:
 var _ready_peers := {}
 
 
+## Peers that have loaded the world and receive gameplay RPCs.
+func ready_peers() -> Array:
+	return _targets()
+
+
 func _targets() -> Array:
 	var out := []
 	for peer in multiplayer.get_peers():

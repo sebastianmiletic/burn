@@ -1,55 +1,85 @@
 class_name QuestMarkers
 extends RefCounted
-## Where each active quest wants the player to go next, for the minimap,
-## world map, quest log and on-screen tracker.
+## Where each active quest wants the player to go next, and every other map
+## point of interest the quest log publishes (activities, events), for the
+## minimap, world map, journal and on-screen tracker.
 ##
-## If the quest log provides `markers()` (activities owner), its entries are
-## used as they are. Each entry is a Dictionary:
-##   {"quest_id": String, "pos": Vector3, "dim": int, "text": String}
-## (also accepted: "id"/"quest", "position", "dimension", "label").
-## Otherwise targets are derived from the first unfinished objective of each
-## active quest: reach / interact@location / boss / talk(role) / dimension,
-## or the quest giver when it is ready to hand in.
+## `QuestLog.markers()` (when present) returns Dictionaries:
+##   {pos: Vector3, dim, label, kind ("main"/"side"/"turn_in"/"activity"),
+##    icon ("treasure"/"bounty"/"star"/"raid"/"ring"/"hart"/...), radius, priority, id}
+## (`id` is the quest id for quest markers). Quests without a published marker
+## (e.g. untracked ones) get one derived from their first unfinished
+## objective: reach / interact@location / boss / talk(role) / dimension, or
+## the quest giver when ready to hand in.
 
 static var _cache := {}
+static var _points: Array = []
 static var _cache_frame := -1
 
 
-## quest id -> {"quest_id", "pos": Vector3, "dim": int, "text": String}
+## quest id -> {"quest_id", "pos": Vector3, "dim": int, "text": String, "kind"}
 static func all(world: Object) -> Dictionary:
+	_refresh(world)
+	return _cache
+
+
+## Every marker to draw on a map: quest targets (tracked or not, `tracked`
+## says which) and activity / event points. Normalised Dictionaries:
+## {pos, dim, text, kind, icon, radius, priority, quest_id, tracked}.
+static func points(world: Object) -> Array:
+	_refresh(world)
+	return _points
+
+
+static func _refresh(world: Object) -> void:
 	var frame := Engine.get_process_frames()
 	if frame == _cache_frame:
-		return _cache
+		return
 	_cache_frame = frame
 	_cache = {}
+	_points = []
 	if world == null or not is_instance_valid(world):
-		return _cache
+		return
 	var q: Variant = world.get("quests")
 	if not (q is Object):
-		return _cache
+		return
+	var tracked := {}
+	var tr: Variant = UiContext.call_on(q, "tracked", [], [])
+	if tr is Array:
+		for quest: Dictionary in tr:
+			tracked[str(quest.get("id", ""))] = true
 	var provided: Variant = UiContext.call_on(q, "markers", [], null)
 	if provided is Array:
 		for m: Variant in provided:
 			if not (m is Dictionary):
 				continue
 			var d: Dictionary = m
-			var id := str(d.get("quest_id", d.get("id", d.get("quest", ""))))
 			var pos: Variant = d.get("pos", d.get("position", null))
-			if id == "" or not (pos is Vector3) or _cache.has(id):
+			if not (pos is Vector3):
 				continue
-			_cache[id] = {"quest_id": id, "pos": pos, "dim": int(d.get("dim", d.get("dimension", 0))),
-				"text": str(d.get("text", d.get("label", "")))}
-		return _cache
+			var kind := str(d.get("kind", ""))
+			var id := str(d.get("quest_id", d.get("quest", d.get("id", ""))))
+			var is_quest := kind in ["main", "side", "turn_in", ""] and id != ""
+			var pt := {"pos": pos, "dim": int(d.get("dim", d.get("dimension", 0))), "text": str(d.get("text", d.get("label", ""))),
+				"kind": kind if kind != "" else "main", "icon": str(d.get("icon", "")), "radius": float(d.get("radius", 0.0)),
+				"priority": float(d.get("priority", 1.0)), "quest_id": id if is_quest else "", "tracked": is_quest and tracked.has(id) or not is_quest}
+			_points.append(pt)
+			if is_quest and not _cache.has(id):
+				_cache[id] = {"quest_id": id, "pos": pos, "dim": pt["dim"], "text": pt["text"], "kind": pt["kind"]}
 	var active: Variant = UiContext.call_on(q, "active", [], [])
-	if not (active is Array):
-		return _cache
-	for quest: Dictionary in active:
-		var id := str(quest.get("id", ""))
-		var target := _target(world, quest)
-		if not target.is_empty():
+	if active is Array:
+		for quest: Dictionary in active:
+			var id := str(quest.get("id", ""))
+			if _cache.has(id):
+				continue
+			var target := _target(world, quest)
+			if target.is_empty():
+				continue
 			target["quest_id"] = id
+			target["kind"] = "turn_in" if quest.get("ready", false) else ("main" if quest.get("main", false) else "side")
 			_cache[id] = target
-	return _cache
+			_points.append({"pos": target["pos"], "dim": target["dim"], "text": str(quest.get("title", "")) + " — " + str(target.get("text", "")),
+				"kind": target["kind"], "icon": "", "radius": 0.0, "priority": 1.0, "quest_id": id, "tracked": tracked.has(id)})
 
 
 static func of(world: Object, quest_id: String) -> Dictionary:

@@ -166,6 +166,82 @@ static func draw_badge(ci: CanvasItem, icon: StringName, at: Vector2, r: float, 
 		ci.draw_line(at + Vector2(k, -k), at + Vector2(-k, k), x, maxf(1.5, r * 0.15), true)
 
 
+## Colour of a quest / activity marker (QuestMarkers.points entry).
+static func point_colour(pt: Dictionary) -> Color:
+	match String(pt.get("kind", "")):
+		"main":
+			return QUEST
+		"turn_in":
+			return Color(0.62, 1.0, 0.5)
+		"side":
+			return Color(0.95, 0.72, 0.42)
+	match String(pt.get("icon", "")):
+		"raid":
+			return Color(0.95, 0.3, 0.25)
+		"star":
+			return Color(0.65, 0.78, 1.0)
+		"treasure":
+			return Color(1.0, 0.85, 0.4)
+		"bounty":
+			return Color(1.0, 0.55, 0.3)
+		"ring":
+			return Color(1.0, 0.65, 0.35)
+		"hart", "charm":
+			return Color(1.0, 0.88, 0.45)
+	return UiTheme.FROST
+
+
+## A quest objective, hand-in or activity point. Quests draw as the gold
+## lozenge ("?" lozenge in green to hand in); activities as a dark badge with
+## their own symbol (X marks the spot, dagger, falling star, crossed swords,
+## ring, antlers). Untracked quest markers draw smaller and dimmer.
+static func draw_point(ci: CanvasItem, pt: Dictionary, at: Vector2, r: float, t: float, faded := false) -> void:
+	var col := point_colour(pt)
+	var kind := String(pt.get("kind", ""))
+	var tracked: bool = pt.get("tracked", true)
+	if faded:
+		col.a *= 0.8
+	if kind in ["main", "side", "turn_in"]:
+		if not tracked:
+			col = col.lerp(Color(0.6, 0.58, 0.55), 0.4)
+			col.a *= 0.75
+			draw_glyph(ci, &"turn_in" if kind == "turn_in" else &"quest", at, r * 0.8, col, Color(0, 0, 0, 0.8 * col.a))
+		elif kind == "turn_in":
+			_pulse(ci, at, r, t, col)
+			draw_glyph(ci, &"turn_in", at, r, col, Color(0, 0, 0, 0.9))
+		else:
+			draw_quest(ci, at, r, t, col)
+		return
+	var icon := StringName(String(pt.get("icon", "")))
+	if float(pt.get("priority", 1.0)) >= 4.0:
+		_pulse(ci, at, r, t, col)
+	ci.draw_circle(at, r + 1.4, Color(0, 0, 0, 0.6 * col.a), true, -1.0, true)
+	ci.draw_circle(at, r, Color(0.07, 0.055, 0.045, 0.94 * col.a), true, -1.0, true)
+	ci.draw_arc(at, r - 0.5, 0.0, TAU, 32, col, maxf(1.2, r * 0.13), true)
+	var glyph := icon if icon in [&"treasure", &"bounty", &"star", &"raid", &"ring", &"hart"] else &"charm"
+	draw_glyph(ci, glyph, at, r * 0.62, col, Color(0, 0, 0, 0))
+
+
+## The search area of a marker with a radius (treasure, last-seen quarry,
+## the Proving Ring): a soft fill and a dashed rim, `px` pixels in radius.
+static func draw_area(ci: CanvasItem, pt: Dictionary, at: Vector2, px: float) -> void:
+	if px < 3.0:
+		return
+	var col := point_colour(pt)
+	ci.draw_circle(at, px, Color(col.r, col.g, col.b, 0.1), true, -1.0, true)
+	var dashes := clampi(int(px * 0.5), 12, 64)
+	for i in dashes:
+		var a0 := TAU * i / dashes
+		ci.draw_arc(at, px, a0, a0 + TAU / dashes * 0.55, 4, Color(col.r, col.g, col.b, 0.75), 1.4, true)
+
+
+static func _pulse(ci: CanvasItem, at: Vector2, r: float, t: float, col: Color) -> void:
+	var pulse := fposmod(t * 0.8, 1.0)
+	var ring := col
+	ring.a = (1.0 - pulse) * 0.7 * col.a
+	ci.draw_arc(at, r * (1.0 + pulse * 0.9), 0.0, TAU, 32, ring, 1.5, true)
+
+
 ## The objective marker: a gold lozenge with an exclamation mark, pulsing.
 static func draw_quest(ci: CanvasItem, at: Vector2, r: float, t: float, color := QUEST) -> void:
 	var pulse := fposmod(t * 0.8, 1.0)
@@ -284,6 +360,46 @@ static func draw_glyph(ci: CanvasItem, icon: StringName, at: Vector2, r: float, 
 			if outline.a > 0.0:
 				ci.draw_arc(at + Vector2(0, -0.72) * r, 0.17 * r, 0.0, TAU, 16, outline, w + 2.0, true)
 			ci.draw_arc(at + Vector2(0, -0.72) * r, 0.17 * r, 0.0, TAU, 16, fill, w, true)
+		&"turn_in":
+			_poly(ci, _pts(&"lozenge"), at, r, fill, outline)
+			ci.draw_arc(at + Vector2(0, -0.22) * r, 0.22 * r, PI * 1.05, PI * 2.35, 10, ink, maxf(1.2, r * 0.12), true)
+			ci.draw_line(at + Vector2(0.06, 0.0) * r, at + Vector2(0, 0.18) * r, ink, maxf(1.2, r * 0.12), true)
+			ci.draw_circle(at + Vector2(0, 0.42) * r, 0.1 * r, ink, true, -1.0, true)
+		&"treasure":
+			for d: Vector2 in [Vector2(1, 1), Vector2(1, -1)]:
+				var a: Vector2 = at - d * 0.72 * r
+				var b: Vector2 = at + d * 0.72 * r
+				if outline.a > 0.0:
+					ci.draw_line(a, b, outline, w * 2.0 + 2.0, true)
+				ci.draw_line(a, b, fill, w * 2.0, true)
+		&"bounty":
+			_poly(ci, _pts(&"blade"), at, r, fill, outline)
+			ci.draw_line(at + Vector2(-0.48, 0.28) * r, at + Vector2(0.48, 0.28) * r, fill, w * 1.4, true)
+			ci.draw_line(at + Vector2(0, 0.32) * r, at + Vector2(0, 0.86) * r, fill.darkened(0.2), w * 1.5, true)
+		&"star":
+			_poly(ci, _pts(&"star4"), at, r, fill, outline)
+		&"raid":
+			for sgn: float in [-1.0, 1.0]:
+				var a := at + Vector2(-0.72 * sgn, -0.72) * r
+				var b := at + Vector2(0.55 * sgn, 0.55) * r
+				ci.draw_line(a, b, fill, w * 1.4, true)
+				var g := at + Vector2(0.38 * sgn, 0.38) * r
+				var perp := Vector2(1, -1 * sgn).normalized() * 0.26 * r
+				ci.draw_line(g - perp, g + perp, fill, w * 1.4, true)
+		&"ring":
+			ci.draw_arc(at, 0.78 * r, 0.0, TAU, 28, fill, w * 1.2, true)
+			ci.draw_arc(at, 0.42 * r, 0.0, TAU, 20, fill, w * 1.2, true)
+			ci.draw_circle(at, 0.12 * r, fill, true, -1.0, true)
+		&"hart":
+			for sgn: float in [-1.0, 1.0]:
+				var beam := PackedVector2Array([at + Vector2(0.12 * sgn, 0.6) * r, at + Vector2(0.4 * sgn, 0.0) * r,
+					at + Vector2(0.62 * sgn, -0.75) * r])
+				ci.draw_polyline(beam, fill, w * 1.2, true)
+				ci.draw_line(at + Vector2(0.4 * sgn, 0.0) * r, at + Vector2(0.85 * sgn, -0.2) * r, fill, w, true)
+				ci.draw_line(at + Vector2(0.52 * sgn, -0.4) * r, at + Vector2(0.2 * sgn, -0.72) * r, fill, w, true)
+			ci.draw_circle(at + Vector2(0, 0.62) * r, 0.18 * r, fill, true, -1.0, true)
+		&"charm":
+			_poly(ci, _pts(&"lozenge"), at, r * 0.75, fill, outline)
 		&"quest":
 			_poly(ci, _pts(&"lozenge"), at, r, fill, outline)
 			_poly(ci, _pts(&"bang"), at, r, ink, Color(0, 0, 0, 0))
@@ -332,6 +448,13 @@ static func _pts(id: StringName) -> PackedVector2Array:
 static func _init_shapes() -> void:
 	var s := _shapes
 	s[&"lozenge"] = PackedVector2Array([Vector2(0, -1), Vector2(0.72, 0), Vector2(0, 1), Vector2(-0.72, 0)])
+	s[&"blade"] = PackedVector2Array([Vector2(0, -0.95), Vector2(0.16, -0.6), Vector2(0.14, 0.26), Vector2(-0.14, 0.26), Vector2(-0.16, -0.6)])
+	var star := PackedVector2Array()
+	for i in 8:
+		var a := -PI * 0.5 + TAU * i / 8.0
+		var rr := 0.95 if i % 2 == 0 else 0.3
+		star.append(Vector2(cos(a), sin(a)) * rr)
+	s[&"star4"] = star
 	s[&"bang"] = PackedVector2Array([Vector2(-0.11, -0.58), Vector2(0.11, -0.58), Vector2(0.07, 0.2), Vector2(-0.07, 0.2)])
 	s[&"skull_jaw"] = PackedVector2Array([Vector2(-0.44, 0.22), Vector2(0.44, 0.22), Vector2(0.38, 0.8), Vector2(-0.38, 0.8)])
 	s[&"skull_nose"] = PackedVector2Array([Vector2(0, 0.1), Vector2(0.1, 0.3), Vector2(-0.1, 0.3)])

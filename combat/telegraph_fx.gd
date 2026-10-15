@@ -15,7 +15,14 @@ const SHAPES := {"circle": 0, "cone": 1, "line": 2, "ring": 3}
 const COLORS := {
 	"geyser": Color(0.45, 0.8, 1.0), "wave": Color(0.45, 0.8, 1.0), "bile": Color(0.6, 1.0, 0.2),
 	"venom": Color(0.6, 1.0, 0.2), "web": Color(0.9, 0.9, 0.85), "hex": Color(0.45, 1.0, 0.55),
-	"frost": Color(0.6, 0.85, 1.0),
+	"frost": Color(0.6, 0.85, 1.0), "soul": Color(0.4, 1.0, 0.6), "spirit": Color(0.45, 0.75, 1.0),
+	"crystal": Color(0.72, 0.62, 1.0), "prism": Color(0.75, 0.92, 1.0), "void": Color(0.78, 0.38, 1.0), "star": Color(0.92, 0.86, 1.0),
+}
+## Landing bursts for boss styles: [hot, cool, count, speed].
+const BURSTS := {
+	"soul": [Color(0.7, 1.0, 0.8), Color(0.2, 0.7, 0.35), 50, 6.0], "spirit": [Color(0.8, 0.9, 1.0), Color(0.25, 0.45, 0.95), 60, 7.0],
+	"crystal": [Color(0.92, 0.88, 1.0), Color(0.5, 0.4, 0.95), 50, 7.0], "prism": [Color(1.0, 1.0, 1.0), Color(0.45, 0.75, 1.0), 40, 8.0],
+	"void": [Color(0.95, 0.75, 1.0), Color(0.35, 0.1, 0.6), 60, 5.0], "star": [Color(1.0, 0.95, 1.0), Color(0.6, 0.5, 1.0), 40, 9.0],
 }
 
 static var _listeners: Array[Callable] = []
@@ -183,3 +190,25 @@ func _land() -> void:
 			CreatureFx.play(parent, "frost", c, _size.x / 2.5)
 		"fire":
 			CreatureFx.play(parent, "embers", c, _size.x / 2.5)
+		_:
+			if BURSTS.has(_style):
+				var bs: Array = BURSTS[_style]
+				var pts: Array[Vector3] = []
+				match _shape:
+					"ring":
+						var r := (_size.x + _size.y) * 0.5
+						var n := clampi(int(TAU * r / 3.0), 4, 12)
+						for i in n:
+							var a := TAU * float(i) / n
+							pts.append(c + Vector3(cos(a), 0.3, sin(a)) * r)
+					"line":
+						for i in 4:
+							pts.append(c + _dir * _size.x * (0.15 + i * 0.25) + Vector3(0, 0.3, 0))
+					"cone":
+						pts.append(c + _dir * _size.x * 0.5 + Vector3(0, 0.3, 0))
+					_:
+						pts.append(c + Vector3(0, 0.3, 0))
+				var sc := clampf(_size.x / 3.0, 0.6, 2.0) if _shape != "ring" else clampf((_size.y - _size.x) / 3.0, 0.6, 2.0)
+				for q in pts:
+					ModelKit.burst(parent, q, int(int(bs[2]) * sc), 0.6 * sc, float(bs[3]) * sc, 0.55 * sc, bs[0], bs[1], 0.8)
+				ModelKit.flash_light(parent, c + Vector3(0, 1.0, 0), bs[1], 3.0, 6.0 + _size.x, 0.35)

@@ -5,13 +5,11 @@ extends RefCounted
 ## .. 255 explored), painted with a feathered disc around the player.
 ##
 ## One instance per GameWorld (`MapFog.of(world)`, kept as world metadata).
-## Persistence, either:
-##   * in the GameWorld save, if GameWorld wires the two hooks:
-##       save_data():          "map_fog": MapFog.save_dict(self),
-##       _load_world_state():  (nothing needed; `of()` reads save["map_fog"])
-##   * otherwise in its own file next to the saves, keyed by slot and seed
-##     (`saves/map_fog_<slot>.burn`), written every few seconds while it
-##     changes and when the HUD leaves the tree.
+## Persistence: in the GameWorld save (`"map_fog": MapFog.save_dict(self)`,
+## read back by `of()` from session.save["map_fog"]; party guests keep theirs
+## in their character file), and between saves in its own small file
+## (`saves/map_fog_<slot>.burn`, keyed by seed) written every few seconds
+## while it changes. On load the newer of the two wins.
 
 const CELL := 8.0
 const REVEAL_RADIUS := 120.0       ## fully seen within ~80 %, feathered to here
@@ -121,7 +119,7 @@ func to_dict() -> Dictionary:
 	for dim: int in _layers:
 		var img: Image = _layers[dim]["img"]
 		dims[dim] = {"n": int(_layers[dim]["n"]), "data": img.get_data().compress(FileAccess.COMPRESSION_ZSTD)}
-	return {"version": VERSION, "cell": CELL, "dims": dims}
+	return {"version": VERSION, "cell": CELL, "dims": dims, "saved_at": Time.get_unix_time_from_system()}
 
 
 func from_dict(d: Dictionary) -> bool:
@@ -153,13 +151,15 @@ func _load() -> void:
 		_slot = int((session as Dictionary).get("slot", -1))
 		_seed = int((session as Dictionary).get("seed", 0))
 		var save: Dictionary = (session as Dictionary).get("save", {})
-		if save.get("map_fog") is Dictionary:
-			loaded = from_dict(save["map_fog"])
-		elif not save.is_empty() and _slot >= 0 and FileAccess.file_exists(_path()):
+		var best: Dictionary = save["map_fog"] if save.get("map_fog") is Dictionary else {}
+		if not save.is_empty() and _slot >= 0 and FileAccess.file_exists(_path()):
 			var f := FileAccess.open(_path(), FileAccess.READ)
 			var v: Variant = f.get_var() if f != null else null
 			if v is Dictionary and int((v as Dictionary).get("seed", -1)) == _seed:
-				loaded = from_dict((v as Dictionary).get("fog", {}))
+				var from_file: Variant = (v as Dictionary).get("fog", {})
+				if from_file is Dictionary and float((from_file as Dictionary).get("saved_at", 0.0)) > float(best.get("saved_at", -1.0)):
+					best = from_file
+		loaded = from_dict(best)
 	if not loaded:
 		_reveal_known_places(w)
 

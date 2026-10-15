@@ -40,6 +40,8 @@ static func box(loc: Location, at: Vector3, extent: Vector3, material: String, r
 
 func _ready() -> void:
 	ArchMaterials.main()
+	# Boss arenas stream their own modelled geometry (world/architecture/arenas).
+	add_child(ArenaDirector.new())
 	# Profiling aid: measure a scene with and without the architecture.
 	if "--no-architecture" in OS.get_cmdline_user_args():
 		set_process(false)

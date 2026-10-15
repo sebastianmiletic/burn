@@ -24,7 +24,7 @@ var _fog_save := FOG_SAVE_SECONDS
 var _angle := 0.0
 var _player_pos := Vector3.ZERO
 var _places: Array = []    # [Vector2 unit offset, place Dictionary]
-var _quests: Array = []    # [Vector2 unit offset]
+var _quests: Array = []    # [Vector2 unit offset, point Dictionary] (QuestMarkers.points)
 var _enemies: Array = []   # [Vector2 unit offset, is_boss]
 var _mates: Array = []     # [Vector2 unit offset, colour, yaw, downed]
 var _time := 0.0
@@ -151,17 +151,12 @@ func _collect_markers(world: Node, player: Object) -> void:
 	_quests.clear()
 	_enemies.clear()
 	_mates.clear()
-	var tracked := {}
-	var q := UiContext.quests()
-	var tr: Variant = UiContext.call_on(q, "tracked", [], [])
-	if tr is Array:
-		for quest: Dictionary in tr:
-			tracked[str(quest.get("id", ""))] = true
-	var markers := QuestMarkers.all(world)
-	for id: String in markers:
-		var m: Dictionary = markers[id]
-		if tracked.has(id) and int(m.get("dim", 0)) == dimension:
-			_quests.append(_to_circle(m["pos"]))
+	# Quest objectives, hand-ins and activities (QuestLog.markers()); untracked
+	# quests stay off the minimap (the world map shows them).
+	for pt: Dictionary in QuestMarkers.points(world):
+		if int(pt.get("dim", 0)) != dimension or not pt.get("tracked", true):
+			continue
+		_quests.append([_to_circle(pt["pos"]), pt])
 	var discovered: Variant = world.get("discovered")
 	var locs: Variant = UiContext.call_on(world, "locations", [dimension], [])
 	if locs is Array:
@@ -260,13 +255,22 @@ func _draw_overlay() -> void:
 			ci.draw_line(pos + Vector2(-4.5, 0), pos + Vector2(4.5, 0), Color(1, 0.35, 0.28), 2.4, true)
 		else:
 			_chevron(ci, pos, _angle - float(m[2]), 6.0, m[1], 0.6 if at_rim else 1.0)
-	# Tracked objectives on top: they matter most.
-	for off0: Vector2 in _quests:
-		var off := off0
+	# Objectives and activities on top: they matter most. Search areas first.
+	var m_per_unit := RADIUS_METRES * zoom
+	for e: Array in _quests:
+		var pt: Dictionary = e[1]
+		var rad := float(pt.get("radius", 0.0))
+		if rad > 0.0 and (e[0] as Vector2).length() < 1.2:
+			MapIcons.draw_area(ci, pt, c + (e[0] as Vector2) * r, rad / m_per_unit * r)
+	var order := _quests.duplicate()
+	order.sort_custom(func(x: Array, y: Array) -> bool: return float(x[1].get("priority", 1.0)) < float(y[1].get("priority", 1.0)))
+	for e: Array in order:
+		var off: Vector2 = e[0]
 		var at_rim := off.length() > 0.84
 		if at_rim:
 			off = off.normalized() * 0.84
-		MapIcons.draw_quest(ci, c + off * r, 7.5, _time, MapIcons.QUEST if not at_rim else Color(1, 0.8, 0.32, 0.85))
+		var quest_kind := String(e[1].get("kind", "")) in ["main", "side", "turn_in"]
+		MapIcons.draw_point(ci, e[1], c + off * r, 7.5 if quest_kind else 7.0, _time, at_rim)
 	# Cardinal letters ride the bezel.
 	var font := UiTheme.title_font(700)
 	for card: Array in [["N", 0.0], ["E", PI * 0.5], ["S", PI], ["W", PI * 1.5]]:
