@@ -77,6 +77,8 @@ func setup(world_gen: WorldGen, dim: int) -> void:
 	if ResourceLoader.exists(FLORA_PATH):
 		flora = load(FLORA_PATH)
 	flora_quality = int(Settings.get_value("graphics", "quality"))
+	if DisplayServer.get_name() != "headless":
+		CaveDecor.warmup()  # cave decoration meshes (world/caves), built once on the loading screen
 	var cores := maxi(2, OS.get_processor_count() - 1)
 	_max_in_flight = cores
 	# Separate budgets: meshing must never wait behind a long generation queue.
@@ -733,6 +735,12 @@ func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) 
 	# Emissive blocks become light sources.
 	var center: PackedByteArray = neighbours[13]
 	var lights: Array = []
+	# Cave decorations (world/caves/cave_decor.gd): ore nodules, dripstone, fungi, webs; glowing ones add lights.
+	if dimension != 2 and smooth.has("terrain"):
+		var decor := CaveDecor.plan_chunk(o, smooth["terrain"], dimension, gen.world_seed, center)
+		if not decor.is_empty():
+			result["cave_decor"] = decor
+			lights.append_array(decor["lights"])
 	var light_cells := {}
 	if not center.is_empty():
 		for i in Chunk.VOLUME:
@@ -880,6 +888,10 @@ func _set_mesh(k: Vector3i, result: Dictionary) -> void:
 		var node: Node3D = flora.call("build_chunk", result["flora"], flora_quality)
 		if node != null:
 			mi.add_child(node)
+	if result.has("cave_decor"):
+		var decor_node := CaveDecor.build_chunk(result["cave_decor"], flora_quality)
+		if decor_node != null:
+			mi.add_child(decor_node)
 
 
 func _shadow_setting(k: Vector3i) -> int:
