@@ -1,13 +1,32 @@
 # BURN
 
-An open-world action RPG drawn entirely in coloured ASCII. A realistically lit 3D voxel world — villages, castles,
-caves you dig into with a pickaxe, the Gates of Hades far below the Cinder Crater, and the underworld beyond —
-is rendered through a GPU ASCII pass and composed glyph by glyph at your screen's native resolution.
-Play solo, or with friends on the same Wi-Fi: the host shows four ancient runes, everyone else types them in.
+An open-world action RPG with a realistic, smooth 3D world — autumn forests and meadows that sway in the wind,
+villages, castles, sea cliffs, caves you dig into with a pickaxe, the Gates of Hades far below the Cinder Crater and
+the underworld beyond. It can be drawn through a GPU ASCII pass (the default Ember style, glyph by glyph at your
+screen's native resolution) or in full colour with ASCII off. Play solo, or with friends on the same Wi-Fi: the host
+shows four ancient runes, everyone else types them in.
 
-Built with **Godot 4.7** (Forward+, GDScript). All content — terrain, structures, creatures, sound, music — is generated
-procedurally at runtime; the only shipped assets are two OFL fonts and ~3 MB of CC0 sound recordings that the sound
-synthesiser layers into footsteps, impacts and water (see `CREDITS.md`).
+Built with **Godot 4.7** (Forward+, GDScript). Terrain, structures, trees, characters, creatures, sound and music are
+generated procedurally at runtime; shipped assets are two OFL fonts, CC0 PBR textures from Poly Haven (terrain,
+bark, rock) and ~4 MB of CC0 sound recordings (see `CREDITS.md`).
+
+### What's in the world
+* **Smooth terrain over a voxel grid.** Natural ground is a smooth surface (Surface Nets over per-voxel density),
+  textured with photographic PBR materials that blend by slope and height; built walls stay crisp. Mining digs
+  smooth holes; chopping a trunk fells the whole tree.
+* **Strata and ores by depth:** granite, limestone, sandstone, marble, clay, slate, deepslate, basalt; coal, copper
+  and tin near the surface, iron, silver, gold, rubies, sapphires, amethyst, mithril, ember crystal and adamantite
+  deeper down.
+* **Crafting:** workbench, furnace, anvil and alchemy table (place your own or use the village smithy); a
+  wood → stone → copper → bronze → iron → steel → mithril → adamantite → infernal ladder of tools, weapons and armour.
+* **Life:** grass and flowers that bend away from you, autumn oaks, crimson oaks, pines and dead trees, butterflies,
+  fireflies and falling leaves, deer, rabbits, birds and fish; wolves, bears, spiders, bats, golems, scorpions,
+  bog lurkers, sharks and more by biome and depth.
+* **Bosses:** the Warden, the Mountain King, the dragon Ashvane, Vexhira the Broodmother, Old Mother Mire, the
+  Leviathan of the Drowned Spire, Cerberus and Hades.
+* **Weather and light:** physically based sky with clouds, sunrises and moon phases; clear, overcast, rain, storms
+  with lightning, fog, snow in the peaks, dust in the wastes, ash in the underworld; wet ground, puddles and snow
+  cover; volumetric light shafts on High/Ultra.
 
 ## Running
 
