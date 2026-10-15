@@ -31,6 +31,8 @@ static func create(kind: String, _data := {}) -> Entity:
 			return LoreStone.new()
 		"decor":
 			return LairDecor.new()
+		"station":
+			return Station.new()
 	if kind in ENEMY_KINDS:
 		return _from_script("res://entities/enemies/enemy.gd", kind)
 	if kind in BEAST_KINDS:

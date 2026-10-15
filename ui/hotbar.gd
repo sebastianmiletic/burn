@@ -19,11 +19,14 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_theme_constant_override("separation", 6)
 	alignment = BoxContainer.ALIGNMENT_CENTER
+	# Render every item icon in the background (a few per frame) so the
+	# inventory and crafting screens open with icons ready.
+	(func() -> void: ItemIcons.prewarm()).call_deferred()
 	for i in 3:
 		var s := ItemSlot.new()
 		s.index = i
 		s.key_hint = str(i + 1)
-		s.custom_minimum_size = Vector2(62, 62)
+		s.custom_minimum_size = Vector2(66, 66)
 		add_child(s)
 		_slots.append(s)
 	var gap := Control.new()
