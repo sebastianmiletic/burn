@@ -90,7 +90,9 @@ const MYCELIUM := 71
 const MAGMA_ROCK := 72
 ## Loose grey talus below mountain faces.
 const SCREE := 73
-const COUNT := 74
+## Fractured grey cliff rock of the high mountains.
+const ALPINE_ROCK := 74
+const COUNT := 75
 
 ## Block shape families used by the mesher.
 enum Shape { CUBE, NONE, SMALL }
@@ -173,6 +175,7 @@ const DATA := [
 	["Mycelium", Color(0.4, 0.35, 0.42), AsciiMaterialId.GROUND, 0.5, 0, "dirt", 0.0, true, true, false, Shape.CUBE],
 	["Magma rock", Color(0.9, 0.32, 0.08), AsciiMaterialId.EMISSIVE, 1.8, 2, "basalt", 1.4, true, true, false, Shape.CUBE],
 	["Scree", Color(0.5, 0.5, 0.49), AsciiMaterialId.GROUND, 0.6, 0, "gravel", 0.0, true, true, false, Shape.CUBE],
+	["Mountain rock", Color(0.52, 0.53, 0.55), AsciiMaterialId.SOLID, 1.5, 1, "stone", 0.0, true, true, false, Shape.CUBE],
 ]
 
 ## Blocks drawn as the smooth terrain surface.
@@ -180,7 +183,7 @@ const SMOOTH_BLOCKS := [STONE, DIRT, GRASS, SAND, SNOW, ICE, GRAVEL, COAL_ORE, I
 		OBSIDIAN, BEDROCK, BASALT, ASH, BONE, HELLSTONE, DRY_GRASS, CRYSTAL, DEEPSLATE, MUD, SOUL_SAND,
 		GRANITE, SANDSTONE, MARBLE, SLATE, CLAY, LIMESTONE, COPPER_ORE, TIN_ORE, SILVER_ORE, MITHRIL_ORE,
 		ADAMANTITE_ORE, RUBY_ORE, SAPPHIRE_ORE, AMETHYST, THATCH,
-		RED_ROCK, RED_SAND, SCORIA, PERMAFROST, UMBER_ROCK, FLOWSTONE, GEYSERITE, MYCELIUM, MAGMA_ROCK, SCREE]
+		RED_ROCK, RED_SAND, SCORIA, PERMAFROST, UMBER_ROCK, FLOWSTONE, GEYSERITE, MYCELIUM, MAGMA_ROCK, SCREE, ALPINE_ROCK]
 
 static var _solid := PackedByteArray()
 static var _opaque := PackedByteArray()

@@ -517,7 +517,8 @@ func _rows_v3(row: int) -> void:
 		# Coast: gentle beaches, but sheer cliffs along the fjords.
 		var soft := lerpf(65.0, 22.0, clampf(wc.a * 1.6, 0.0, 1.0))
 		var t := smoothstep(-soft, soft, s)
-		var fj := _fjord_mask(p)
+		# Inlets cut the land; out at sea they just merge with the open water.
+		var fj := _fjord_mask(p) * (1.0 - smoothstep(0.35, 0.95, t))
 		var ocean: Vector3 = BIOME_SHAPE[Biome.OCEAN]
 		base = lerpf(base, ocean.x, t)
 		var amp := lerpf(shape.y, ocean.y, t)
@@ -1000,8 +1001,8 @@ func horizon_color(x: int, z: int, h: float, slope: float) -> Color:
 			return Color(0.44, 0.42, 0.41)
 		Blocks.SNOW:
 			return Color(0.86, 0.88, 0.92)
-		Blocks.STONE, Blocks.GRANITE:
-			return Color(0.42, 0.41, 0.4) if top == Blocks.STONE else Color(0.5, 0.45, 0.43)
+		Blocks.STONE, Blocks.GRANITE, Blocks.ALPINE_ROCK:
+			return Color(0.42, 0.41, 0.4) if top == Blocks.STONE else Color(0.5, 0.49, 0.5)
 		Blocks.GRAVEL, Blocks.SCREE:
 			return Color(0.5, 0.49, 0.47)
 		Blocks.RED_ROCK, Blocks.UMBER_ROCK:
@@ -1655,20 +1656,20 @@ func _surface_v3(x: int, z: int, h: int, biome: int, road: int, s: float) -> int
 			if beach:
 				return Blocks.GRAVEL | (Blocks.GRAVEL << 8)
 			if s > 1.25:
-				return (Blocks.GRANITE if _vnoise(x, z, 7.0, 8) < 0.45 else Blocks.STONE) | (Blocks.STONE << 8)
+				return Blocks.ALPINE_ROCK | (Blocks.ALPINE_ROCK << 8)
 			if h > snowline and s < 0.6:
 				return Blocks.SNOW | ((Blocks.SNOW if h > snowline + 12 else Blocks.STONE) << 8)
 			if h > snowline:
 				# Too steep to hold a snowfield: wind-scoured rock (the weather still dusts it).
-				return (Blocks.STONE if n < 0.65 else Blocks.SCREE) | (Blocks.STONE << 8)
+				return (Blocks.ALPINE_ROCK if n < 0.65 else Blocks.SCREE) | (Blocks.ALPINE_ROCK << 8)
 			if s > 0.6 and h > snowline - 80.0:
 				# Scree fans and rock steps below the faces.
-				return (Blocks.SCREE if n < 0.6 else Blocks.STONE) | (Blocks.STONE << 8)
+				return (Blocks.SCREE if n < 0.6 else Blocks.ALPINE_ROCK) | (Blocks.ALPINE_ROCK << 8)
 			if h > snowline - 18.0:
 				# Fell-field: bare rock and scree between patches of alpine turf.
-				return (Blocks.STONE if n < 0.4 else (Blocks.SCREE if n < 0.6 else Blocks.GRASS)) | (Blocks.STONE << 8)
+				return (Blocks.ALPINE_ROCK if n < 0.4 else (Blocks.SCREE if n < 0.6 else Blocks.GRASS)) | (Blocks.ALPINE_ROCK << 8)
 			if s > 0.55:
-				return (Blocks.STONE if n < 0.5 else Blocks.SCREE) | (Blocks.STONE << 8)
+				return (Blocks.ALPINE_ROCK if n < 0.5 else Blocks.SCREE) | (Blocks.ALPINE_ROCK << 8)
 			return Blocks.GRASS | (Blocks.DIRT << 8)
 		Biome.CANYON:
 			if steep:
@@ -1735,7 +1736,7 @@ func _rock_v3(x: int, y: int, z: int, depth: int, group: int, st: int, o1: int, 
 			# Mostly grey gneiss-like stone with darker beds and the odd granite or marble body.
 			if pocket:
 				return Blocks.MARBLE if st > 205 else Blocks.GRANITE
-			return Blocks.SLATE if band == 1 and st < 110 else Blocks.STONE
+			return Blocks.SLATE if band == 1 and st < 110 else Blocks.ALPINE_ROCK
 		Rock.WASTES:
 			if depth < 14:
 				return Blocks.SANDSTONE if band < 2 else Blocks.BASALT
