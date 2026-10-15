@@ -127,7 +127,7 @@ var _cast_hand := 1.0
 
 # LOD.
 var _lod_count := 0
-var _lod_acc := 0.0
+var _hum_lod_acc := 0.0
 var _near := true
 var _cam_dist := 0.0
 
@@ -142,6 +142,8 @@ var _streaks: SpeedStreaks
 
 func _init(style_dict := {}) -> void:
 	style = style_dict
+	# Humanoids run their own distance/frustum LOD in _animate (with cloth and IK).
+	lod_enabled = false
 
 
 func st(key: String, default: Variant) -> Variant:
@@ -171,6 +173,20 @@ static func drive(model: Node, owner: Entity, vel: Vector3, on_ground := true, s
 	if not h.has_meta(&"step_wired"):
 		h.set_meta(&"step_wired", true)
 		h.footstep.connect(func(strength: float) -> void: _owner_step(owner, h, strength))
+		if not h.terrain_probe.is_valid():
+			h.terrain_probe = func(p: Vector3) -> float: return ground_probe(owner, p)
+
+
+## Smooth ground height under a world point for foot IK (NAN when unknown).
+static func ground_probe(owner: Node, p: Vector3) -> float:
+	var e := owner as Entity
+	if e == null or not is_instance_valid(e):
+		return NAN
+	var vw := e.voxels()
+	if vw == null:
+		return NAN
+	var g := vw.ground_below(p.x, p.y + 0.8, p.z, 1.6)
+	return g if absf(g) < 1e6 else NAN
 
 
 static func step_sound(block: int) -> String:
@@ -497,7 +513,7 @@ func _update_lod(delta: float) -> bool:
 		_near = on_screen and _cam_dist < 28.0
 	else:
 		_near = true
-	_lod_acc += delta
+	_hum_lod_acc += delta
 	_lod_count += 1
 	if _lod_count < interval:
 		return false
@@ -510,8 +526,8 @@ func _animate(delta: float) -> void:
 		_attach_mesh()
 	if not _update_lod(delta):
 		return
-	var dt := minf(_lod_acc, 0.25)
-	_lod_acc = 0.0
+	var dt := minf(_hum_lod_acc, 0.25)
+	_hum_lod_acc = 0.0
 	if prof.is_empty():
 		_locomotion(dt)
 		_pose(dt)

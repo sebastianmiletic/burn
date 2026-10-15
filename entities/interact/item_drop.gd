@@ -1,11 +1,11 @@
 class_name ItemDrop
 extends Entity
-## An item lying in the world: a small glowing token that bounces out,
+## An item lying in the world: the item's own model that bounces out,
 ## settles, bobs, and is picked up by walking over it.
 
 var item_id := ""
 var count := 1
-var _mesh: MeshInstance3D
+var _mesh: Node3D
 var _age := 0.0
 var _pickup_cooldown := 0.0
 
@@ -23,13 +23,14 @@ func on_spawned(data: Dictionary) -> void:
 	item_id = String(data.get("item", ""))
 	count = int(data.get("count", 1))
 	body.velocity = data.get("vel", Vector3.ZERO)
-	_mesh = MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3.ONE * (0.32 if ItemDB.category(item_id) != "key" else 0.45)
-	_mesh.mesh = box
+	_mesh = HeldItems.display(item_id)
+	if _mesh == null:
+		var box := MeshInstance3D.new()
+		box.mesh = BoxMesh.new()
+		(box.mesh as BoxMesh).size = Vector3.ONE * 0.3
+		box.material_override = MaterialLibrary.emissive(ItemDB.color(item_id), 1.6)
+		_mesh = box
 	var c := ItemDB.color(item_id)
-	_mesh.material_override = MaterialLibrary.emissive(c, 1.6 if ItemDB.category(item_id) != "key" else 4.0)
-	_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_mesh)
 	if ItemDB.category(item_id) == "key":
 		var l := OmniLight3D.new()

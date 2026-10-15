@@ -246,7 +246,7 @@ func _update_attack(name: String, t: float, delta: float) -> bool:
 			if _travel(float(_attack_data["angle"]), delta) or st > 3.0:
 				_stage("rise")
 				flying = true
-				Audio.play("splash", global_position, 6.0, 0.55)
+				Audio.play("splash_big", global_position, 6.0)
 		"rise":
 			_swim(RING - 2.5, 0.0, delta, true)
 			if st > 1.0:
@@ -297,7 +297,7 @@ func _act(name: String) -> void:
 			Audio.play("roar", global_position + Vector3(0, 8, 0), 2.0, 0.7)
 		"emerge", "summon":
 			_play("summon" if name == "summon" else "roar", 1.8)
-			Audio.play("roar_big", global_position + Vector3(0, 8, 0), 6.0, 0.55)
+			Audio.play("leviathan_roar", global_position + Vector3(0, 8, 0), 6.0)
 			_shake_near(global_position, 0.5)
 			if name == "summon":
 				_summon_drowned(2 if phase < 3 else 3)
@@ -309,7 +309,7 @@ func _act(name: String) -> void:
 			_tele("line:wave", start, dir, Vector3((PLATFORM + 8.0) * 2.0, 20.0, 0), 2.2, 40.0, "hit", 14.0,
 				func() -> void:
 					_shake_near(arena_center, 0.7)
-					Audio.play("splash", arena_center, 8.0, 0.5))
+					Audio.play("wave_crash", arena_center, 8.0))
 
 
 func _act_update(name: String, st: float) -> void:
@@ -353,7 +353,7 @@ func _tail_slam() -> void:
 	_tele("line:tail", tip, dir, Vector3(21.0, 7.0, 0), 1.4, 42.0, "hit", 10.0,
 		func() -> void:
 			_shake_near(tip + dir * 12.0, 0.8)
-			Audio.play("stomp", tip + dir * 12.0, 6.0, 0.5))
+			Audio.play("wave_crash", tip + dir * 12.0, 6.0))
 
 
 func _geysers(extra: int) -> void:
@@ -403,7 +403,7 @@ func _update_breach(stage: String, st: float, delta: float) -> bool:
 				_stage("leap")
 				flying = true
 				_play("roar", 1.3)
-				Audio.play("roar_big", global_position, 6.0, 0.6)
+				Audio.play("leviathan_roar", global_position, 6.0)
 		"leap":
 			var f := clampf(st / 1.3, 0.0, 1.0)
 			var a: Vector3 = _breach["start"]

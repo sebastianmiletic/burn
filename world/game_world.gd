@@ -76,6 +76,8 @@ func setup(info: Dictionary) -> void:
 	_log_time("overworld prepared", t0)
 	await _prepare_dimension(1, seed_value ^ 0x5eed, 0.45, 0.6)
 	_log_time("underworld prepared", t0)
+	if DisplayServer.get_name() != "headless":
+		CharBody.warmup([Models.player_style(0), Models.player_style(1)])
 	if ResourceLoader.exists(VoxelWorld.FLORA_PATH):
 		(load(VoxelWorld.FLORA_PATH) as Script).call("warmup")
 		_log_time("flora warmed up", t0)

@@ -120,7 +120,8 @@ func test_models_build_and_animate() -> void:
 			m.play(action)
 			for i in 6:
 				m._process(1.0 / 30.0)
-		var need := 1 if m is FlockModel else 6
+		# Humanoids are one smooth skinned body (plus gear); other creatures are built from parts.
+		var need := 1 if (m is FlockModel or m is HumanoidModel) else 6
 		check(_count_geometry(m) >= need, "%s has a detailed model (%d parts)" % [kind, _count_geometry(m)])
 		m.set_dead(true)
 		for i in 10:

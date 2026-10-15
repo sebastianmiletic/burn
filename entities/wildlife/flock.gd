@@ -86,7 +86,7 @@ func server_tick(delta: float) -> void:
 		yaw = atan2(-_flee.x, -_flee.z)
 		rotation.y = yaw
 		if is_bird():
-			Audio.play("wing_flap", global_position, -2.0, 1.8)
+			Audio.play("bird_flap", global_position, -2.0)
 		elif kind == "fish_school":
 			Audio.play("splash_small", global_position, -8.0)
 	_sync()

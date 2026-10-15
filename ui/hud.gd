@@ -154,7 +154,14 @@ var _last_ratio := 1.0
 
 ## True while any screen that wants the mouse is open (gameplay should not
 ## react to clicks or mouse look).
+func _crafting_screen() -> UiModal:
+	return get_tree().get_first_node_in_group(&"crafting_screen") as UiModal
+
+
 func any_screen_open() -> bool:
+	var craft := _crafting_screen()
+	if craft != null and craft.is_open:
+		return true
 	return inventory_screen.is_open or shop_screen.is_open or quest_log.is_open or map_screen.is_open \
 			or pause_menu.is_open or dialog.is_open or death_screen.is_open or victory_screen.is_open or chat.is_typing()
 
@@ -178,7 +185,11 @@ func _process(delta: float) -> void:
 
 
 func _close_screens(except: Control = null) -> void:
-	for s: UiModal in [inventory_screen, shop_screen, quest_log, map_screen]:
+	var screens: Array = [inventory_screen, shop_screen, quest_log, map_screen]
+	var craft := _crafting_screen()
+	if craft != null:
+		screens.append(craft)
+	for s: UiModal in screens:
 		if s != except and s.is_open:
 			s.close()
 

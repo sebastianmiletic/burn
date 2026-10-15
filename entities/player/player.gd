@@ -70,6 +70,8 @@ func _ready() -> void:
 	if model.has_signal("footstep"):
 		_model_steps = true
 		model.connect("footstep", _on_model_footstep)
+	if "terrain_probe" in model:
+		model.set("terrain_probe", func(p: Vector3) -> float: return HumanoidModel.ground_probe(self, p))
 	_light = OmniLight3D.new()
 	_light.position = Vector3(0.35, 1.5, 0.2)
 	_light.light_color = Color(1.0, 0.68, 0.36)
@@ -349,7 +351,7 @@ func _combat_update(delta: float) -> void:
 
 
 func _swing(info: Dictionary) -> void:
-	var speed := float(info.get("speed", 1.0))
+	var speed := float(inventory.attack_stats()["speed"])
 	_combo = (_combo + 1) % 2
 	_start_action("attack" if _combo == 0 else "attack2", 0.5 / speed)
 	var heavy := speed < 0.9 or float(info.get("damage", 3.0)) >= 14.0
@@ -358,8 +360,9 @@ func _swing(info: Dictionary) -> void:
 
 
 func _resolve_swing(info: Dictionary) -> void:
-	var reach := float(info.get("reach", 2.2))
-	var base := float(info.get("damage", 3.0))
+	var a := inventory.attack_stats()
+	var reach := float(a["reach"])
+	var base := float(a["damage"])
 	var forward := Vector3(sin(yaw), 0, cos(yaw))
 	var hits: Array = []
 	for e in world().entities_near(center(), reach + 1.5, dimension):
@@ -375,9 +378,9 @@ func _resolve_swing(info: Dictionary) -> void:
 		hits.append(e.net_id)
 	if hits.is_empty():
 		return
-	var crit := randf() < 0.1
+	var crit := randf() < float(a["crit"])
 	var amount := base * (1.0 + rank * 0.06) * (1.75 if crit else 1.0)
-	var kind := "crit" if crit else ("burn_hit" if info.has("burn") else "hit")
+	var kind := "crit" if crit else ("burn_hit" if float(a["burn"]) > 0.0 else "hit")
 	world().request_attack(hits, amount, kind)
 	Events.hit_stop.emit(0.05 if not crit else 0.09)
 	camera.add_trauma(0.12 if not crit else 0.25)
@@ -420,13 +423,14 @@ func _mining_update(delta: float, vw: VoxelWorld) -> void:
 			_mine_denied = pos
 			Events.notify.emit("%s cannot be broken." % Blocks.name_of(block), "warn")
 		return
-	if Blocks.tier(block) > int(info.get("mine_tier", 0)):
+	var break_time := ItemDB.mine_time(inventory.selected_item(), block)
+	if break_time < 0.0:
 		if _mine_denied != pos:
 			_mine_denied = pos
 			Events.notify.emit("%s is too hard for your %s." % [Blocks.name_of(block), ItemDB.display_name(inventory.selected_item())], "warn")
-			Audio.play("block_hit", Vector3(pos), -2.0, 0.7)
+			Audio.play("pick_stone", Vector3(pos), -2.0, 0.7)
 		return
-	var break_time := maxf(0.08, Blocks.hardness(block) / float(info.get("mine_speed", 1.0)))
+	break_time = maxf(0.08, break_time)
 	if _action == "":
 		_start_action("mine", 0.42)
 		var fam := Blocks.sound_family(block)
@@ -452,8 +456,22 @@ func _mining_update(delta: float, vw: VoxelWorld) -> void:
 func _use() -> void:
 	var id := inventory.selected_item()
 	var info := ItemDB.info(id)
-	if info.has("heal"):
+	if info.has("heal") or info.has("buff"):
 		use_item_slot(inventory.selected)
+		return
+	if info.has("place_station"):
+		var target := _block_target()
+		if target.is_empty():
+			return
+		var p := Vector3(target["pos"] + target["normal"]) + Vector3(0.5, 0.0, 0.5)
+		var vw := voxels()
+		var g := vw.ground_below(p.x, p.y + 1.0, p.z, 2.5)
+		if absf(g) < 1e6:
+			p.y = g
+		world().request_place_station(String(info["place_station"]), p, yaw + PI, dimension)
+		inventory.remove_from_slot(inventory.selected, 1)
+		Audio.play("block_place", p)
+		_start_action("interact", 0.25)
 		return
 	if info.has("place_block"):
 		var target := _block_target()
@@ -516,22 +534,24 @@ func _dodge() -> void:
 func _drink_best_potion() -> void:
 	if not _cooldown_ready("potion"):
 		return
-	for id: String in ["potion_greater", "potion_health", "bread"]:
-		if inventory.has(id):
-			if health >= max_health:
-				Events.notify.emit("You are already at full health.", "info")
-				return
-			inventory.remove(id, 1)
-			_drink(id)
+	var id := inventory.best_heal_item()
+	if id != "":
+		if health >= max_health:
+			Events.notify.emit("You are already at full health.", "info")
 			return
+		inventory.remove(id, 1)
+		_drink(id)
+		return
 	Events.notify.emit("No potions.", "warn")
 
 
 func _drink(id: String) -> void:
 	_trigger_cooldown("potion", 2.0)
 	_start_action("drink", 0.6)
-	heal_local(float(ItemDB.info(id).get("heal", 0.0)))
-	Events.damage_number.emit(center() + Vector3(0, 0.6, 0), int(ItemDB.info(id).get("heal", 0.0)), false, "heal")
+	var h := inventory.apply_consumable(id)
+	if h > 0.0:
+		heal_local(h)
+		Events.damage_number.emit(center() + Vector3(0, 0.6, 0), int(h), false, "heal")
 	Audio.play("potion", global_position)
 
 
@@ -613,7 +633,7 @@ func use_item_slot(i: int) -> void:
 	if s.is_empty():
 		return
 	var info := ItemDB.info(s["id"])
-	if info.has("heal"):
+	if info.has("heal") or info.has("buff"):
 		if not _cooldown_ready("potion"):
 			return
 		inventory.remove_from_slot(i, 1)
@@ -632,18 +652,23 @@ func drop_slot(i: int) -> void:
 	world().drop_item(global_position + Vector3(sin(yaw), 1.2, cos(yaw)), s["id"], int(s["count"]), dimension)
 
 
+## Station kinds within reach; the village blacksmith counts as a smithy.
+func nearby_station_kinds() -> Array:
+	var out: Array = []
+	for e in world().entities_near(global_position, 4.0, dimension):
+		if e is Station:
+			out.append((e as Station).station_kind)
+		elif e is Npc and String(e.get("role")) == "blacksmith":
+			out.append("smithy")
+	return out
+
+
 func craft(recipe_id: String) -> bool:
-	var r: Dictionary = ItemDB.RECIPES.get(recipe_id, {})
-	if r.is_empty() or inventory.gold < int(r.get("gold", 0)):
+	var res := inventory.craft(recipe_id, nearby_station_kinds())
+	if not bool(res.get("ok", false)):
+		Events.notify.emit(String(res.get("reason", "")), "warn")
 		return false
-	var inputs: Dictionary = r["inputs"]
-	for item: String in inputs:
-		if not inventory.has(item, int(inputs[item])):
-			return false
-	for item: String in inputs:
-		inventory.remove(item, int(inputs[item]))
-	inventory.gold -= int(r.get("gold", 0))
-	give_item(recipe_id, int(r.get("count", 1)))
+	Events.item_picked_up.emit(String(res["item"]), int(res["count"]))
 	Audio.play_ui("levelup")
 	return true
 
@@ -684,6 +709,7 @@ func receive_damage(amount: float, from: Vector3, kind: String, source_name: Str
 	var now := Time.get_ticks_msec() / 1000.0
 	if now < invulnerable_until:
 		return
+	amount *= inventory.damage_taken_multiplier(kind)
 	health = maxf(0.0, health - amount)
 	_last_damage_time = now
 	Events.damage_number.emit(center() + Vector3(0, 0.7, 0), int(round(amount)), false, "player")
