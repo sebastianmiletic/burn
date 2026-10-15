@@ -23,6 +23,9 @@ uniform int pattern = 0;
 uniform float pattern_scale = 6.0;
 // Skinned meshes carry their rest-pose surface coordinates (metres) in UV.
 uniform bool use_uv = false;
+// Skinned MobRig bodies carry their rest-pose position in CUSTOM0.xyz (and a
+// baked cavity term in CUSTOM0.w): 3D patterns stay glued to moving limbs.
+uniform bool use_rest = false;
 uniform float bump : hint_range(0.0, 2.0) = 0.6;
 // Bump detail fades out by this distance (metres); big creatures keep it further.
 uniform float bump_distance = 45.0;
@@ -62,8 +65,11 @@ varying vec3 v_local;
 varying vec3 v_world;
 varying vec3 v_wnormal;
 
+varying float v_cavity;
+
 void vertex() {
-	v_local = VERTEX;
+	v_local = use_rest ? CUSTOM0.xyz : VERTEX;
+	v_cavity = use_rest ? 1.0 - CUSTOM0.w : 1.0;
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_wnormal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
@@ -274,6 +280,8 @@ void fragment() {
 	col *= 1.0 - wet_total * 0.25;
 
 	// A little self-illumination keeps creatures readable as glyphs when back-lit.
+	col *= mix(0.4, 1.0, v_cavity);
+	AO = v_cavity;
 	emit += col * 0.12;
 	ALBEDO = mix(col, flash_color, hit_flash);
 	EMISSION = emit + flash_color * hit_flash * 1.6;
