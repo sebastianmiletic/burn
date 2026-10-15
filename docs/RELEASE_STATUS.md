@@ -1,4 +1,16 @@
-# 0.4.0 preview: verification and limitations
+# 0.4.1 preview: verification and limitations
+
+Published: [v0.4.1 downloads](https://github.com/sebastianmiletic/burn/releases/tag/v0.4.1).
+The GitHub Linux runner passed unit, gameplay (including regression seed 3146316403),
+save/continue, transport and simulated-loss multiplayer tests before exporting all three platforms.
+Downloaded Windows, Linux and macOS archives match the published SHA-256 checksums.
+The actual published macOS executable passed a headless menu-startup smoke test on Apple Silicon.
+These checks do not establish native graphical Windows/Linux compatibility or updater correctness.
+
+The initial v0.4.0 build was blocked by integration failures; no downloadable release was published.
+v0.4.1 fixes loading-time fall damage and masonry spawn correction, and removes frame-rate
+dependence from the reward integration test. Source main now matches the published version number;
+the release workflow already stamped 0.4.1 into its exported binaries.
 
 This is an expanded playable prototype, **not completion of every requested feature**. Do not describe
 it as a finished, hyperrealistic, universally 60-FPS game.

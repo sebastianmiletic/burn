@@ -15,9 +15,9 @@ Preview releases are listed on that page, not necessarily under `/releases/lates
 
 | System | Archive | Launch |
 | --- | --- | --- |
-| Windows 10/11, x86_64 | `Burn-0.4.0-Windows.zip` | Extract the entire archive, then run `Burn.exe`. |
-| macOS, Apple Silicon or Intel | `Burn-0.4.0-macOS.zip` | Extract, move `Burn.app` to Applications, then open it. |
-| Linux, x86_64 | `Burn-0.4.0-Linux.tar.gz` | Extract, then run `chmod +x Burn.x86_64 && ./Burn.x86_64`. |
+| Windows 10/11, x86_64 | `Burn-0.4.1-Windows.zip` | Extract the entire archive, then run `Burn.exe`. |
+| macOS, Apple Silicon or Intel | `Burn-0.4.1-macOS.zip` | Extract, move `Burn.app` to Applications, then open it. |
+| Linux, x86_64 | `Burn-0.4.1-Linux.tar.gz` | Extract, then run `chmod +x Burn.x86_64 && ./Burn.x86_64`. |
 
 The builds are not commercially signed/notarized. Review the source and verify the archive against
 `SHA256SUMS.txt` before accepting an OS unknown-publisher warning. On macOS, use the OS's per-app
