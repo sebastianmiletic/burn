@@ -355,20 +355,21 @@ func _update_lights(delta: float, force: bool) -> void:
 	environment.fog_sun_scatter = 0.18 * (1.0 - overcast) * dayf * surface_light
 	var morning := _mist_amount()
 	var mist := morning + wet * (1.0 - rain) * 0.5
-	var surface_density := (0.0016 + fog * 0.028 + rain * 0.006 + storm * 0.004 + dust * 0.012 + mist * 0.003) * _fog_mult
-	# Thin, cold air high in the mountains: the distance hazes and softens.
+	var surface_density := (0.0013 + fog * 0.028 + rain * 0.006 + storm * 0.004 + dust * 0.012 + mist * 0.003) * _fog_mult
+	# High in the mountains a little cold haze hangs between the ranges (kept
+	# light so the view across the peaks stays the reward for the climb).
 	var alt := 0.0
 	var gw := GameWorld.instance
 	if gw != null and gw.weather != null:
 		alt = gw.weather.altitude
-	surface_density += alt * 0.0045 * _fog_mult
+	surface_density += alt * 0.0016 * _fog_mult
 	var cave_density := 0.016 * (0.6 + 0.4 * _fog_mult)
 	environment.fog_density = lerpf(surface_density, cave_density, u)
 	camera_attributes.dof_blur_far_enabled = alt > 0.03 and u < 0.5 and bool(Settings.get_value("graphics", "altitude_blur"))
 	if alt > 0.03:
-		camera_attributes.dof_blur_far_distance = lerpf(420.0, 110.0, alt)
-		camera_attributes.dof_blur_far_transition = lerpf(200.0, 90.0, alt)
-		camera_attributes.dof_blur_amount = 0.04 + alt * 0.1
+		camera_attributes.dof_blur_far_distance = lerpf(700.0, 260.0, alt)
+		camera_attributes.dof_blur_far_transition = lerpf(400.0, 200.0, alt)
+		camera_attributes.dof_blur_amount = 0.02 + alt * 0.05
 	environment.fog_aerial_perspective = 0.6 * (1.0 - fog * 0.5) * (1.0 - u)
 	environment.fog_sky_affect = lerpf(0.12 + fog * 0.6 + rain * 0.2, 1.0, u)
 	# Ground mist that pools in the valleys at dawn and after rain.
@@ -394,6 +395,9 @@ func _update_lights(delta: float, force: bool) -> void:
 	# Bounce light from the sky probe (SDFGI) is irrelevant under rock; torch
 	# bounce still comes through SDFGI's own light injection.
 	environment.volumetric_fog_gi_inject = lerpf(1.0, 0.6, u)
+	# Eyes open up underground; only genuinely hot things (lava, torches, the
+	# brightest crystals) should bloom, not every lit wall.
+	environment.glow_hdr_threshold = lerpf(1.0, 1.35, u)
 	# Horizon haze for DistantLand (its own aerial perspective).
 	var sky_hz := (_horizon * (1.0 - nightf) + Vector3(0.008, 0.01, 0.016) * nightf) * sky_dim
 	var sky_hz_sun := (_horizon_sun.limit_length(1.5) * (1.0 - nightf) + Vector3(0.008, 0.01, 0.016) * nightf) * sky_dim
@@ -407,7 +411,7 @@ func _update_lights(delta: float, force: bool) -> void:
 		"fog_aerial": environment.fog_aerial_perspective,
 		"fog_dens": environment.fog_density,
 		# Far haze: clear-day air thins it; weather thickens it as much as the near fog.
-		"far_dens": 0.00034 + maxf(environment.fog_density - 0.0016 * _fog_mult, 0.0) * 0.9,
+		"far_dens": 0.00022 + maxf(environment.fog_density - 0.0013 * _fog_mult, 0.0) * 0.9,
 		"sun_scatter": environment.fog_sun_scatter,
 		"sun_dir_w": _sun_dir,
 		"sun_col": Vector3(sun.light_color.r, sun.light_color.g, sun.light_color.b) * sun.light_energy,
@@ -505,5 +509,6 @@ func _hell_environment() -> void:
 	environment.volumetric_fog_ambient_inject = lerpf(0.06, 0.25, u)
 	environment.volumetric_fog_gi_inject = 1.0
 	environment.volumetric_fog_density = lerpf(0.02, 0.012, u) * _fog_mult
+	environment.glow_hdr_threshold = lerpf(1.0, 1.25, u)
 	if _raw:
 		environment.tonemap_exposure = 1.35 * lerpf(1.0, 1.2, u)

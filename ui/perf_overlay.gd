@@ -52,6 +52,7 @@ func _process(delta: float) -> void:
 			[["primitives ", t], ["%d" % prims, a]],
 			[["nodes      ", t], ["%d" % nodes, a]],
 			[["resolution ", t], ["%dx%d" % [size.x, size.y], a]],
+			[["3d view    ", t], [_view_text(), a]],
 			[["ping       ", t], ["offline", TerminalPanel.DIM]],
 			[["server tick", t], [" offline", TerminalPanel.DIM]],
 		]
@@ -63,3 +64,15 @@ func _process(delta: float) -> void:
 
 func fps() -> float:
 	return _fps
+
+
+## The 3D view's render resolution, upscaler and adaptive scale.
+func _view_text() -> String:
+	var w := GameWorld.instance
+	if w == null or w.view == null or w.view.viewport == null:
+		return "-"
+	var view := w.view
+	var inner: Vector2i = view.internal_size()
+	var mode: String = ["bilinear", "FSR", "FSR 2", "MetalFX", "MetalFX temporal", "nearest"][clampi(view.viewport.scaling_3d_mode, 0, 5)]
+	var state: Vector2 = view.adaptive_state()
+	return "%dx%d %s x%.2f" % [inner.x, inner.y, mode, state.x]

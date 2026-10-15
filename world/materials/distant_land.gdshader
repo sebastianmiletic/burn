@@ -6,6 +6,7 @@ render_mode cull_back;
 //   CUSTOM1         tree canopy colour (rgb) and cover (a)
 //   UV              (mountain snow allowed, sea)
 //   UV2             horizon tangents towards the rising / setting sun
+//   CUSTOM2         softened height and normal the far fine LOD morphs to
 // Lighting is custom so ridges can shadow valleys at low sun; the fog is
 // custom so far ranges thin into the sky instead of a uniform wall.
 
@@ -46,10 +47,17 @@ varying vec4 v_w1;
 varying vec4 v_canopy;
 varying vec2 v_flags;
 varying vec2 v_hz;
+varying float v_far;
 
 void vertex() {
 	vec3 world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	float d = distance(world.xz, focus.xz);
+	// Geomorph: exact terrain near the streamed rim, the softened massif shape
+	// (CUSTOM2: height, normal) further out, continuously.
+	float morph = smoothstep(300.0, 900.0, d) * 0.95;
+	v_far = morph;
+	VERTEX.y = mix(VERTEX.y, CUSTOM2.x, morph);
+	NORMAL = normalize(mix(NORMAL, CUSTOM2.yzw, morph));
 	// Around the rim of the streamed field: sink under the detailed terrain.
 	float sink = 1.0 - smoothstep(near_end - 16.0, near_end, d);
 	// Beyond it, forests gain the bulk of their crowns.
@@ -111,6 +119,10 @@ void fragment() {
 	float up = smoothstep(0.55, 0.9, nw.y);
 	float line = smoothstep(64.6, 66.6, p.y + (macro - 0.5) * 3.0);
 	float snow = v_flags.x * line * (1.0 - cliff * 0.8);
+	// Seen from afar the high summits carry snowcaps on all but sheer faces
+	// (the real slopes there are broken by ledges the 8 m mesh cannot show).
+	float cap = v_flags.x * smoothstep(95.0, 150.0, p.y + (macro - 0.5) * 20.0) * smoothstep(0.32, 0.6, nw.y) * v_far;
+	snow = max(snow, cap);
 	snow = max(snow, clamp(snow_cover * 1.4 - (1.0 - up), 0.0, 1.0));
 	snow *= 1.0 - sea;
 	vec3 snow_alb = layer_top(snow_code, p.xz * 0.5) * 0.92;

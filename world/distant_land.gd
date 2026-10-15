@@ -76,12 +76,13 @@ static func arrays_for(world_gen: WorldGen) -> Array:
 			peaks[i] = pk[x]
 			canopy[i] = cp[x]
 	var hz := _horizons(heights, n)
+	var soft := _soften(heights, water, n)
 	var per := TILE / FINE
 	var tn := ceili(float(n - 1) / per)
 	var tiles := []
 	tiles.resize(tn * tn)
 	var tile_task := WorkerThreadPool.add_group_task(func(t: int) -> void:
-		tiles[t] = _tile(heights, water, cls, peaks, canopy, hz, n, (t % tn) * per, (t / tn) * per, per), tn * tn, -1, true, "distant land tiles")
+		tiles[t] = _tile(heights, soft, water, cls, peaks, canopy, hz, n, (t % tn) * per, (t / tn) * per, per), tn * tn, -1, true, "distant land tiles")
 	WorkerThreadPool.wait_for_group_task_completion(tile_task)
 	return [tiles, _sea_skirt(float(world_gen.size))]
 
@@ -135,7 +136,7 @@ static func _sample_row(world_gen: WorldGen, z: int, n: int) -> Array:
 
 
 ## [fine arrays, coarse arrays, aabb] for the tile whose corner is fine cell (x0, z0).
-static func _tile(heights: PackedFloat32Array, water: PackedByteArray, cls: PackedByteArray,
+static func _tile(heights: PackedFloat32Array, soft: PackedFloat32Array, water: PackedByteArray, cls: PackedByteArray,
 		peaks: PackedFloat32Array, canopy: PackedColorArray, hz: PackedVector2Array, n: int, x0: int, z0: int, per: int) -> Array:
 	var x1 := mini(x0 + per, n - 1)
 	var z1 := mini(z0 + per, n - 1)
@@ -152,9 +153,52 @@ static func _tile(heights: PackedFloat32Array, water: PackedByteArray, cls: Pack
 	if all_water:
 		var flat := _water_quad(Vector2(x0 * FINE, z0 * FINE), Vector2(x1 * FINE, z1 * FINE))
 		return [flat, flat, AABB(Vector3(x0 * FINE, WATER_Y - 1, z0 * FINE), Vector3((x1 - x0) * FINE, 2, (z1 - z0) * FINE))]
-	var fine := _grid_arrays(heights, water, cls, peaks, canopy, hz, n, x0, z0, x1, z1, 1)
-	var coarse := _grid_arrays(heights, water, cls, peaks, canopy, hz, n, x0, z0, x1, z1, COARSE / FINE)
+	var fine := _grid_arrays(heights, soft, water, cls, peaks, canopy, hz, n, x0, z0, x1, z1, 1)
+	var coarse := _grid_arrays(heights, soft, water, cls, peaks, canopy, hz, n, x0, z0, x1, z1, COARSE / FINE)
 	return [fine, coarse, AABB(Vector3(x0 * FINE, lo - SKIRT, z0 * FINE), Vector3((x1 - x0) * FINE, hi_y - lo + SKIRT + 12.0, (z1 - z0) * FINE))]
+
+
+## The terrain with its finest ridged detail (spires narrower than ~60 m)
+## smoothed away but the massifs kept, peaks max-biased so they don't sag.
+## Distant fine tiles morph towards it, so far ranges read as mountains, not
+## a comb of needles; near the streamed rim they keep the exact shape.
+static func _soften(heights: PackedFloat32Array, water: PackedByteArray, n: int) -> PackedFloat32Array:
+	const R := 4
+	var rows: Array = []
+	rows.resize(n)
+	var pass1 := WorkerThreadPool.add_group_task(func(z: int) -> void:
+		var row := PackedFloat32Array()
+		row.resize(n)
+		for x in n:
+			var sum := 0.0
+			for d in range(-R, R + 1):
+				sum += heights[clampi(x + d, 0, n - 1) + z * n] * float(R + 1 - absi(d))
+			row[x] = sum / float((R + 1) * (R + 1))
+		rows[z] = row, n, -1, true, "distant land soften x")
+	WorkerThreadPool.wait_for_group_task_completion(pass1)
+	var cols: Array = []
+	cols.resize(n)
+	var pass2 := WorkerThreadPool.add_group_task(func(x: int) -> void:
+		var col := PackedFloat32Array()
+		col.resize(n)
+		for z in n:
+			var sum := 0.0
+			var top := -1e9
+			for d in range(-R, R + 1):
+				var zz := clampi(z + d, 0, n - 1)
+				sum += (rows[zz] as PackedFloat32Array)[x] * float(R + 1 - absi(d))
+				top = maxf(top, heights[x + zz * n])
+			var avg := sum / float((R + 1) * (R + 1))
+			col[z] = WATER_Y if water[x + z * n] == 1 else lerpf(avg, maxf(avg, top), 0.3)
+		cols[x] = col, n, -1, true, "distant land soften z")
+	WorkerThreadPool.wait_for_group_task_completion(pass2)
+	var out := PackedFloat32Array()
+	out.resize(n * n)
+	for x in n:
+		var col: PackedFloat32Array = cols[x]
+		for z in n:
+			out[x + z * n] = col[z]
+	return out
 
 
 ## Tree cover (rgb canopy colour, a coverage) from the same chances the
@@ -225,7 +269,7 @@ static func _horizons(heights: PackedFloat32Array, n: int) -> PackedVector2Array
 
 
 ## Mesh arrays for one tile at `step` fine cells per vertex, with skirts.
-static func _grid_arrays(heights: PackedFloat32Array, water: PackedByteArray, cls: PackedByteArray,
+static func _grid_arrays(heights: PackedFloat32Array, soft: PackedFloat32Array, water: PackedByteArray, cls: PackedByteArray,
 		peaks: PackedFloat32Array, canopy: PackedColorArray, hz: PackedVector2Array, n: int,
 		x0: int, z0: int, x1: int, z1: int, step: int) -> Array:
 	var cols := (x1 - x0) / step + 1
@@ -235,6 +279,7 @@ static func _grid_arrays(heights: PackedFloat32Array, water: PackedByteArray, cl
 	var colors := PackedColorArray()
 	var custom0 := PackedFloat32Array()
 	var custom1 := PackedFloat32Array()
+	var custom2 := PackedFloat32Array()
 	var uv := PackedVector2Array()
 	var uv2 := PackedVector2Array()
 	var idx := PackedInt32Array()
@@ -259,6 +304,16 @@ static func _grid_arrays(heights: PackedFloat32Array, water: PackedByteArray, cl
 			var nrm := Vector3(hl - hr, 2.0 * step * FINE, hd - hu).normalized()
 			_push_vertex(Vector3(x * FINE, h, z * FINE), nrm, x, z, n, water, cls, peaks, canopy, hz,
 					verts, norms, colors, custom0, custom1, uv, uv2)
+			# Far shape (geomorph target): the softened field on the fine LOD.
+			if step == 1:
+				var sl := soft[maxi(x - 1, 0) + z * n]
+				var sr := soft[mini(x + 1, n - 1) + z * n]
+				var sd := soft[x + maxi(z - 1, 0) * n]
+				var su := soft[x + mini(z + 1, n - 1) * n]
+				var sn := Vector3(sl - sr, 2.0 * FINE, sd - su).normalized()
+				custom2.append_array([soft[i], sn.x, sn.y, sn.z])
+			else:
+				custom2.append_array([h, nrm.x, nrm.y, nrm.z])
 	for r in rows - 1:
 		for c in cols - 1:
 			var a := c + r * cols
@@ -282,6 +337,7 @@ static func _grid_arrays(heights: PackedFloat32Array, water: PackedByteArray, cl
 			for q in 4:
 				custom0.append(custom0[src * 4 + q])
 				custom1.append(custom1[src * 4 + q])
+			custom2.append_array([custom2[src * 4] - SKIRT, custom2[src * 4 + 1], custom2[src * 4 + 2], custom2[src * 4 + 3]])
 			uv.append(uv[src])
 			uv2.append(uv2[src])
 		for k in ring.size() - 1:
@@ -298,6 +354,7 @@ static func _grid_arrays(heights: PackedFloat32Array, water: PackedByteArray, cl
 	out[Mesh.ARRAY_COLOR] = colors
 	out[Mesh.ARRAY_CUSTOM0] = custom0
 	out[Mesh.ARRAY_CUSTOM1] = custom1
+	out[Mesh.ARRAY_CUSTOM2] = custom2
 	out[Mesh.ARRAY_TEX_UV] = uv
 	out[Mesh.ARRAY_TEX_UV2] = uv2
 	out[Mesh.ARRAY_INDEX] = idx
@@ -410,6 +467,10 @@ static func _flat_arrays(verts: PackedVector3Array, idx: PackedInt32Array) -> Ar
 	out[Mesh.ARRAY_COLOR] = colors
 	out[Mesh.ARRAY_CUSTOM0] = custom
 	out[Mesh.ARRAY_CUSTOM1] = custom.duplicate()
+	var c2 := PackedFloat32Array()
+	for v in verts:
+		c2.append_array([v.y, 0.0, 1.0, 0.0])
+	out[Mesh.ARRAY_CUSTOM2] = c2
 	out[Mesh.ARRAY_TEX_UV] = uv
 	out[Mesh.ARRAY_TEX_UV2] = uv2
 	out[Mesh.ARRAY_INDEX] = idx
@@ -426,7 +487,8 @@ func setup(world_gen: WorldGen, data: Array) -> void:
 		codes.append(c)
 	_mat.set_shader_parameter(&"class_codes", codes)
 	_mat.set_shader_parameter(&"snow_code", Blocks.SNOW)
-	var flags := (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) | (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT)
+	var flags := (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT) | (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT) \
+			| (Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM2_SHIFT)
 	if data.size() < 2:
 		return
 	for t: Array in data[0]:
