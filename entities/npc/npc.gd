@@ -76,26 +76,48 @@ func server_tick(delta: float) -> void:
 		var to := nearest.global_position - global_position
 		yaw = lerp_angle(yaw, atan2(to.x, to.z), 1.0 - exp(-delta * 6.0))
 	elif role != "blacksmith" and role != "merchant":
-		_wait -= delta
+		_wait = maxf(0.0, _wait - delta)
 		var to := _wander_target - global_position
 		to.y = 0
-		if to.length() < 0.6 or _wait > 8.0:
-			if _wait <= 0.0:
-				var a := randf() * TAU
-				_wander_target = home + Vector3(cos(a), 0, sin(a)) * randf_range(1.0, 7.0)
+		if _wait <= 0.0:
+			if to.length() < 0.6:
+				_choose_walk_target(vw)
 				_wait = randf_range(2.0, 6.0)
-		else:
-			want = to.normalized() * 1.4
-			yaw = lerp_angle(yaw, atan2(to.x, to.z), 1.0 - exp(-delta * 5.0))
+			else:
+				want = to.normalized() * 1.4
+				yaw = lerp_angle(yaw, atan2(to.x, to.z), 1.0 - exp(-delta * 5.0))
 	body.velocity.x = want.x
 	body.velocity.z = want.z
 	body.step(self, vw, delta)
-	if body.hit_wall and body.on_floor:
-		body.velocity.y = 7.5
+	if body.hit_wall:
+		# People reconsider blocked routes instead of repeatedly jumping at walls.
+		_choose_walk_target(vw)
+		_wait = randf_range(0.8, 2.0)
 	if global_position.distance_to(home) > 20.0:
-		global_position = home
+		_wander_target = home
 	rotation.y = yaw
 	_speed = Vector2(body.velocity.x, body.velocity.z).length()
+
+
+func _choose_walk_target(vw: VoxelWorld) -> void:
+	for attempt in 8:
+		var a := randf() * TAU
+		var target := home + Vector3(cos(a), 0, sin(a)) * randf_range(1.0, 7.0)
+		if not vw.is_area_loaded(target):
+			continue
+		var floor_y := vw.ground_below(target.x, home.y + 2.0, target.z, 5.0)
+		if not is_finite(floor_y) or absf(floor_y - home.y) > 2.0:
+			continue
+		target.y = floor_y + 0.05
+		if body._overlaps(vw, target):
+			continue
+		var from := global_position + Vector3.UP
+		var route := target + Vector3.UP - from
+		if not vw.raycast(from, route.normalized(), route.length()).is_empty():
+			continue
+		_wander_target = target
+		return
+	_wander_target = global_position
 
 
 func _process(delta: float) -> void:

@@ -19,6 +19,7 @@ var gravity := 26.0
 var on_floor := false
 var in_liquid := 0         ## block id of the liquid around the body's centre, 0 = none
 var hit_wall := false
+var climb_step := MAX_STEP
 var can_step := true       ## walk up one-block ledges without jumping
 var max_fall_speed := 40.0
 var fly := false           ## flying creatures ignore gravity
@@ -97,7 +98,7 @@ func _smooth_vertical(world: VoxelWorld, pos: Vector3, dy: float) -> Vector3:
 			pos.y -= dy
 			velocity.y = 0.0
 		return pos
-	var reach := MAX_STEP if not fly else 0.05
+	var reach := climb_step if not fly else 0.05
 	var g := _ground(world, pos, pos.y + reach, reach + 0.02)
 	if g == INF:
 		# Buried (a block placed on us, terrain streamed in): climb out.
@@ -138,7 +139,7 @@ func _ground(world: VoxelWorld, pos: Vector3, from_y: float, depth: float) -> fl
 ## Smooth ground intruding into the body above step height (a wall or overhang).
 func _smooth_blocked(world: VoxelWorld, pos: Vector3) -> bool:
 	var h := half_extents
-	var heights := [MAX_STEP + 0.02, h.y * 2.0 - 0.1]
+	var heights := [climb_step + 0.02, h.y * 2.0 - 0.1]
 	if h.y * 2.0 > 2.4:
 		heights.append(h.y)
 	for y: float in heights:

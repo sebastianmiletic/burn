@@ -262,6 +262,13 @@ func _build() -> void:
 	# The first world loads alone and small, so the first image comes quickly.
 	_worlds.append(_make_world("MenuWorldA", FIRST_RADIUS))
 	_worlds[0].focus = _focus_of(_shots[0])
+	# The modelled villages and sites, streamed around the camera.
+	var arch := Architecture.new()
+	arch.name = "Architecture"
+	arch.gen_override = _gen
+	arch.sky_override = _sky
+	arch.focus_override = func() -> Vector3: return _cam.global_position if _cam != null else Vector3.ZERO
+	add_child(arch)
 	_active = 0
 	_load_started_ms = Time.get_ticks_msec()
 	_phase = Phase.LOADING

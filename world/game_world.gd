@@ -286,6 +286,8 @@ func _activate_dimension(dim: int) -> void:
 # --- Main loop -------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if replicator != null:
+		replicator.check_party_wipe(delta)
 	if local_player == null:
 		return
 	play_time += delta
@@ -743,6 +745,26 @@ func fell_tree_fx(root: Vector3i, trunk: int, dim: int, dir: Vector3) -> void:
 # --- Dimensions --------------------------------------------------------------------------
 
 ## Local player moves to another dimension (portal).
+## Solo inspection only: no progression unlocks or quest travel events.
+func creative_teleport(location_id: StringName) -> bool:
+	if Net.is_online() or local_player == null or not local_player.creative:
+		return false
+	var loc := location_by_id(location_id)
+	if loc == null:
+		return false
+	var target := loc.center + Vector3(0, 3, 0)
+	for s in loc.spawns_of("boss"):
+		target = (s["pos"] as Vector3) + Vector3(0, 2, 8)
+		break
+	local_player.dimension = loc.dimension
+	_activate_dimension(loc.dimension)
+	local_player.global_position = target
+	local_player.body.velocity = Vector3.ZERO
+	world_for(loc.dimension).focus = target
+	replicator.notify_dimension(loc.dimension)
+	return true
+
+
 func travel(to_dim: int) -> void:
 	if not worlds.has(to_dim) or (to_dim == 2 and not ryft_unlocked):
 		return

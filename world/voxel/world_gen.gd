@@ -1888,6 +1888,10 @@ func _place_trees(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, det
 			var trunk := Blocks.OAK_TRUNK
 			var trunk_h := 4
 			match biome:
+				Biome.FOREST:
+					var region := forest_region(rx, rz)
+					trunk = [Blocks.OAK_TRUNK, Blocks.PINE_TRUNK, Blocks.CRIMSON_TRUNK, Blocks.OAK_TRUNK][region]
+					trunk_h = [4, 6, 4, 6][region]
 				Biome.PEAKS:
 					trunk = Blocks.PINE_TRUNK
 					trunk_h = 5

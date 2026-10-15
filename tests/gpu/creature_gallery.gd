@@ -22,6 +22,35 @@ const SHOTS := [
 	["humanoids", Vector3(1200, 2.6, 9.5), Vector3(1200, 1.4, -2), [["troll_a", "slam"], ["hag", "cast"], ["drowned", "attack"]], 0.5],
 	["lair", Vector3(1350, 4.0, 12), Vector3(1350, 1.5, -6), [], 0.5],
 	["flocks", Vector3(1500, 3.0, 9), Vector3(1500, 1.0, 0), [], 0.4],
+	# The beast bosses (look targets "model.node" follow a part of the model).
+	["dragon_idle", Vector3(1716, 6.5, -3), Vector3(1700, 4.5, -30), [], 0.6],
+	["dragon_side", Vector3(1731, 5.0, -24), Vector3(1700, 4.0, -29), [], 0.3],
+	["dragon_bite", Vector3(1712, 3.0, -6), "dragon.head", [["dragon", "bite"]], 0.7],
+	["dragon_claw", Vector3(1716, 3.0, -8), Vector3(1700, 3.0, -30), [["dragon", "claw"]], 0.6],
+	["dragon_tail", Vector3(1680, 5.0, -4), Vector3(1700, 3.0, -30), [["dragon", "tail"]], 0.8],
+	["dragon_gust", Vector3(1712, 4.0, 2), Vector3(1700, 7.0, -30), [["dragon", "gust"]], 0.72],
+	["dragon_roar", Vector3(1708, 3.0, -6), Vector3(1700, 7.0, -30), [["dragon", "roar"]], 0.9],
+	["dragon_breath", Vector3(1734, 5.0, -18), Vector3(1700, 3.0, -22), [["dragon", "breath"]], 1.9],
+	["dragon_breath_late", Vector3(1726, 3.0, -8), Vector3(1700, 3.0, -26), [["dragon", "breath"]], 2.6],
+	["dragon_pov", Vector3(1694, 1.6, -13), "dragon.head", [], 0.3],
+	["dragon_closeup", Vector3(1697, 1.6, -21), "dragon.head", [["dragon", "roar"]], 0.8],
+	["dragon_fly", Vector3(1792, 2.0, -6), Vector3(1780, 14.0, -30), [], 0.4],
+	["dragon_strafe", Vector3(1812, 4.0, -12), Vector3(1780, 6.0, -22), [["dragon_air", "breath"]], 1.0],
+	["dragon_dive", Vector3(1795, 3.0, -2), Vector3(1780, 12.0, -30), [["dragon_air", "dive"]], 0.5],
+	["cerberus_idle", Vector3(1893, 5.0, -10), Vector3(1880, 4.0, -30), [], 0.4],
+	["cerberus_side", Vector3(1902, 4.0, -26), Vector3(1880, 3.5, -30), [], 0.3],
+	["cerberus_bite", Vector3(1888, 2.6, -14), Vector3(1880, 4.0, -30), [["cerberus", "bite"]], 0.66],
+	["cerberus_breath", Vector3(1904, 4.0, -18), Vector3(1878, 3.0, -24), [["cerberus", "breath"]], 1.7],
+	["cerberus_howl", Vector3(1890, 3.0, -14), Vector3(1880, 6.0, -30), [["cerberus", "howl"]], 0.9],
+	["cerberus_slam", Vector3(1892, 3.0, -12), Vector3(1880, 4.0, -30), [["cerberus", "slam"]], 0.65],
+	["cerberus_pounce", Vector3(1897, 3.0, -16), Vector3(1880, 3.0, -30), [["cerberus", "pounce"]], 0.55],
+	["cerberus_pov", Vector3(1876, 1.6, -16), "cerberus.heads", [], 0.3],
+	["brood_idle", Vector3(2052, 5.0, -10), Vector3(2040, 2.0, -30), [], 0.4],
+	["brood_attack", Vector3(2048, 2.5, -14), Vector3(2040, 3.0, -30), [["brood_b", "bite"]], 0.5],
+	["brood_rear", Vector3(2050, 3.0, -12), Vector3(2040, 4.0, -30), [["brood_b", "roar"]], 0.8],
+	["brood_pov", Vector3(2037, 1.6, -18), Vector3(2040, 3.0, -30), [], 0.3],
+	["brood_stab", Vector3(2050, 3.0, -12), Vector3(2040, 3.0, -30), [["brood_b", "slam"]], 0.55],
+	["brood_hang", Vector3(2108, 2.0, -8), Vector3(2100, 11.0, -30), [], 0.4],
 ]
 
 ## Close-ups: [model name, action to play or ""].
@@ -47,6 +76,8 @@ func _ready() -> void:
 			Settings.set_value("graphics", "style", int(arg.trim_prefix("--style=")))
 		elif arg.begins_with("--only="):
 			_only = arg.trim_prefix("--only=")
+		elif arg.begins_with("--quality="):
+			Settings.set_value("graphics", "quality", int(arg.trim_prefix("--quality=")))
 	_environment()
 	_ground()
 	_place()
@@ -111,6 +142,13 @@ func _ground() -> void:
 	g.position = Vector3(1040, 0, 0)
 	g.material_override = MaterialLibrary.ground()
 	add_child(g)
+	var g2 := MeshInstance3D.new()
+	var plane2 := PlaneMesh.new()
+	plane2.size = Vector2(700, 400)
+	g2.mesh = plane2
+	g2.position = Vector3(1990, 0, 0)
+	g2.material_override = MaterialLibrary.ground()
+	add_child(g2)
 
 
 func _add(model_name: String, model: CreatureModel, pos: Vector3, yaw_deg := 0.0, speed := 0.0) -> CreatureModel:
@@ -198,6 +236,19 @@ func _place() -> void:
 	var gulls := _add("gulls", Models.create_mob("gull_flock", 3), Vector3(1500, 0, -6), 0.0) as FlockModel
 	gulls.startled = true
 	_add("bats", Models.create_mob("bat_swarm", 4), Vector3(1506, 3, -2), 0.0)
+	# Beast bosses.
+	var dragon := _add("dragon", Models.create("dragon"), Vector3(1700, 0, -30), 200.0) as DragonModel
+	dragon.ground_y = 0.0
+	var air := _add("dragon_air", Models.create("dragon"), Vector3(1780, 10, -30), 200.0) as DragonModel
+	air.flying = true
+	air.grounded = false
+	air.ground_y = 0.0
+	(_add("cerberus", Models.create("cerberus"), Vector3(1880, 0, -30), 200.0) as CerberusModel).ground_y = 0.0
+	_add("brood_b", Models.create("broodmother"), Vector3(2040, 0, -30), 200.0)
+	var hang := _add("brood_h", Models.create("broodmother"), Vector3(2100, 8, -30), 200.0) as BroodmotherModel
+	hang.hanging = true
+	hang.ceiling_y = 30.0
+	hang.ground_y = 0.0
 
 
 func _process(delta: float) -> void:
@@ -218,7 +269,23 @@ func _set_shot(i: int) -> void:
 	_shot = clampi(i, 0, SHOTS.size() - 1)
 	var s: Array = SHOTS[_shot]
 	camera.global_position = s[1]
-	camera.look_at(s[2], Vector3.UP)
+	camera.look_at(_look_point(s[2]), Vector3.UP)
+
+
+## A shot's look target: a point, or "model.node" (a part of a model, e.g. "dragon.head").
+func _look_point(v: Variant) -> Vector3:
+	if v is Vector3:
+		return v
+	var parts := String(v).split(".")
+	var m: Node = _models.get(parts[0])
+	if m == null:
+		return Vector3.ZERO
+	var part: Variant = m.get(parts[1]) if parts.size() > 1 else m
+	if part is Array and not (part as Array).is_empty():
+		part = (part as Array)[(part as Array).size() / 2]
+	if part is Node3D:
+		return (part as Node3D).global_position
+	return (m as Node3D).global_position
 
 
 func _play_actions() -> void:
@@ -242,6 +309,14 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_play_actions()
 
 
+## --only takes a comma-separated list of shot name prefixes.
+func _wanted(shot: String) -> bool:
+	for prefix in _only.split(","):
+		if prefix != "" and shot.begins_with(prefix):
+			return true
+	return false
+
+
 func _capture() -> void:
 	# Let the serpent chains settle and the cruising one swim a while.
 	var t := 0.0
@@ -249,7 +324,7 @@ func _capture() -> void:
 		t += get_process_delta_time()
 		await get_tree().process_frame
 	for i in SHOTS.size():
-		if _only != "" and not String(SHOTS[i][0]).begins_with(_only):
+		if _only != "" and not _wanted(String(SHOTS[i][0])):
 			continue
 		_set_shot(i)
 		_play_actions()
@@ -258,8 +333,13 @@ func _capture() -> void:
 		while t < wait:
 			t += get_process_delta_time()
 			await get_tree().process_frame
+		if not SHOTS[i][2] is Vector3:
+			camera.look_at(_look_point(SHOTS[i][2]), Vector3.UP)
+			await get_tree().process_frame
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
+		if _only != "":
+			img.resize(img.get_width() / 2, img.get_height() / 2)
 		img.save_png(_capture_dir.path_join("%02d_%s.png" % [i, SHOTS[i][0]]))
 		printerr("[creatures] saved ", SHOTS[i][0])
 	for i in PORTRAITS.size():

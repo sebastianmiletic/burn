@@ -76,7 +76,9 @@ func test_pickaxe_ladder_and_block_tiers() -> void:
 		["pickaxe_steel", Blocks.ADAMANTITE_ORE], ["pickaxe_mithril", Blocks.HELLSTONE], ["axe_steel", Blocks.STONE]]
 	for g: Array in denied:
 		check(not ItemDB.can_mine(g[0], g[1]), "%s cannot mine %s" % [g[0], Blocks.name_of(g[1])])
-	check(ItemDB.mine_time("axe_iron", Blocks.OAK_TRUNK) < ItemDB.mine_time("pickaxe_iron", Blocks.OAK_TRUNK), "axes chop faster")
+	# The pick-axe is a multitool: it fells trees as quickly as an axe of its tier.
+	check(ItemDB.can_mine("pickaxe_iron", Blocks.OAK_TRUNK), "the pick-axe chops trees")
+	check(absf(ItemDB.mine_time("axe_iron", Blocks.OAK_TRUNK) - ItemDB.mine_time("pickaxe_iron", Blocks.OAK_TRUNK)) < 0.05, "the pick-axe chops as fast as an axe")
 	check(ItemDB.mine_time("pickaxe_infernal", Blocks.STONE) < ItemDB.mine_time("pickaxe_copper", Blocks.STONE), "better picks dig faster")
 	check(ItemDB.mine_time("pickaxe_infernal", Blocks.BEDROCK) < 0.0, "bedrock never breaks")
 	# Every ore-ish block can be mined by the best pickaxe.

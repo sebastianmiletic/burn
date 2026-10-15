@@ -59,8 +59,8 @@ const TIERS := {
 ## Tool / weapon kinds. dmg/speed/reach are multipliers of the tier's power.
 ## Damage per second is roughly equal across kinds; the feel differs.
 const KINDS := {
-	"pickaxe": {"category": "tool", "name": "%s Pickaxe", "glyph": "T", "dmg": 0.45, "speed": 1.0, "reach": 2.4, "cost": 3, "sticks": 2,
-		"desc": "Breaks rock and ore. Harder ores need a better pick."},
+	"pickaxe": {"category": "tool", "name": "%s Pick-Axe", "glyph": "T", "dmg": 0.45, "speed": 1.0, "reach": 2.4, "cost": 3, "sticks": 2,
+		"desc": "Pick on one side, axe on the other: digs rock and ore and fells trees. Harder ores and rare woods need a better one."},
 	"axe": {"category": "tool", "name": "%s Axe", "glyph": "P", "dmg": 0.8, "speed": 0.95, "reach": 2.5, "cost": 3, "sticks": 2,
 		"desc": "Fells trees and splits timber quickly. A fair weapon in a pinch."},
 	"sword": {"category": "weapon", "name": "%s Sword", "glyph": "/", "dmg": 1.0, "speed": 1.1, "reach": 2.8, "cost": 2, "sticks": 1,
@@ -111,6 +111,7 @@ const STATIONS := {
 }
 
 const BASE := {
+	"hiking_boots": {"name": "Ironspike Hiking Boots", "category": "armor", "kind": "boots", "slot": "feet", "glyph": "L", "color": Color(0.48, 0.36, 0.23), "stack": 1, "value": 35, "defense": 3.0, "rarity": 1, "desc": "Equip to climb steep mountain steps. Iron crampons improve footing; sheer cliffs still require another route."},
 	"ironwood": {"name": "Ironwood", "category": "material", "glyph": "=", "color": Color(0.35, 0.3, 0.22), "stack": 99, "value": 4, "rarity": 2, "desc": "Dense old-growth timber. Requires an iron axe or better."},
 	"emberwood": {"name": "Emberwood", "category": "material", "glyph": "=", "color": Color(0.7, 0.28, 0.12), "stack": 99, "value": 6, "rarity": 3, "desc": "Heat-hardened timber. Requires a steel axe or better."},
 	"ryftwood": {"name": "Ryftwood", "category": "material", "glyph": "=", "color": Color(0.55, 0.4, 0.8), "stack": 99, "value": 9, "rarity": 4, "desc": "Timber from the floating isles. Requires a mithril axe or better."},
@@ -125,7 +126,7 @@ const BASE := {
 	"sword_dragonbone": {"name": "Dragonbone Greatsword", "category": "weapon", "kind": "sword", "glyph": "/", "color": Color(0.95, 0.9, 0.75),
 		"damage": 40.0, "speed": 0.9, "reach": 3.4, "stack": 1, "value": 520, "burn": 10.0, "rarity": 4, "tier": "adamantite", "heavy": true,
 		"desc": "Carved from Ashvane's spine. Heavy, cruel, glorious."},
-	"pickaxe_obsidian": {"name": "Obsidian Pickaxe", "category": "tool", "kind": "pickaxe", "glyph": "T", "color": Color(0.5, 0.3, 0.7),
+	"pickaxe_obsidian": {"name": "Obsidian Pick-Axe", "category": "tool", "kind": "pickaxe", "glyph": "T", "color": Color(0.5, 0.3, 0.7),
 		"mine_tier": 5, "mine_speed": 2.6, "damage": 9.0, "speed": 1.0, "reach": 2.4, "stack": 1, "value": 180, "rarity": 3, "tier": "mithril",
 		"desc": "Black glass edge, gold binding. Cuts obsidian and adamantite."},
 	# Consumables --------------------------------------------------------------
@@ -251,6 +252,7 @@ const BASE := {
 ##   inputs: {item: count}, count: made per craft, station: "" | workbench | furnace | anvil | alchemy,
 ##   fuel: furnace fuel units per craft, time: seconds per craft (furnace / alchemy), gold: optional fee.
 const BASE_RECIPES := {
+	"hiking_boots": {"inputs": {"iron_ingot": 4, "wood": 2}, "station": "anvil", "group": "armor"},
 	# By hand
 	"planks": {"inputs": {"wood": 1}, "count": 4, "station": "", "group": "basics"},
 	"ironwood_coal": {"result": "charcoal", "inputs": {"ironwood": 1}, "count": 4, "station": "furnace", "group": "smelting"},
@@ -516,10 +518,11 @@ static func mine_time(item_id: String, block: int) -> float:
 	var speed := 0.35
 	var tier := 0
 	if kind == "pickaxe":
+		# The pick-axe is a multitool: its axe bit chops as well as an axe.
 		tier = int(inf.get("mine_tier", 1))
 		speed = float(inf.get("mine_speed", 1.0))
 		if is_wood_block(block):
-			speed *= 0.6
+			speed = speed * 1.4 + 0.4
 	elif kind == "axe":
 		tier = int(TIERS.get(String(inf.get("tier", "wood")), {}).get("mine_tier", 1)) if is_wood_block(block) else 0
 		speed = float(inf.get("chop_speed", 1.0)) if is_wood_block(block) else float(inf.get("chop_speed", 1.0)) * 0.6

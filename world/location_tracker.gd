@@ -42,6 +42,11 @@ func _process(delta: float) -> void:
 	var subtitle := ""
 	var first := false
 	var loc := w.location_at(pos, dim)
+	var above: Location = null
+	if loc != null and underground and loc.half_height <= 0.0 and depth > 8.0:
+		# Down in a cave under a village or ruin: you're not *in* that place.
+		above = loc
+		loc = null
 	if loc != null:
 		if not w.discovered.has(loc.id):
 			w.discover(loc)
@@ -49,7 +54,7 @@ func _process(delta: float) -> void:
 		title = loc.name
 		subtitle = loc.kind_label() if loc.kind != Location.Kind.VILLAGE else "Village · safe haven"
 	else:
-		var near := _nearest_unknown_structure(w, pos, dim)
+		var near := _nearest_unknown_structure(w, pos, dim) if not underground else null
 		if near != null:
 			title = "Unknown Structure"
 			subtitle = "%d m away" % int(Vector2(pos.x - near.center.x, pos.z - near.center.z).length())
@@ -63,6 +68,8 @@ func _process(delta: float) -> void:
 			if g.revision >= 2 and pos.y < -8:
 				title = CaveBiomes.NAMES[CaveBiomes.kind_at(pos, g.world_seed)]
 			subtitle = "%d m below the surface" % int(depth)
+			if above != null:
+				subtitle = "%d m beneath %s" % [int(depth), above.name]
 		else:
 			var biome := g.biome_at(int(pos.x), int(pos.z))
 			if biome != _last_biome:
@@ -72,7 +79,7 @@ func _process(delta: float) -> void:
 				if not _known_biomes.has(biome):
 					_known_biomes[biome] = true
 					first = true
-				title = WorldGen.BIOME_NAMES[biome]
+				title = WorldGen.FOREST_NAMES[g.forest_region(int(pos.x), int(pos.z))] if biome == WorldGen.Biome.FOREST else WorldGen.BIOME_NAMES[biome]
 				subtitle = "Underworld" if dim == 1 else "Wilds"
 			else:
 				title = "Unknown Biome"

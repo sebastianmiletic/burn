@@ -33,8 +33,9 @@ var _eye := Vector3.ZERO
 func _ready() -> void:
 	top_level = true
 	fov = float(Settings.get_value("graphics", "fov"))
-	near = 0.08
-	far = 600.0
+	near = 0.05
+	# The overworld horizon mesh spans kilometres, not the near chunk radius.
+	far = 4600.0
 	_noise.frequency = 3.5
 	# Soft fill from the viewer's side so characters never collapse into
 	# glyph-less silhouettes against bright ground.
@@ -46,9 +47,12 @@ func _ready() -> void:
 	fill.light_specular = 0.1
 	fill.shadow_enabled = false
 	fill.light_volumetric_fog_energy = 0.0
+	# Above and behind the eye: lights what you look at without blowing out
+	# the first-person hands half a metre away.
+	fill.position = Vector3(0.0, 0.9, 1.6)
 	add_child(fill)
 	Events.screen_shake.connect(add_trauma)
-	first_person = true  # Gameplay is first-person, including saves from older builds.
+	first_person = bool(Settings.get_value("gameplay", "first_person"))
 	Settings.changed.connect(func(section: String, key: String) -> void:
 		if section == "graphics" and key == "fov":
 			fov = float(Settings.get_value("graphics", "fov")))
@@ -76,7 +80,7 @@ func zoom(step: float) -> void:
 
 func follow(world: VoxelWorld, focus: Vector3, delta: float) -> void:
 	if first_person:
-		_follow_first_person(focus, delta)
+		_follow_first_person(world, focus, delta)
 		return
 	var desired_pivot := focus + Vector3(0, pivot_height, 0)
 	# Critically damped follow: frame-rate independent and jitter free.
@@ -104,7 +108,7 @@ func follow(world: VoxelWorld, focus: Vector3, delta: float) -> void:
 		global_position += basis * Vector3(_noise.get_noise_2d(_shake_t * 30.0, 9.0), _noise.get_noise_2d(9.0, _shake_t * 30.0), 0.0) * 0.25 * s
 
 
-func _follow_first_person(focus: Vector3, delta: float) -> void:
+func _follow_first_person(world: VoxelWorld, focus: Vector3, delta: float) -> void:
 	# Head bob: a gentle figure-eight tied to stride, fading when still or airborne.
 	var walking := clampf(move_speed / 4.6, 0.0, 1.6) if grounded else 0.0
 	_bob_phase += delta * (5.2 + move_speed * 0.55) * (1.0 if walking > 0.05 else 0.0)
@@ -118,8 +122,14 @@ func _follow_first_person(focus: Vector3, delta: float) -> void:
 	# Smooth vertical steps (stairs, terrain) without lagging horizontally.
 	if _eye == Vector3.ZERO or _eye.distance_to(target) > 3.0:
 		_eye = target
+	# Climbing never lets the eye trail more than a few centimetres below where
+	# it belongs (it would look into the slope ahead); stepping down eases.
 	_eye = Vector3(target.x, lerpf(_eye.y, target.y, 1.0 - exp(-delta * 22.0)), target.z)
-	global_transform = Transform3D(basis, _eye + basis * bob)
+	_eye.y = maxf(_eye.y, target.y - 0.05)
+	var eye := _eye + basis * bob
+	if world != null:
+		eye = _clear_of_ground(world, eye, focus + Vector3(0, 1.0, 0))
+	global_transform = Transform3D(basis, eye)
 	rotate_object_local(Vector3.FORWARD, sin(_bob_phase) * 0.006 * _bob)
 	_trauma = maxf(0.0, _trauma - delta * 1.4)
 	_shake_t += delta
@@ -127,6 +137,25 @@ func _follow_first_person(focus: Vector3, delta: float) -> void:
 		var s := _trauma * _trauma
 		rotate_object_local(Vector3.RIGHT, _noise.get_noise_2d(_shake_t * 40.0, 0.0) * 0.045 * s)
 		rotate_object_local(Vector3.UP, _noise.get_noise_2d(0.0, _shake_t * 40.0) * 0.045 * s)
+
+
+## Never let the eye (and the near plane around it) sit inside rock or a wall:
+## slide it back towards the body until there's clearance.
+func _clear_of_ground(world: VoxelWorld, eye: Vector3, chest: Vector3) -> Vector3:
+	const CLEAR := 0.16
+	var probes := [Vector3.ZERO, Vector3(CLEAR, 0, 0), Vector3(-CLEAR, 0, 0), Vector3(0, CLEAR, 0), Vector3(0, 0, CLEAR), Vector3(0, 0, -CLEAR)]
+	var p := eye
+	for i in 10:
+		var inside := false
+		for o: Vector3 in probes:
+			var q: Vector3 = p + o
+			if world.field(q) >= 0.47 or world.is_box_solid(Vector3i(q.floor())):
+				inside = true
+				break
+		if not inside:
+			return p
+		p = p.lerp(chest, 0.2)
+	return p
 
 
 func aim_ray() -> Array:
