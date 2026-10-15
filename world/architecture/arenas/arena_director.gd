@@ -47,6 +47,9 @@ func _process(delta: float) -> void:
 	var w := GameWorld.instance
 	if w == null or w.local_player == null:
 		return
+	# One build at a time, and never while the world is still loading.
+	if Game.state != Game.State.PLAYING:
+		return
 	var dim := w.local_dimension
 	var eye := w.local_player.global_position
 	var wanted := {}
@@ -58,7 +61,7 @@ func _process(delta: float) -> void:
 			var d := eye.distance_to(p["center"]) - float(p.get("radius", 40.0))
 			if d < FREE_DISTANCE and (d < BUILD_DISTANCE or _built.has(key) or _pending.has(key)):
 				wanted[key] = true
-			if d < BUILD_DISTANCE and not _built.has(key) and not _pending.has(key):
+			if d < BUILD_DISTANCE and not _built.has(key) and _pending.is_empty():
 				_start(key, p, loc, dim)
 	for key: String in _built.keys():
 		if not wanted.has(key):
@@ -70,7 +73,8 @@ func _process(delta: float) -> void:
 
 func _start(key: String, p: Dictionary, loc: Location, dim: int) -> void:
 	var b := ArenaBuild.new(p)
-	var task := WorkerThreadPool.add_task(ArenaBuilders.run.bind(b), true, "arena " + b.kind)
+	# Low priority: terrain streaming always comes first.
+	var task := WorkerThreadPool.add_task(ArenaBuilders.run.bind(b), false, "arena " + b.kind)
 	_pending[key] = [task, b, loc, dim]
 
 
