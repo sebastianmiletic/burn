@@ -63,6 +63,18 @@ func _host() -> void:
 					return true
 		return false, 30.0)
 	_check(mined, "client's block edit reached the host world")
+	# Down the client (no shrine respawns by default) and revive them.
+	other = _other_player()
+	if other == null:
+		return
+	_w.damage(other, 99999.0, 0, "hit")
+	var downed := await _wait_for(func() -> bool: return other != null and is_instance_valid(other) and other.dead and other.downed, 15.0)
+	_check(downed, "client went down instead of dying (shrine respawns off)")
+	var me := _w.local_player
+	me.global_position = other.global_position + Vector3(1.2, 0.2, 0)
+	me.call("_begin_revive", other)
+	var revived := await _wait_for(func() -> bool: return other != null and is_instance_valid(other) and not other.dead, 20.0)
+	_check(revived, "host revived the downed client")
 
 
 func _client() -> void:
@@ -115,3 +127,8 @@ func _client() -> void:
 			_w.replicator.request_dig(point, 0.9, Player.STRIKE_TIME, "pickaxe_stone", 0)
 			await get_tree().create_timer(0.5).timeout
 		_check(vw.field(point) < old, "smooth excavation replicated back from the host")
+	# The host knocks us down and revives us.
+	var went_down := await _wait_for(func() -> bool: return me.dead, 45.0)
+	_check(went_down and me.downed, "client is downed, waiting for a teammate")
+	var back := await _wait_for(func() -> bool: return not me.dead, 30.0)
+	_check(back and me.health > 0.0, "client revived by the host (%.0f hp)" % me.health)

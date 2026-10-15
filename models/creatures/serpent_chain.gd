@@ -41,6 +41,9 @@ var rest_rate := 1.5
 var stiffness := 0.35
 var head_up := Vector3.UP
 
+## Margin (m) added around the joints for the culling box (body radius + attachments).
+var aabb_margin := 8.0
+
 var _phase := 0.0
 var _attached := {}  # joint index -> Array[Node3D]
 var _ready_chain := false
@@ -62,6 +65,7 @@ func setup(mesh: ArrayMesh, material: Material, bone_count: int, body_length: fl
 	mesh_instance.mesh = mesh
 	mesh_instance.material_override = material
 	mesh_instance.custom_aabb = AABB(-Vector3.ONE * aabb_extent, Vector3.ONE * aabb_extent * 2.0)
+	aabb_margin = clampf(aabb_extent * 0.1, 3.0, 12.0)
 	skeleton.add_child(mesh_instance)
 	mesh_instance.skeleton = NodePath("..")
 	points.resize(bones)
@@ -125,6 +129,15 @@ func simulate(head: Vector3, delta: float, speed := 1.0) -> void:
 ## Pose the skeleton and attachments from `display` (call after any tweaks).
 func apply() -> void:
 	_update_frames_from(display)
+	# The chain lives in world space at the origin: keep the culling box around
+	# the joints (a fixed box at the origin culled bodies far from it).
+	var lo := display[0]
+	var hi := display[0]
+	for i in range(1, bones):
+		lo = lo.min(display[i])
+		hi = hi.max(display[i])
+	var m := Vector3.ONE * aabb_margin
+	mesh_instance.custom_aabb = AABB(lo - m, hi - lo + m * 2.0)
 	for i in bones:
 		skeleton.set_bone_pose_position(i, display[i])
 		skeleton.set_bone_pose_rotation(i, frames[i].get_rotation_quaternion())
@@ -156,7 +169,10 @@ func _update_frames_from(src: PackedVector3Array) -> void:
 		# Ease the roll back towards world-up so the belly stays down.
 		var wy := Vector3.UP - z * Vector3.UP.dot(z)
 		if wy.length_squared() > 1e-4:
-			y = y.slerp(wy.normalized(), 0.15).normalized()
+			# Normalised lerp (slerp is undefined for nearly opposite vectors,
+			# e.g. a short neck chain that folds over).
+			var ly := y.lerp(wy.normalized(), 0.15)
+			y = ly.normalized() if ly.length_squared() > 1e-6 else wy.normalized()
 		var x := y.cross(z).normalized()
 		frames[i] = Basis(x, y, z).orthonormalized()
 		up = frames[i].y

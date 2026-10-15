@@ -85,7 +85,7 @@ func _send_local_state() -> void:
 		return
 	var p := gw().local_player
 	var state := [p.dimension, p.global_position, p.yaw, p.anim, p.anim_time, p.held_item(), p.health, p.max_health,
-			1 if p.dead else 0, p.display_name, p.offhand_light]
+			(2 if p.downed else 1) if p.dead else 0, p.display_name, p.offhand_light]
 	if Net.is_server():
 		_relay_player_state(multiplayer.get_unique_id(), state)
 	else:
@@ -521,6 +521,71 @@ func _request_station_on_server(peer: int, kind: String, pos: Vector3, yaw: floa
 # --- Sculpting ---------------------------------------------------------------------------
 
 ## A pickaxe strike: carve the ground around `point` (server decides what comes off).
+# --- Reviving teammates ----------------------------------------------------------------------
+
+func request_revive(target_net_id: int) -> void:
+	if Net.is_server():
+		_resolve_revive(multiplayer.get_unique_id(), target_net_id)
+	else:
+		_request_revive.rpc_id(1, target_net_id)
+
+
+@rpc("any_peer", "reliable")
+func _request_revive(target_net_id: int) -> void:
+	if multiplayer.is_server():
+		_resolve_revive(multiplayer.get_remote_sender_id(), target_net_id)
+
+
+func _resolve_revive(peer: int, target_net_id: int) -> void:
+	var w := gw()
+	var helper := w.entity(player_net_id(peer)) as Player
+	var target := w.entity(target_net_id) as Player
+	if helper == null or target == null or helper.dead or not target.dead or not target.downed:
+		return
+	if helper.dimension != target.dimension or helper.global_position.distance_to(target.global_position) > 3.5:
+		return
+	_broadcast(&"_revived", [target_net_id, helper.display_name])
+
+
+@rpc("authority", "reliable", "call_local")
+func _revived(target_net_id: int, helper_name: String) -> void:
+	var p := gw().entity(target_net_id) as Player
+	if p != null and p.is_local:
+		p.revive(helper_name)
+
+
+var _wipe_check := 0.0
+
+
+## Server: if every player is down at once, nobody can revive anybody - the
+## whole party rises at their shrines.
+func check_party_wipe(delta: float) -> void:
+	if not Net.is_server() or not Net.is_online():
+		return
+	_wipe_check -= delta
+	if _wipe_check > 0.0:
+		return
+	_wipe_check = 1.0
+	var players := gw().players_in(-1)
+	if players.size() < 2:
+		return
+	var any_downed := false
+	for p in players:
+		if not p.dead:
+			return
+		any_downed = any_downed or p.downed
+	if any_downed:
+		_broadcast(&"_party_wiped", [])
+
+
+@rpc("authority", "reliable", "call_local")
+func _party_wiped() -> void:
+	var p := gw().local_player
+	if p != null and p.dead:
+		Events.notify.emit("The whole party has fallen. You rise at your shrine.", "warn")
+		p.request_respawn(true)
+
+
 func request_dig(point: Vector3, radius: float, seconds: float, item_id: String, dim: int) -> void:
 	if Net.is_server():
 		_resolve_dig(multiplayer.get_unique_id(), point, radius, seconds, item_id, dim)
@@ -584,6 +649,8 @@ func _resolve_fill(peer: int, point: Vector3, radius: float, block: int, dim: in
 		return
 	# Never bury anyone.
 	for e in w.entities_near(point, radius + 1.2, dim):
+		if e.kind == "drop":
+			continue  # loose items just pop back out of the ground
 		if e.global_position.distance_to(point) < radius + 0.6 or e.center().distance_to(point) < radius + 0.6:
 			return
 	var changes := w.world_for(dim).plan_fill(point, clampf(radius, 0.3, 1.2), block)

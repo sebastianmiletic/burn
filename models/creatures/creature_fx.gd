@@ -8,6 +8,7 @@ extends RefCounted
 ##   CreatureFx.play(parent, "splash", pos, 1.5)
 
 const MAX_PER_STYLE := 6
+const SMOKE := preload("res://models/creatures/breath_smoke.gdshader")
 
 ## style -> {amount, lifetime, speed, spread, gravity, size, hot, cool, intensity, radius, up}
 const STYLES := {
@@ -29,6 +30,11 @@ const STYLES := {
 		"hot": Color(0.7, 1.0, 0.6), "cool": Color(0.1, 0.5, 0.25), "intensity": 4.5, "radius": 1.2, "damping": 1.5},
 	"frost": {"amount": 60, "lifetime": 1.2, "speed": 6.0, "spread": 70.0, "gravity": -3.0, "size": 0.7,
 		"hot": Color(0.9, 0.97, 1.0), "cool": Color(0.4, 0.6, 0.9), "intensity": 2.5, "radius": 1.2, "damping": 2.0},
+	# Billowing (not glowing) clouds for big impacts: wing buffets, landings, stomps.
+	"dust_cloud": {"amount": 36, "lifetime": 2.2, "speed": 5.0, "spread": 75.0, "gravity": 0.8, "size": 2.6,
+		"hot": Color(0.42, 0.34, 0.26), "cool": Color(0.24, 0.19, 0.15), "intensity": 0.7, "radius": 1.5, "damping": 3.0, "smoke": true},
+	"ash_cloud": {"amount": 36, "lifetime": 2.4, "speed": 4.0, "spread": 80.0, "gravity": 1.2, "size": 2.6,
+		"hot": Color(0.45, 0.18, 0.08), "cool": Color(0.1, 0.08, 0.08), "intensity": 0.8, "radius": 1.5, "damping": 3.0, "smoke": true},
 	"embers": {"amount": 60, "lifetime": 1.0, "speed": 6.0, "spread": 80.0, "gravity": 2.0, "size": 0.5,
 		"hot": Color(1.0, 0.85, 0.5), "cool": Color(1.0, 0.3, 0.05), "intensity": 6.0, "radius": 0.8, "damping": 2.0},
 }
@@ -103,7 +109,15 @@ static func _make(style: String) -> GPUParticles3D:
 	p.process_material = pm
 	var quad := QuadMesh.new()
 	quad.size = Vector2.ONE * float(s["size"])
-	quad.material = MaterialLibrary.fx(s["hot"], s["cool"], float(s["intensity"]))
+	if s.get("smoke", false):
+		var sm := ShaderMaterial.new()
+		sm.shader = SMOKE
+		sm.set_shader_parameter(&"smoke_color", s["cool"])
+		sm.set_shader_parameter(&"lit_color", s["hot"])
+		sm.set_shader_parameter(&"density", float(s["intensity"]))
+		quad.material = sm
+	else:
+		quad.material = MaterialLibrary.fx(s["hot"], s["cool"], float(s["intensity"]))
 	p.draw_pass_1 = quad
 	return p
 

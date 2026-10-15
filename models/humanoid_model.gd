@@ -363,12 +363,28 @@ var _fp_radius := 0.0
 
 
 func set_first_person(on: bool) -> void:
-	_fp_radius = 0.42 if on else 0.0
-	if mesh_instance != null:
-		mesh_instance.set_instance_shader_parameter(&"fp_hide", _fp_radius)
+	# In first person the local body is never drawn for its own camera (no
+	# clipping, no hollow neck, no cloak in the face) but still casts its
+	# shadow; the camera's Viewmodel draws the arms and the held item.
+	_fp_radius = 0.0
+	_first_person = on
+	_apply_first_person()
 
 
-func _apply_palette() -> void:
+var _first_person := false
+
+
+func _apply_first_person() -> void:
+	var mode := GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if _first_person else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	for g: GeometryInstance3D in find_children("*", "GeometryInstance3D", true, false):
+		if g is GPUParticles3D:
+			continue
+		g.cast_shadow = mode
+
+
+## Linear-ish palette for the shared character material (also used by the
+## first-person arms so they match the body).
+func palette_colors() -> Dictionary:
 	var skel: bool = st("skeleton", false)
 	var cloth: Color = st("cloth", Color(0.3, 0.25, 0.2)) if st("cloth", null) != null else Color(0.3, 0.25, 0.2)
 	var cols := {
@@ -383,11 +399,18 @@ func _apply_palette() -> void:
 	}
 	if st("apron", false) and not style.has("leather"):
 		cols[&"c_leather"] = Color(0.36, 0.23, 0.13)
+	return cols
+
+
+func _apply_palette() -> void:
+	var cols := palette_colors()
 	for k: StringName in cols:
 		var c: Color = cols[k]
 		var lin := c.srgb_to_linear()
 		mesh_instance.set_instance_shader_parameter(k, Vector3(lin.r, lin.g, lin.b))
 	mesh_instance.set_instance_shader_parameter(&"fp_hide", _fp_radius)
+	if _first_person:
+		_apply_first_person.call_deferred()
 
 
 func _collect(node: Node) -> void:
@@ -408,6 +431,8 @@ func set_held(item_id: String) -> void:
 		return
 	_build_held(item_id)
 	refresh_parts()
+	if _first_person:
+		_apply_first_person()
 
 
 func _build_held(item_id: String) -> void:

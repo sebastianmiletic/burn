@@ -51,6 +51,15 @@ var _fall_speed := 0.0
 var _lava_tick := 0.0
 var _footstep := 0.0
 var _sprinting := false
+var _coyote := 0.0
+## Multiplayer without shrine respawns: down but not out, waiting for a teammate.
+var downed := false
+var bleed_left := 0.0
+const BLEED_TIME := 90.0
+const REVIVE_TIME := 3.0
+var _revive_target: Player
+var _revive_t := 0.0
+var _jump_buffer := 1.0
 var _was_on_floor := true
 var _rustle := 0.0
 var _model_steps := false   # the model reports foot plants (footstep signal)
@@ -89,6 +98,9 @@ func _ready() -> void:
 		var vm := Viewmodel.new()
 		vm.player = self
 		camera.add_child(vm)
+		var look := LookInspector.new()
+		look.player = self
+		add_child(look)
 		_highlight = BlockHighlight.new()
 		add_child(_highlight)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -143,6 +155,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_select((inventory.selected + 1) % Inventory.HOTBAR)
 		elif Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	if event.is_action_pressed("toggle_view"):
+		camera.first_person = not camera.first_person
+		Settings.set_value("gameplay", "first_person", camera.first_person)
+		_apply_view()
 	if event.is_action_pressed("slot_1"):
 		_select(0)
 	elif event.is_action_pressed("slot_2"):
@@ -181,6 +197,12 @@ func _process(delta: float) -> void:
 		return
 	var vw := voxels()
 	_tick_cooldowns()
+	_revive_update(delta)
+	if dead and downed:
+		bleed_left -= delta
+		if bleed_left <= 0.0:
+			Events.notify.emit("You bled out and rise at your shrine.", "warn")
+			request_respawn(true)
 	if not dead:
 		_move(delta, vw)
 		_combat_update(delta)
@@ -219,7 +241,8 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	var target_vel := wish * speed
 	if _action == "dodge":
 		target_vel = _dodge_dir * 11.0 * (1.0 - _action_time / 0.5)
-	var accel := 14.0 if body.on_floor else 4.0
+	# Snappy on the ground (quicker to stop than to start), some steering in the air.
+	var accel := (18.0 if target_vel.length() < 0.1 else 13.0) if body.on_floor else 5.0
 	if body.in_liquid == Blocks.WATER:
 		accel = 6.0
 		target_vel *= 0.6
@@ -227,14 +250,22 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	hv = hv.lerp(target_vel, 1.0 - exp(-accel * delta))
 	body.velocity.x = hv.x
 	body.velocity.z = hv.z
-	if _input_enabled and Input.is_action_pressed("jump"):
-		if body.on_floor:
-			body.velocity.y = JUMP_VELOCITY
-			_start_action("jump", 0.4)
-			_model_call("on_jump")
-			Audio.play("jump", global_position, -6.0, randf_range(0.92, 1.08))
-		elif body.in_liquid != 0:
-			body.velocity.y = 4.0  # swim up
+	# Jump buffering (a press just before landing still counts) and coyote time
+	# (a jump just after running off an edge still works); holding the key
+	# doesn't bunny-hop.
+	_coyote = 0.0 if body.on_floor else _coyote + delta
+	_jump_buffer += delta
+	if _input_enabled and Input.is_action_just_pressed("jump"):
+		_jump_buffer = 0.0
+	if _input_enabled and _jump_buffer < 0.14 and (body.on_floor or _coyote < 0.12) and body.velocity.y <= 0.5 and body.in_liquid == 0:
+		_jump_buffer = 1.0
+		_coyote = 1.0
+		body.velocity.y = JUMP_VELOCITY
+		_signal_anim("jump", 0.4)
+		_model_call("on_jump")
+		Audio.play("jump", global_position, -6.0, randf_range(0.92, 1.08))
+	elif _input_enabled and body.in_liquid != 0 and Input.is_action_pressed("jump"):
+		body.velocity.y = 4.0  # swim up
 	var falling := body.velocity.y
 	body.step(self, vw, delta)
 	if body.stepped > 0.0:
@@ -345,6 +376,14 @@ func _regen(delta: float) -> void:
 
 
 # --- Actions -----------------------------------------------------------------------------
+
+## Play an animation everywhere (model + replicated id) without occupying the
+## action slot, so e.g. jumping never blocks attacking.
+func _signal_anim(action: String, duration: float) -> void:
+	_action_seq = (_action_seq + 1) % 64
+	anim = ACTIONS.find(action) + 16 * _action_seq
+	_model_call("play", [action, duration])
+
 
 func _start_action(action: String, duration: float) -> void:
 	_action = action
@@ -513,6 +552,7 @@ func _sculpt_strike(target: Dictionary, block: int) -> void:
 	var w := world()
 	if w.fx != null:
 		w.fx.debris(point, n, Blocks.color(block), false)
+	_highlight.flash_crack(point, n)
 	# Bite centre sits just inside the surface so each strike digs in.
 	w.replicator.request_dig(point - n * 0.25, 0.8 + tier * 0.06, STRIKE_TIME, item, dimension)
 	camera.add_trauma(0.035)
@@ -814,6 +854,18 @@ func heal_local(amount: float) -> void:
 
 
 func _die(cause: String) -> void:
+	if dead:
+		return
+	if Net.is_online():
+		if bool(Net.option("shrine_respawn", false)):
+			# Shrine respawns on: rise at your shrine on your own after a moment.
+			get_tree().create_timer(4.0).timeout.connect(func() -> void:
+				if dead:
+					request_respawn(true))
+		else:
+			downed = true
+			bleed_left = BLEED_TIME
+			Events.notify.emit("You are down! A teammate can revive you: they stand beside you and press E.", "warn")
 	dead = true
 	_start_action("die", 2.0)
 	_model_call("set_dead", [true])
@@ -822,9 +874,13 @@ func _die(cause: String) -> void:
 	Events.player_died.emit(cause)
 
 
-func request_respawn() -> void:
+func request_respawn(force := false) -> void:
 	if not dead:
 		return
+	if downed and not force:
+		Events.notify.emit("Hold on - a teammate can still revive you (%d s)." % int(ceilf(bleed_left)), "warn")
+		return
+	downed = false
 	dead = false
 	health = max_health
 	inventory.gold = int(inventory.gold * 0.9)
@@ -838,6 +894,56 @@ func request_respawn() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	Events.player_health_changed.emit(health, max_health)
 	Events.player_respawned.emit()
+
+
+## A teammate got you back on your feet where you fell.
+func revive(helper_name: String) -> void:
+	if not dead:
+		return
+	downed = false
+	dead = false
+	health = max_health * 0.35
+	invulnerable_until = Time.get_ticks_msec() / 1000.0 + 2.0
+	_model_call("set_dead", [false])
+	_action = ""
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Events.notify.emit("%s revived you." % helper_name, "info")
+	Events.player_health_changed.emit(health, max_health)
+	Events.player_respawned.emit()
+
+
+## Downed teammates show a prompt to whoever stands beside them.
+func interact_prompt(other: Node) -> String:
+	if dead and downed and other != self and other is Player and not (other as Player).dead:
+		return "Revive %s" % display_name
+	return ""
+
+
+func local_interact(other: Node) -> void:
+	if other is Player and dead and downed:
+		(other as Player)._begin_revive(self)
+
+
+func _begin_revive(target: Player) -> void:
+	_revive_target = target
+	_revive_t = 0.0
+	Events.notify.emit("Reviving %s... stay close." % target.display_name, "info")
+
+
+func _revive_update(delta: float) -> void:
+	if _revive_target == null:
+		return
+	var t := _revive_target
+	if not is_instance_valid(t) or not t.dead or not t.downed or t.global_position.distance_to(global_position) > 3.0 or dead:
+		_revive_target = null
+		Events.mining_progress.emit(-1.0)
+		return
+	_revive_t += delta
+	Events.mining_progress.emit(_revive_t / REVIVE_TIME)
+	if _revive_t >= REVIVE_TIME:
+		world().replicator.request_revive(t.net_id)
+		_revive_target = null
+		Events.mining_progress.emit(-1.0)
 
 
 func add_xp(amount: int) -> void:
@@ -912,7 +1018,8 @@ func apply_remote_state(state: Array, time: float) -> void:
 	health = float(state[6])
 	max_health = float(state[7])
 	var was_dead := dead
-	dead = int(state[8]) == 1
+	dead = int(state[8]) >= 1
+	downed = int(state[8]) == 2
 	if dead != was_dead:
 		_model_call("set_dead", [dead])
 	display_name = String(state[9])

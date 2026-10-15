@@ -52,7 +52,9 @@ static func create_mob(kind: String, seed_value: int) -> CreatureModel:
 			return CerberusModel.new()
 		"leviathan", "sea_serpent":
 			return LeviathanModel.new(kind)
-		"broodmother", "giant_spider", "spiderling", "scorpion":
+		"broodmother":
+			return BroodmotherModel.new()
+		"giant_spider", "spiderling", "scorpion":
 			return ArachnidModel.new("spider" if kind == "giant_spider" else kind, seed_value)
 		"wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "deer", "stag", "rabbit", "goat", "boar", "bog_lurker":
 			return QuadrupedModel.new(kind, seed_value)
