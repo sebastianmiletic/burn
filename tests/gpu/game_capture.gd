@@ -234,6 +234,17 @@ func _run() -> void:
 				p.call("_start_action", arg.trim_prefix("--action="), 0.6)
 				await get_tree().create_timer(0.2).timeout
 		await _shot(stop)
+		# --ui=map,journal: also shoot those HUD screens at every stop.
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--ui=") and w.hud != null:
+				for screen_name in arg.trim_prefix("--ui=").split(","):
+					var screen: Variant = w.hud.get({"map": "map_screen", "journal": "quest_log"}.get(screen_name, ""))
+					if screen is UiModal:
+						(screen as UiModal).open()
+						await get_tree().create_timer(0.8).timeout
+						await _shot(stop + "_" + screen_name)
+						(screen as UiModal).close()
+						await _frames(5)
 		if "--gpu-breakdown" in OS.get_cmdline_user_args():
 			await _gpu_breakdown(w, report, gpu if gpu > 0.0 else (await _measure(2.0)).x)
 		if "--raw" in OS.get_cmdline_user_args():

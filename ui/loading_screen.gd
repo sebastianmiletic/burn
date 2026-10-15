@@ -50,6 +50,7 @@ var _time := 0.0
 var _film_alpha := 0.0
 var _from_alpha := 1.0
 var _done := false
+var _stats := [0, 0.0, 0.0, 0]   # frames, total ms, worst ms, frames over 33 ms
 
 
 func _ready() -> void:
@@ -226,6 +227,12 @@ func set_progress(f: float, text: String) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	if _time > 0.5:
+		_stats[0] += 1
+		_stats[1] += delta * 1000.0
+		_stats[2] = maxf(_stats[2], delta * 1000.0)
+		if delta > 0.0334:
+			_stats[3] += 1
 	var d := minf(delta, 1.0 / 20.0)
 	_shown = move_toward(_shown, _progress, d * 1.2)
 	_bar.value = _shown
@@ -264,6 +271,9 @@ func _next_tip() -> void:
 ## frame, and free the film right away.
 func _finish() -> void:
 	_done = true
+	if "--load-timing" in OS.get_cmdline_user_args() and _stats[0] > 0:
+		print("[loading] %d frames over %.1f s, avg %.1f ms, worst %.1f ms, %d frames > 33 ms" % [
+			_stats[0], _stats[1] / 1000.0, _stats[1] / _stats[0], _stats[2], _stats[3]])
 	if not is_inside_tree() or DisplayServer.get_name() == "headless":
 		return
 	var img: Image = null

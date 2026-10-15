@@ -44,10 +44,10 @@ func _build(img: Image, fallback_mpp: float) -> void:
 	world_size = float(img.get_meta("world_size", img.get_width() * metres_per_pixel))
 	sea_level = float(img.get_meta("sea_level", WorldGen.SEA_LEVEL))
 	liquid = int(img.get_meta("liquid", 0))
-	var h: Variant = img.get_meta("height", null)
+	var h: Variant = img.get_meta("height") if img.has_meta("height") else null
 	if h is Image:
 		height = ImageTexture.create_from_image(h)
-	var d: Variant = img.get_meta("detail", null)
+	var d: Variant = img.get_meta("detail") if img.has_meta("detail") else null
 	if d is Image:
 		detail = ImageTexture.create_from_image(d)
 
