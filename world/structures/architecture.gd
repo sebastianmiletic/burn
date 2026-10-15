@@ -56,6 +56,11 @@ static func house(loc: Location, bp: Blueprint, c: Vector3i, w: int, d: int, hei
 				if bp.get_local(x, y, z) in [Blocks.COBBLE, Blocks.PLANKS, Blocks.LOG, Blocks.THATCH]:
 					bp.set_local(x, y, z, Blocks.STRUCTURE)
 
+func _ready() -> void:
+	# Boss arenas stream their own modelled geometry (world/architecture/arenas).
+	add_child(ArenaDirector.new())
+
+
 func _process(delta: float) -> void:
 	_poll -= delta
 	if _poll > 0:
@@ -85,6 +90,8 @@ static func build(loc: Location) -> Node3D:
 	node.position = loc.center
 	var batches := {}
 	for prop: Dictionary in loc.props:
+		if prop["type"] == "arena":
+			continue  # ArenaDirector builds these.
 		var mat_name: String = prop["material"]
 		if not batches.has(mat_name):
 			var st := SurfaceTool.new()
