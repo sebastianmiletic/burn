@@ -17,6 +17,32 @@ const PLAYER_COLOURS := [
 ]
 
 
+## Ordinary creatures whose meshes are built (and cached) while the world loads,
+## so the first wolf or troll of a session does not hitch the frame it spawns.
+const WARM_KINDS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "deer", "stag", "rabbit", "goat", "boar", "bog_lurker",
+	"giant_spider", "spiderling", "scorpion", "cave_bat", "cave_crawler", "shark", "rock_golem", "fire_elemental", "imp", "shade",
+	"skeleton", "archer", "ghoul", "troll", "drowned", "bird_flock", "crow_flock", "gull_flock", "fish_school", "bat_swarm"]
+
+
+## Build every ordinary creature once (a few per frame) under a hidden node,
+## filling the mesh caches; humanoid kinds build several variants.
+static func warmup_mobs(parent: Node, budget_ms := 40.0) -> void:
+	var holder := Node3D.new()
+	holder.name = "MobWarmup"
+	holder.visible = false
+	parent.add_child(holder)
+	var t := Time.get_ticks_msec()
+	for kind: String in WARM_KINDS:
+		for s in (6 if kind in ["troll", "skeleton", "ghoul", "drowned", "archer"] else 1):
+			var m := create_mob(kind, s)
+			m.lod_enabled = false
+			holder.add_child(m)
+			if Time.get_ticks_msec() - t > budget_ms:
+				await parent.get_tree().process_frame
+				t = Time.get_ticks_msec()
+	holder.queue_free()
+
+
 static func create(kind: String) -> CreatureModel:
 	return create_mob(kind, 0)
 
