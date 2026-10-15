@@ -10,6 +10,10 @@ created for this project. Everything visible and audible is generated procedural
 |---|---|---|---|
 | JetBrains Mono (Regular, Bold) | https://github.com/JetBrains/JetBrainsMono | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) | Glyph atlas, UI text |
 | Cinzel (variable) | https://github.com/NDISCOVER/Cinzel via Google Fonts | SIL Open Font License 1.1 (`assets/fonts/Cinzel-OFL.txt`) | Titles, banners |
+| Jolcham Oak Bark 01, Pine Bark, Bark Willow 02, Rock Boulder Dry (diffuse + GL normal, downscaled to 512 px) | Poly Haven, https://polyhaven.com/textures | CC0 1.0 | Tree trunks, fallen logs, boulders and pebbles (`world/flora/textures/*_bark_*.jpg`, `rock_*.jpg`) |
+
+The leaf atlas (`world/flora/textures/leaf_atlas*.png`) is painted procedurally by
+`world/flora/tools/bake_leaf_atlas.gd`.
 
 ## Techniques
 
