@@ -440,6 +440,53 @@ func _world_stop(w: GameWorld, stop: String) -> Array:
 			yaw = face.call(Vector3(dir.x, 0, dir.y))
 			pitch = -0.3 if parts[1] == "vista" else 0.18
 			printerr("[game-capture] %s at %s relief %.0f m" % [stop, str(Vector3i(pos)), float(c[0])])
+		"river":
+			# river_<n>: on the bank of the n-th underground river that runs under dry land.
+			var rivers: Array = []
+			for r: Array in g.caves.rivers:
+				var mid: Vector3 = ((r[0] as Vector3) + (r[1] as Vector3)) * 0.5
+				if g.ground_level(mid.x, mid.z) > WorldGen.SEA_LEVEL + 10:
+					rivers.append(r)
+			if rivers.is_empty():
+				return []
+			var r: Array = rivers[int(parts[2]) % rivers.size()]
+			var a: Vector3 = r[0]
+			var b: Vector3 = r[1]
+			pos = a.lerp(b, 0.15)
+			pos.y = float(r[2]) + 1.9
+			w.local_player.body.fly = true
+			yaw = face.call(b - a)
+			pitch = -0.2
+		"ravine":
+			# ravine_<n>: on the rim of the n-th deepest ravine found on a coarse scan.
+			var found: Array = []
+			var detail := g.make_detail_noise()
+			var ridge := g.make_ridge_noise()
+			for iz in range(40, g.size - 40, 24):
+				for ix in range(40, g.size - 40, 24):
+					var h := g.smooth_height(ix, iz)
+					var allow := g._coarse_sample8(g._rav, ix, iz)
+					if allow < 0.3:
+						continue
+					var d := g._ravine(ix, iz, h, allow)
+					if d > 18.0:
+						found.append(Vector3(ix, d, iz))
+			if found.is_empty():
+				return []
+			found.sort_custom(func(p1: Vector3, p2: Vector3) -> bool: return p1.y > p2.y)
+			var c: Vector3 = found[int(parts[2]) % found.size()]
+			# Step sideways out of the crack onto the rim and look back along it.
+			var best := Vector3.ZERO
+			for k in 16:
+				var q := Vector2(c.x, c.z) + Vector2.from_angle(TAU * k / 16.0) * 14.0
+				var hq := g.column_f(int(q.x), int(q.y), detail, ridge).x
+				if hq > best.y or best == Vector3.ZERO:
+					best = Vector3(q.x, hq, q.y)
+			pos = Vector3(best.x, best.y + 3.0, best.z)
+			w.local_player.body.fly = true
+			var d := Vector3(c.x, g.column_f(int(c.x), int(c.z), detail, ridge).x, c.z) - pos
+			yaw = face.call(d)
+			pitch = clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.9, 0.2)
 		"at":
 			pos = Vector3(float(parts[2]), float(parts[3]), float(parts[4]))
 			yaw = float(parts[5])

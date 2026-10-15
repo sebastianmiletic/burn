@@ -51,6 +51,9 @@ static func build(surface_loc: Location, depths_loc: Location, world_gen: WorldG
 	depths_loc.ground_y = int(c.y)
 	depths_loc.radius = maxf(m._hi.x - m._lo.x, m._hi.z - m._lo.z) * 0.5 + 8.0
 	depths_loc.half_height = (m._hi.y - m._lo.y) * 0.5 + 2.0
+	# MineDressing builds the whole mine (portal included) within reach of this centre.
+	var meta: Dictionary = depths_loc.get_meta(&"mine")
+	meta["radius"] = depths_loc.radius + surface_loc.center.distance_to(c)
 
 
 func _ground(x: float, z: float) -> float:

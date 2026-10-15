@@ -262,7 +262,7 @@ static func plan_chunk(origin: Vector3i, terrain: Array, dimension: int, world_s
 			kind = kinds[ki]
 			if kind < 0:
 				var wp := o + p
-				kind = CaveBiomes.kind_at(wp, world_seed) if wp.y < -8.0 else KARST
+				kind = CaveBiomes.decor_kind(wp, world_seed)
 				if not TABLES.has(kind):
 					kind = KARST
 				kinds[ki] = kind

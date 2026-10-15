@@ -8,6 +8,18 @@ enum Kind { KARST, GEYSER, FUNGAL, FROST, CRYSTAL_REFUGE, MAGMA, FLOODED }
 const NAMES := ["Limestone Galleries", "Geyser Caverns", "Glowroot Hollows", "Glacial Grottos", "Crystal Sanctuary",
 		"Magma Vaults", "Flooded Grottos"]
 const CELL := Vector3(128, 64, 128)
+## CaveDecor's kind for abandoned mine workings (no dripstone; rubble, webs, puddles).
+const DECOR_MINE := 7
+## Bounds of the current overworld's mine workings (set by WorldGen.prepare, read-only after).
+static var mine_boxes: Array[AABB] = []
+
+
+## Decoration kind at a point: mine workings, the regional chamber biome below y = -8, else karst.
+static func decor_kind(pos: Vector3, seed_value: int) -> int:
+	for b in mine_boxes:
+		if b.has_point(pos):
+			return DECOR_MINE
+	return kind_at(pos, seed_value) if pos.y < -8.0 else Kind.KARST
 const RADII := Vector3(48, 20, 48)
 
 

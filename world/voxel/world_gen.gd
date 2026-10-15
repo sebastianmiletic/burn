@@ -221,6 +221,12 @@ func prepare(progress: Callable = Callable(), timing := false) -> void:
 			if loc.has_meta(&"carvers"):
 				caves.merge(loc.get_meta(&"carvers") as CaveNetwork)
 		caves.build_index()
+		var boxes: Array[AABB] = []
+		for loc in locations:
+			if loc.has_meta(&"mine"):
+				var ext := Vector3(loc.radius, loc.half_height + 2.0, loc.radius)
+				boxes.append(AABB(loc.center - ext, ext * 2.0))
+		CaveBiomes.mine_boxes = boxes
 		t_caves = Time.get_ticks_msec() - t0
 	_report(progress, 0.75, "Laying the old roads")
 	var t1 := Time.get_ticks_msec()
