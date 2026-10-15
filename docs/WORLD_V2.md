@@ -69,3 +69,15 @@ entity, rendering and audio contracts, but these additions supersede their world
   world/caves/*; `CaveBiomes.decor_kind()` tells CaveDecor where the mine workings are.
 - Weather (world/sky/weather.gd) reads `climate_at()` for revision 3; the horizon (world/distant_land.gd)
   colours its mesh with `horizon_color()`.
+- Weather (world/sky/weather.gd) changes on its own: the host walks a weighted chain of states
+  (clear, overcast, rain, storm, fog, snow, blizzard, heatwave, dust_storm, ember_storm, and on clear
+  nights aurora / meteor_shower), each lasting minutes, synced through `Replicator.broadcast_clock`.
+  Thunderstorms strike near players (a strike within 3.5 m deals 28 damage). Gameplay can summon
+  weather with `world.weather.request(state, seconds, source_peer := 0) -> bool`: server-authoritative,
+  clients forward the request to the host (RPC on the `Weather` node), `seconds` is clamped to 10..900
+  and holds the state before the natural chain resumes; unknown states return false. Read-outs:
+  `state_name()`, `hold_left()`, `visibility()`, `heat_amount()`, `aurora_amount()`, `ember_amount()`,
+  `meteor_amount()` besides the older rain/snow/dust/storm/fog/wind accessors.
+- Underground, SkyController blends to the cave's palette (CaveBiomes.palette_at: dark tinted murk,
+  bounce fill, haze), occludes the sky's radiance (no sky reflections or sky light in caves) and lets
+  terrain ambient back in as the cave fill; the horizon is hidden more than 14 m down.
