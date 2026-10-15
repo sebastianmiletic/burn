@@ -457,10 +457,13 @@ func _world_stop(w: GameWorld, stop: String) -> Array:
 			into = into.normalized()
 			var at: Vector3 = e[0]
 			if parts[1] == "mouth":
-				pos = at - into * 15.0
-				pos.y = g.ground_level(pos.x, pos.z) + 0.6
-				yaw = face.call(into)
-				pitch = -0.12
+				# Hover a little above the slope below the mouth and look at the opening.
+				pos = at - into * 16.0
+				pos.y = maxf(g.ground_level(pos.x, pos.z), at.y - 3.0) + 2.5
+				w.local_player.body.fly = true
+				var d := at + Vector3(0, 1.5, 0) - (pos + Vector3(0, 1.6, 0))
+				yaw = face.call(d)
+				pitch = clampf(atan2(d.y, Vector2(d.x, d.z).length()), -0.6, 0.4)
 			else:
 				pos = at + into * 11.0 + Vector3(0, -1.6, 0)
 				yaw = face.call(into)

@@ -66,7 +66,7 @@ static func _table() -> Dictionary:
 	t[Blocks.AMETHYST] = deep + [Color(0.65, 0.35, 0.95), 0.85, Color(0.9, 0.35, 1.6), 0.2]
 	# World revision 3: canyon, volcanic, tundra and cave-biome materials.
 	t[Blocks.RED_ROCK] = [L.SANDSTONE, L.SANDSTONE, 0.18, 1.0, Color(1.22, 0.66, 0.44), ASCII_SOLID]
-	t[Blocks.RED_SAND] = [L.SAND, L.SANDSTONE, 0.3, 1.0, Color(1.12, 0.72, 0.5), ASCII_GROUND]
+	t[Blocks.RED_SAND] = [L.SAND, L.SANDSTONE, 0.3, 1.0, Color(1.2, 0.64, 0.4), ASCII_GROUND]
 	t[Blocks.UMBER_ROCK] = [L.CLAY, L.SANDSTONE, 0.2, 1.0, Color(0.82, 0.55, 0.42), ASCII_SOLID]
 	t[Blocks.SCORIA] = [L.ASH, L.DARK, 0.3, 1.0, Color(0.78, 0.46, 0.38), ASCII_SOLID]
 	t[Blocks.PERMAFROST] = [L.TRAIL, L.ROCK, 0.3, 0.9, Color(0.78, 0.82, 0.86), ASCII_GROUND]

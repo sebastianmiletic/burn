@@ -978,9 +978,9 @@ func climate_at(pos: Vector3) -> Vector3:
 		Biome.WASTES:
 			dust = 1.0
 		Biome.CANYON:
-			dust = 0.45
+			dust = 0.12
 		Biome.VOLCANIC:
-			dust = 0.7
+			dust = 0.3
 	var haze := clampf((pos.y - 170.0) / 180.0, 0.0, 1.0) if not biome in [Biome.VOLCANIC, Biome.CANYON] else 0.0
 	return Vector3(snow, dust, haze)
 
@@ -991,6 +991,13 @@ func horizon_color(x: int, z: int, h: float, slope: float) -> Color:
 	var biome := biome_at(x, z)
 	var top := _surface_v3(x, z, int(h), biome, 0, slope) & 255 if revision >= 3 else -1
 	match top:
+		FACE:
+			match biome:
+				Biome.CANYON:
+					return Color(0.6, 0.32, 0.2)
+				Biome.VOLCANIC:
+					return Color(0.18, 0.16, 0.16)
+			return Color(0.44, 0.42, 0.41)
 		Blocks.SNOW:
 			return Color(0.86, 0.88, 0.92)
 		Blocks.STONE, Blocks.GRANITE:
@@ -1515,19 +1522,19 @@ func _columns_v3(cx: int, cz: int) -> Array:
 	if hit != null:
 		return hit
 	var o := Vector2i(cx * 16, cz * 16)
-	# Heights with a one-column border for slopes.
+	# Heights with a two-column border for (smoothed) slopes.
 	var hb := PackedFloat32Array()
-	hb.resize(18 * 18)
+	hb.resize(20 * 20)
 	var roads := PackedByteArray()
 	roads.resize(256)
-	for z in 18:
-		for x in 18:
-			var wx := o.x + x - 1
-			var wz := o.y + z - 1
+	for z in 20:
+		for x in 20:
+			var wx := o.x + x - 2
+			var wz := o.y + z - 2
 			var c := column_f(wx, wz, _n_detail, _n_ridge) if in_bounds(wx, wz) else Vector2(-20, 0)
-			hb[x + z * 18] = c.x
-			if x > 0 and z > 0 and x < 17 and z < 17:
-				roads[(x - 1) + (z - 1) * 16] = int(c.y)
+			hb[x + z * 20] = c.x
+			if x > 1 and z > 1 and x < 18 and z < 18:
+				roads[(x - 2) + (z - 2) * 16] = int(c.y)
 	var hf := PackedFloat32Array()
 	hf.resize(256)
 	var hi := PackedInt32Array()
@@ -1552,7 +1559,7 @@ func _columns_v3(cx: int, cz: int) -> Array:
 	for z in 16:
 		for x in 16:
 			var i := x + z * 16
-			var bi := (x + 1) + (z + 1) * 18
+			var bi := (x + 2) + (z + 2) * 20
 			var h := hb[bi]
 			hf[i] = h
 			var hh := int(floorf(h + 0.5))
@@ -1561,7 +1568,8 @@ func _columns_v3(cx: int, cz: int) -> Array:
 			min_h = mini(min_h, hh)
 			var wx := o.x + x
 			var wz := o.y + z
-			var s := maxf(absf(hb[bi + 1] - hb[bi - 1]), absf(hb[bi + 18] - hb[bi - 18])) * 0.5
+			# Slope over 4 m: steady enough that materials don't flicker column to column.
+			var s := Vector2(hb[bi + 2] - hb[bi - 2], hb[bi + 40] - hb[bi - 40]).length() * 0.25
 			slope[i] = s
 			var biome := biome_at(wx, wz)
 			biomes[i] = biome
@@ -1607,6 +1615,11 @@ static func _rock_group(biome: int) -> int:
 	return Rock.PLAIN
 
 
+## Marks a steep column whose surface shows the bedrock of that height (rock faces read as one
+## continuous rock, not as stacked bands of soil, subsoil and rock).
+const FACE := 255
+
+
 ## Surface block (low byte) and the block for the next three metres (high byte) of a column.
 func _surface_v3(x: int, z: int, h: int, biome: int, road: int, s: float) -> int:
 	if road == 1:
@@ -1614,6 +1627,8 @@ func _surface_v3(x: int, z: int, h: int, biome: int, road: int, s: float) -> int
 	var beach := h <= SEA_LEVEL + 1 and h >= SEA_LEVEL - 3
 	var n := _vnoise(x, z, 9.0, 9)
 	var steep := s > 1.05
+	if s > 0.95 + (_vnoise(x, z, 6.0, 41) - 0.5) * 0.3 and biome != Biome.MARSH and not beach:
+		return FACE | (FACE << 8)
 	match biome:
 		Biome.PLAINS:
 			if beach:
@@ -1699,8 +1714,8 @@ func _rock_v3(x: int, y: int, z: int, depth: int, group: int, st: int, o1: int, 
 		if y <= Y_MIN + 1 + (_hash3(x, 0, z, 5) & 1):
 			return Blocks.BEDROCK
 	# Ore veins: thin sheets inside irregular lenses, and rounder pockets.
-	var sheet := absi(o1 - 128) < 10 and o2 > 158
-	if sheet or o2 > 222:
+	var sheet := absi(o1 - 128) < 12 and o2 > 155
+	if sheet or o2 > 220:
 		var ore := _ore_kind(y, _hash01(x >> 3, y >> 3, z >> 3, 79))
 		if ore != Blocks.AIR:
 			return ore
@@ -1857,9 +1872,9 @@ func _generate_overworld_v3(key: Vector3i) -> Array:
 				var b := Blocks.AIR
 				if solid:
 					var depth := h - wy
-					if depth <= 0:
+					if depth <= 0 and tops[ci] != FACE:
 						b = tops[ci]
-					elif depth < 4:
+					elif depth < 4 and subs[ci] != FACE:
 						b = subs[ci]
 					else:
 						b = _rock_v3(o.x + x, wy, o.z + z, depth, rocks[ci], int(strata[ni]) if not strata.is_empty() else 128,

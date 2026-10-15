@@ -50,7 +50,7 @@ static func build(surface_loc: Location, depths_loc: Location, world_gen: WorldG
 	depths_loc.center = c
 	depths_loc.ground_y = int(c.y)
 	depths_loc.radius = maxf(m._hi.x - m._lo.x, m._hi.z - m._lo.z) * 0.5 + 8.0
-	depths_loc.half_height = (m._hi.y - m._lo.y) * 0.5 + 6.0
+	depths_loc.half_height = (m._hi.y - m._lo.y) * 0.5 + 2.0
 
 
 func _ground(x: float, z: float) -> float:
@@ -137,6 +137,9 @@ func _layout(f: Vector2, levels: int, guardian: String) -> void:
 	var res := decline(adit_end, f, adit_end.y - level_y, rng.randf_range(0.5, 0.8) * (1.0 if rng.randf() < 0.5 else -1.0))
 	var start: Vector3 = res[0]
 	var dir: Vector2 = res[1]
+	# The workings location spans the levels (the portal location names the adit).
+	_lo = Vector3(INF, INF, INF)
+	_hi = Vector3(-INF, -INF, -INF)
 	for level in levels:
 		var deepest := level == levels - 1
 		var out := _level(start, dir, level, deepest, guardian)
