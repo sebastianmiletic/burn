@@ -42,7 +42,7 @@ static func _table() -> Dictionary:
 	t[Blocks.OBSIDIAN] = [L.DARK, L.DARK, 0.25, 0.25, Color(0.22, 0.17, 0.3), ASCII_SOLID]
 	t[Blocks.BEDROCK] = [L.DARK, L.DARK, 0.2, 1.0, Color(0.35, 0.33, 0.33), ASCII_SOLID]
 	t[Blocks.BASALT] = dark
-	t[Blocks.ASH] = [L.ASH, L.DARK, 0.25, 1.0, Color(0.9, 0.86, 0.84), ASCII_GROUND]
+	t[Blocks.ASH] = [L.ASH, L.DARK, 0.11, 1.0, Color(0.9, 0.86, 0.84), ASCII_GROUND]  # low rate: the ash photo tiles visibly
 	t[Blocks.BONE] = [L.LIMESTONE, L.LIMESTONE, 0.4, 0.9, Color(1.15, 1.1, 0.95), ASCII_SOLID]
 	t[Blocks.HELLSTONE] = [L.DARK, L.DARK, 0.25, 0.8, Color(0.7, 0.3, 0.25), ASCII_SOLID, Color(1.0, 0.25, 0.08), 0.7, Color(2.2, 0.35, 0.08), 0.0]
 	t[Blocks.DRY_GRASS] = [L.DRY, L.DIRT, 0.28, 1.0, Color(1.0, 0.95, 0.85), ASCII_GROUND]
@@ -68,12 +68,13 @@ static func _table() -> Dictionary:
 	t[Blocks.RED_ROCK] = [L.SANDSTONE, L.SANDSTONE, 0.18, 1.0, Color(1.22, 0.66, 0.44), ASCII_SOLID]
 	t[Blocks.RED_SAND] = [L.SAND, L.SANDSTONE, 0.3, 1.0, Color(1.2, 0.64, 0.4), ASCII_GROUND]
 	t[Blocks.UMBER_ROCK] = [L.CLAY, L.SANDSTONE, 0.2, 1.0, Color(0.82, 0.55, 0.42), ASCII_SOLID]
-	t[Blocks.SCORIA] = [L.ASH, L.DARK, 0.3, 1.0, Color(0.78, 0.46, 0.38), ASCII_SOLID]
+	t[Blocks.SCORIA] = [L.DARK, L.DARK, 0.16, 1.0, Color(1.05, 0.62, 0.52), ASCII_SOLID]
 	t[Blocks.PERMAFROST] = [L.TRAIL, L.ROCK, 0.3, 0.9, Color(0.78, 0.82, 0.86), ASCII_GROUND]
 	t[Blocks.FLOWSTONE] = [L.MARBLE, L.LIMESTONE, 0.3, 0.45, Color(1.02, 0.9, 0.72), ASCII_SOLID, Color(1.0, 0.94, 0.82), 0.2, Color(0, 0, 0), 0.0]
 	t[Blocks.GEYSERITE] = [L.LIMESTONE, L.LIMESTONE, 0.35, 0.8, Color(1.08, 0.86, 0.62), ASCII_SOLID, Color(0.92, 0.42, 0.16), 0.35, Color(0, 0, 0), 0.0]
 	t[Blocks.MYCELIUM] = [L.MUD, L.MOSSY, 0.35, 0.8, Color(0.72, 0.62, 0.78), ASCII_GROUND, Color(0.35, 0.9, 0.75), 0.18, Color(0.08, 0.4, 0.32), 0.0]
 	t[Blocks.MAGMA_ROCK] = [L.DARK, L.DARK, 0.25, 0.9, Color(0.5, 0.36, 0.32), ASCII_SOLID, Color(1.0, 0.38, 0.08), 0.62, Color(3.2, 0.95, 0.18), 0.0]
+	t[Blocks.SCREE] = [L.ROCK, L.ROCK, 0.55, 1.0, Color(1.0, 1.0, 1.02), ASCII_GROUND]
 	t[SmoothMesher.CODE_FOREST_FLOOR] = [L.FOREST, L.DIRT, 0.3, 1.0, Color(1.0, 0.93, 0.85), ASCII_GROUND]
 	t[SmoothMesher.CODE_HELL_ASH] = [L.ASH, L.DARK, 0.25, 1.0, Color(0.75, 0.55, 0.5), ASCII_GROUND]
 	t[SmoothMesher.CODE_PEAK_GRASS] = [L.LUSH, L.ROCK, 0.28, 1.0, Color(0.78, 0.82, 0.72), ASCII_GROUND]
