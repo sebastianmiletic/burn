@@ -169,7 +169,11 @@ func setup(info: Dictionary) -> void:
 	_log_time("spawn area streamed", t0)
 	# Make sure we stand on solid ground (saves can predate edits).
 	var p := local_player.global_position
-	if world.field(p + Vector3(0, 0.3, 0)) >= 0.5 or world.is_box_solid(Vector3i(p.floor())):
+	if local_player.body._overlaps(world, p):
+		# Smooth ground queries exclude masonry; they cannot resolve a body
+		# embedded in a shrine platform or overlapping village architecture.
+		local_player.global_position.y = world.surface_y(int(p.x), int(p.z)) + 1.05
+	elif world.field(p + Vector3(0, 0.3, 0)) >= 0.5:
 		var g := world.ground_below(p.x, p.y + 40.0, p.z, 80.0)
 		if absf(g) < 1e6:
 			local_player.global_position = Vector3(p.x, g + 0.02, p.z)
@@ -418,7 +422,8 @@ func default_spawn(dim: int) -> Vector3:
 		p = loc.center + Vector3(0, 0, 4)
 		for s in loc.spawns_of("shrine"):
 			p = s["pos"] + Vector3(0, 0, 3)
-	return Vector3(p.x, g.surface_height(int(p.x), int(p.z)) + 1.05, p.z)
+	# Preserve the shrine's masonry clearance instead of spawning in its floor.
+	return Vector3(p.x, maxf(p.y, g.surface_height(int(p.x), int(p.z)) + 1.05), p.z)
 
 
 func map_metres_per_pixel(_dim: int) -> float:

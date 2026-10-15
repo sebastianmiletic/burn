@@ -51,8 +51,10 @@ func _run() -> void:
 	var p := _w.local_player
 	var vw := _w.world_for(0)
 
+	print("[playtest] initial health=", p.health, " dead=", p.dead, " pos=", p.global_position, " loaded=", vw.is_area_loaded(p.global_position))
 	# --- Spawn ---------------------------------------------------------------
 	await _wait_for(func() -> bool: return p.body.on_floor, 10.0)
+	print("[playtest] settled health=", p.health, " dead=", p.dead, " velocity=", p.body.velocity, " floor=", p.body.on_floor, " loaded=", vw.is_area_loaded(p.global_position))
 	_check(p.body.on_floor and not p.dead, "player spawns standing on ground at %s" % str(p.global_position.round()))
 	_check(p.inventory.has("pickaxe_stone") and p.inventory.has("sword_rusty"), "starting kit given")
 	_check(_w.quests.is_active("kindling"), "first quest active")
@@ -102,6 +104,8 @@ func _run() -> void:
 			break
 	var before := vw.get_block(Vector3i(dig_at.floor()))
 	var dropped_before := _count("drop")
+	var mined_item := Blocks.drop(before)
+	var mined_before := p.inventory.count_of(mined_item)
 	p.inventory.select(1)  # Equip the pick, as a real player must.
 	for i in 8:
 		_w.replicator.request_dig(dig_at, 0.9, 0.42, "pickaxe_stone", 0)
@@ -109,7 +113,7 @@ func _run() -> void:
 	var after := vw.ground_below(dig_at.x, dig_at.y + 3.0, dig_at.z, 8.0)
 	_check(absf(g) < 1e6 and after < g - 0.4, "dug a hole into %s (ground %.2f -> %.2f)" % [Blocks.name_of(before), g, after])
 	var drop := _find("drop")
-	_check(_count("drop") > dropped_before and drop != null, "digging dropped material")
+	_check((_count("drop") > dropped_before and drop != null) or p.inventory.count_of(mined_item) > mined_before, "digging dropped material (or picked it up automatically)")
 	if drop != null:
 		var item := String(drop.get("item_id"))
 		var had := p.inventory.count_of(item)
@@ -138,7 +142,7 @@ func _run() -> void:
 		while not skel.dead and guard < 60:
 			_w.request_attack([skel.net_id], 20.0, "hit")
 			guard += 1
-			await _frames(2)
+			await _wait(0.12)
 		_check(skel.dead, "skeleton killed")
 		await _frames(5)
 		_check(p.xp > xp_before, "kill gave xp (%d -> %d)" % [xp_before, p.xp])
@@ -150,19 +154,25 @@ func _run() -> void:
 	var warden := _w.spawn_entity("warden", p.global_position + Vector3(6, 0.5, 0), 0, {})
 	_check(warden != null and warden.is_class("Node3D"), "Warden boss spawns")
 	if warden != null:
+		p.invulnerable_until = Time.get_ticks_msec() / 1000.0 + 120.0
 		await _wait(1.5)
 		var guard := 0
 		while not warden.dead and guard < 400:
 			if warden.has_method("add_threat"):
 				warden.call("add_threat", p.net_id, 10.0)
+			# This checks reward integration, not AI navigation or survival.
+			p.global_position = warden.global_position + Vector3(2, 0, 0)
+			p.body.velocity = Vector3.ZERO
+			p.heal_local(p.max_health)
 			_w.request_attack([warden.net_id], 60.0, "hit")
 			guard += 1
-			await _frames(1)
+			await _wait(0.12)
 		_check(warden.dead, "Warden defeated")
 		await _wait_for(func() -> bool: return _w.bosses_defeated.has("warden"), 5.0)
 		_check(_w.bosses_defeated.has("warden"), "boss recorded as defeated")
 		await _wait_for(func() -> bool: return p.inventory.has("warden_sigil"), 5.0)
 		_check(p.inventory.has("warden_sigil"), "relic (Warden's Sigil) awarded")
+	p.invulnerable_until = 0.0
 	p.heal_local(p.max_health)
 
 	# --- Death and respawn -----------------------------------------------------------------

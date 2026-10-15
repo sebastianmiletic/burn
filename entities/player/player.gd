@@ -170,6 +170,10 @@ func _select(i: int) -> void:
 # --- Simulation ------------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	# Streaming/setup may relocate an embedded spawn. Accumulating fall speed
+	# before play starts can turn that correction into a lethal landing.
+	if is_local and Game.state == Game.State.LOADING:
+		return
 	if not is_local:
 		_process_remote(delta)
 		return

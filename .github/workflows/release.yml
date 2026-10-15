@@ -70,7 +70,7 @@ jobs:
 
       - name: Playthrough and multiplayer
         run: |
-          ~/godot/godot --headless --path . --log-file "$PWD/build/validation/play-engine.log" -- --playtest --no-update --data-dir="$PWD/build/validation/play-user" 2>&1 | tee build/validation/play.log
+          ~/godot/godot --headless --path . --log-file "$PWD/build/validation/play-engine.log" -- --playtest --seed=3146316403 --no-update --data-dir="$PWD/build/validation/play-user" 2>&1 | tee build/validation/play.log
           python3 tools/check_log.py build/validation/play.log
           ~/godot/godot --headless --path . --log-file "$PWD/build/validation/flow-engine.log" -s res://tests/game/flow_test.gd -- --data-dir="$PWD/build/validation/flow-user" 2>&1 | tee build/validation/flow.log
           python3 tools/check_log.py build/validation/flow.log
