@@ -64,20 +64,20 @@ static func _monolith(b: ArchBuild, base: Vector3, h: float, yaw: float, lean: f
 	m.mat(L.RUBBLE, tint, 0.8)
 	var r := RandomNumberGenerator.new()
 	r.seed = seed_value
-	var rings := 5
+	var rings := 7
 	var prof: Array[Vector2] = []
 	for j in rings + 1:
 		var f := float(j) / rings
-		prof.append(Vector2((0.62 - 0.22 * f) * r.randf_range(0.9, 1.1), (h + 0.4) * f))
-	var segs := 6
+		prof.append(Vector2((0.62 - 0.26 * f * f) * r.randf_range(0.86, 1.12), (h + 0.4) * f))
+	var segs := 7
 	var phase := r.randf() * TAU
 	var pts: Array[PackedVector3Array] = []
 	for j in rings + 1:
 		var row := PackedVector3Array()
 		for i in segs:
 			var a := phase + TAU * i / segs
-			var k := r.randf_range(0.82, 1.15)
-			row.append(Vector3(cos(a) * prof[j].x * k * 1.25, prof[j].y, sin(a) * prof[j].x * k * 0.8))
+			var k := r.randf_range(0.74, 1.22)
+			row.append(Vector3(cos(a) * prof[j].x * k * 1.25 + r.randf_range(-0.04, 0.04), prof[j].y + r.randf_range(-0.06, 0.06), sin(a) * prof[j].x * k * 0.8))
 		pts.append(row)
 	for j in rings:
 		for i in segs:
@@ -91,7 +91,7 @@ static func _monolith(b: ArchBuild, base: Vector3, h: float, yaw: float, lean: f
 				n = -n
 			m.quad(a, c, d, e, Vector2(i * 0.5, -a.y), Vector2(i * 0.5 + 0.5, -c.y), Vector2(i * 0.5 + 0.5, -d.y), Vector2(i * 0.5, -e.y), n)
 	var top := pts[rings]
-	var tc := Vector3(0, top[0].y + 0.12, 0)
+	var tc := Vector3(r.randf_range(-0.15, 0.15), top[0].y + r.randf_range(0.05, 0.3), 0)
 	for i in segs:
 		m.tri(top[i], top[(i + 1) % segs], tc, Vector2(top[i].x, top[i].z), Vector2(top[(i + 1) % segs].x, top[(i + 1) % segs].z), Vector2.ZERO)
 	if runes.a > 0.0:
@@ -127,7 +127,7 @@ static func _shrine(b: ArchBuild, at: Vector3, prop: Dictionary, rng: RandomNumb
 		base.y = b.ground(base)
 		var to_c := g - base
 		var yaw := atan2(to_c.x, to_c.z)
-		_monolith(b, base, float(s["h"]), yaw, float(s["lean"]), rng.randi(), RUNE * Color(1, 1, 1, 1.0))
+		_monolith(b, base, float(s["h"]), yaw, float(s["lean"]), rng.randi(), RUNE * Color(1, 1, 1, 1.0), Color(0.62, 0.62, 0.6))
 		# Offerings at the foot of some stones.
 		if rng.randf() < 0.5:
 			var q := base + to_c.normalized() * 0.75
@@ -579,12 +579,15 @@ static func _ruined_walls(b: ArchBuild, pieces: Array, rng: RandomNumberGenerato
 				if run_pts.is_empty():
 					run_pts.append(Vector2(float(i), -0.6))
 				var n := 3
+				var hp := float(heights.get(cells[i - 1], hc)) if i > 0 else float(hc)
+				var hn := float(heights.get(cells[i + 1], hc)) if i < length - 1 else float(hc)
 				for k in n:
-					var u := float(i) + (k + 0.5) / n
-					var hh := float(hc) - 0.2 + sin(u * 4.3 + side) * 0.25 + rng.randf_range(-0.2, 0.15)
-					if chapel and side == 1 and hc >= 6:
-						hh = minf(float(hc), 4.4 + (length * 0.5 - absf(u - length * 0.5)) * 1.1)
-					run_pts.append(Vector2(u, maxf(0.4, hh)))
+					var f := (k + 0.5) / n
+					var u := float(i) + f
+					# Blend towards the neighbours so the top crumbles rather than steps.
+					var base := lerpf(lerpf(hp, float(hc), 0.5 + f * 0.5), lerpf(float(hc), hn, f * 0.5), f)
+					var hh := base - 0.35 + sin(u * 4.3 + side) * 0.18 + rng.randf_range(-0.22, 0.12)
+					run_pts.append(Vector2(u, maxf(0.35, hh)))
 			if (not standing or i == length) and not run_pts.is_empty():
 				var end_u := float(i)
 				run_pts.append(Vector2(end_u, run_pts[run_pts.size() - 1].y * 0.7))
@@ -981,7 +984,8 @@ static func _gateway(b: ArchBuild, at: Vector3, prop: Dictionary, rng: RandomNum
 		var x := s * half
 		m.mat(L.ASHLAR, stone, 0.6)
 		m.box(Vector3(x, 0.3, 0), Vector3(1.3, 0.6, 1.3), 1)
-		m.box(Vector3(x, 0.6 + size.y * 0.5, 0), Vector3(0.95, size.y, 0.95), 1)
+		m.beam(Vector3(x, 0.55, 0), Vector3(x, 0.6 + size.y, 0), 0.95, 0.95, Vector3.BACK, 0.2)
+		m.beam(Vector3(x, 0.55, 0), Vector3(x, 0.95, 0), 1.15, 1.15, Vector3.BACK, 0.12)
 		m.box(Vector3(x, size.y + 0.75, 0), Vector3(1.2, 0.3, 1.2), 1)
 		m.mat(L.EMBER, rune, 0.0)
 		for k in 5:
@@ -989,7 +993,7 @@ static func _gateway(b: ArchBuild, at: Vector3, prop: Dictionary, rng: RandomNum
 			m.box(Vector3(x - s * 0.48, y, 0), Vector3(0.02, 0.32, 0.12), 1)
 			m.box(Vector3(x - s * 0.48, y + 0.2, 0.08 if k % 2 == 0 else -0.08), Vector3(0.02, 0.05, 0.18), 2)
 	m.mat(L.ASHLAR, stone * Color(1.05, 1.05, 1.05), 0.5)
-	m.box(Vector3(0, size.y + 1.25, 0), Vector3(half * 2.0 + 1.6, 0.7, 1.3), 0)
+	m.beam(Vector3(-half - 0.8, size.y + 1.25, 0), Vector3(half + 0.8, size.y + 1.25, 0), 1.3, 0.7, Vector3.UP, 0.12)
 	m.prism(Vector3(-0.9, size.y + 1.6, -0.55), Vector3.RIGHT, Vector3.UP, PackedVector2Array([Vector2(0, 0), Vector2(1.8, 0), Vector2(0.9, 0.9)]), 1.1, true, true)
 	m.mat(L.EMBER, rune, 0.0)
 	m.lathe(Vector3(0, size.y + 1.95, 0.56), PackedVector2Array([Vector2(0.0, 0.0), Vector2(0.18, 0.0)]), 10, false, false)

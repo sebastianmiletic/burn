@@ -14,7 +14,7 @@ var interior := ArchMesh.new()
 var far := ArchMesh.new()
 
 const SHELL_RANGE := 260.0
-const DETAIL_RANGE := 115.0
+const DETAIL_RANGE := 95.0
 const INTERIOR_RANGE := 55.0
 const FAR_BEGIN := 230.0
 const FAR_RANGE := 1700.0

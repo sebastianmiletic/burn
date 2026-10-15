@@ -158,6 +158,7 @@ static func ruin(loc: Location) -> void:
 			var d := 11 if style == "chapel" else 7
 			var x0 := c.x - w / 2
 			var z0 := c.z - d / 2
+			var phase := rng.randf() * TAU
 			for k in d:
 				for i in w:
 					var edge := i == 0 or i == w - 1 or k == 0 or k == d - 1
@@ -167,10 +168,12 @@ static func ruin(loc: Location) -> void:
 					if door:
 						continue
 					# Broken wall height: high near the gable, crumbling elsewhere.
-					var h := 1 + int(absf(sin(float(i * 3 + k * 7) + rng.randf())) * (5.0 if style == "chapel" else 3.5))
+					# Crumbling height: smooth along the wall, a gable left standing.
+					var along := float(i + k)
+					var h := 1 + int((0.5 + 0.5 * sin(along * 0.55 + phase)) * (3.6 if style == "chapel" else 2.6) + 0.5)
 					if style == "chapel" and k == 0:
-						h = 7
-					if rng.randf() < 0.18:
+						h = 6 - absi(i - w / 2)
+					if absf(sin(along * 0.31 + phase * 2.0)) < 0.18:
 						h = 1
 					var cell := Vector2i(x0 + i, z0 + k)
 					solid.call(cell, h)

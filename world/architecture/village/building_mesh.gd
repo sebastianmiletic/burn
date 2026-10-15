@@ -210,14 +210,21 @@ static func _house(b: ArchBuild, spec: Dictionary, rng: RandomNumberGenerator) -
 			b.add_smoke(Vector3(float(chimney) * (w * 0.5 + 0.28 - 0.47), ridge + 1.3, 0), 0.8)
 	elif longhouse:
 		# Smoke louvre on the ridge over the long hearth.
-		b.shell.mat(L.SHINGLE, roof_tint, wear)
-		var top := ridge + 0.42 / cos(deg_to_rad(pitch))
-		b.shell.box(Vector3(0, top + 0.35, 0), Vector3(1.4, 0.06, 1.1), 0)
+		var top := ridge + (0.42 if roof_kind == "thatch" else 0.1) / cos(deg_to_rad(pitch))
 		b.shell.mat(L.TIMBER, timber, 0.3)
-		for sx: float in [-0.6, 0.6]:
-			for sz: float in [-0.4, 0.4]:
-				b.shell.beam(Vector3(sx, top - 0.2, sz), Vector3(sx, top + 0.33, sz), 0.08, 0.08)
-		b.add_smoke(Vector3(0, top + 0.3, 0), 1.2)
+		for sx: float in [-0.7, 0.7]:
+			for sz: float in [-0.35, 0.35]:
+				b.shell.beam(Vector3(sx, top - 0.3, sz), Vector3(sx, top + 0.5, sz), 0.1, 0.1)
+		b.shell.beam(Vector3(-0.85, top + 0.5, 0), Vector3(0.85, top + 0.5, 0), 0.12, 0.12)
+		b.shell.mat(L.SHINGLE if roof_kind != "slate" else L.SLATE, roof_tint, wear)
+		for sd: float in [1.0, -1.0]:
+			var e0 := Vector3(-0.95, top + 0.32, sd * 0.75)
+			var e1 := Vector3(0.95, top + 0.32, sd * 0.75)
+			var r1 := Vector3(0.95, top + 0.85, 0)
+			var r0 := Vector3(-0.95, top + 0.85, 0)
+			b.shell.quad(e0, e1, r1, r0, Vector2(0, 0), Vector2(1.9, 0), Vector2(1.9, -0.9), Vector2(0, -0.9), Vector3(0, 0.82, sd * 0.57).normalized())
+			b.shell.quad(e1, e0, r0, r1, Vector2(0, 0), Vector2(1.9, 0), Vector2(1.9, -0.9), Vector2(0, -0.9), -Vector3(0, 0.82, sd * 0.57).normalized())
+		b.add_smoke(Vector3(0, top + 0.6, 0), 1.2)
 	# Interior.
 	if enterable:
 		_floor(b, w, d, t, stone or longhouse)
