@@ -22,6 +22,8 @@ static func create(kind: String, _data := {}) -> Entity:
 			return Portal.new()
 		"lore":
 			return LoreStone.new()
+		"station":
+			return Station.new()
 	if kind in ENEMY_KINDS:
 		return _from_script("res://entities/enemies/enemy.gd", kind)
 	if kind in BOSS_KINDS:
