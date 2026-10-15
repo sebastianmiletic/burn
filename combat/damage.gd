@@ -25,6 +25,8 @@ const RESIST := {
 	"leviathan": {"hit": 0.1, "fire": 0.6},
 	"broodmother": {"hit": 0.15, "fire": -0.35},
 	"bog_hag": {"hit": 0.1, "fire": -0.2},
+	"ryft_sentinel": {"hit": 0.2, "fire": 0.3},
+	"void_sovereign": {"hit": 0.15, "fire": 0.4},
 	# Creatures and wildlife (see entities/enemies/mob_db.gd).
 	"wolf": {"hit": 0.0, "fire": -0.3},
 	"dire_wolf": {"hit": 0.1, "fire": -0.3},
