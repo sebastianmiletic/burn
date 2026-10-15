@@ -8,7 +8,7 @@ shader_type spatial;
 uniform vec3 glow_color : source_color = vec3(1.0, 0.3, 0.1);
 uniform float energy = 5.0;
 uniform float pulse = 0.0;
-instance uniform float intensity = 1.0;
+instance uniform float intensity : instance_index(15) = 1.0;
 
 void fragment() {
 	float p = 1.0 - pulse * 0.5 + pulse * 0.5 * sin(TIME * 5.0);
