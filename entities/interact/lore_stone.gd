@@ -6,6 +6,15 @@ const TEXTS := {
 	"crater": ["Here the sky fell, and the fire went down into the earth.",
 		"Three seals bind the Gate below: the Warden's, the King's, the Dragon's.",
 		"Dig, and you will find it. Dig, and it will find you."],
+	"leviathan": ["The fishers of the Grey Sea raised this spire to watch for storms.",
+		"The storms were never storms. Something old circles beneath, and it does not sleep.",
+		"It rises to feed. Strike only when its head is above the water."],
+	"broodmother": ["Emberwood weeps here: the trees above drink from a hollow full of silk.",
+		"Vexhira the Broodmother has fed on miners and hunters for a hundred winters.",
+		"When she climbs into the dark, watch the ground beneath her."],
+	"bog_hag": ["Leave a coin at the stones and Old Mother Mire may let you pass.",
+		"Those who did not are in her pools now. Some of them still walk.",
+		"She is frail, but she never stands where you left her."],
 }
 
 var text_key := ""

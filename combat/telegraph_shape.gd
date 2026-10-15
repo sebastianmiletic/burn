@@ -7,6 +7,20 @@ extends RefCounted
 ##   line:   size.x = length, size.y = width (starts at pos, runs along dir)
 ##   ring:   size.x = inner radius, size.y = outer radius
 ## Height: anything within `height` metres above/below pos.y counts.
+## A shape may carry a visual style after a colon ("circle:geyser",
+## "line:wave"); the style only changes the landing effect (TelegraphFx).
+
+
+## "circle:geyser" -> "circle"
+static func base(shape: String) -> String:
+	var i := shape.find(":")
+	return shape if i < 0 else shape.substr(0, i)
+
+
+## "circle:geyser" -> "geyser" ("" when unstyled)
+static func style(shape: String) -> String:
+	var i := shape.find(":")
+	return "" if i < 0 else shape.substr(i + 1)
 
 
 static func contains(shape: String, pos: Vector3, dir: Vector3, size: Vector3, point: Vector3, height := 4.0) -> bool:
@@ -17,7 +31,7 @@ static func contains(shape: String, pos: Vector3, dir: Vector3, size: Vector3, p
 	if f.length_squared() < 1e-6:
 		f = Vector2(0, -1)
 	f = f.normalized()
-	match shape:
+	match base(shape):
 		"circle":
 			return d.length() <= size.x
 		"ring":
@@ -39,7 +53,7 @@ static func contains(shape: String, pos: Vector3, dir: Vector3, size: Vector3, p
 
 ## Shortest way out of the shape (for AI that wants to dodge, and tests).
 static func area(shape: String, size: Vector3) -> float:
-	match shape:
+	match base(shape):
 		"circle":
 			return PI * size.x * size.x
 		"ring":

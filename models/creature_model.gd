@@ -30,6 +30,11 @@ var _glows: Array[GeometryInstance3D] = []
 var _embers: GPUParticles3D
 var _glow_intensity := 1.0
 var _built := false
+## Animation level of detail: far-away models pose themselves less often.
+var lod_enabled := true
+var _lod_step := 0.0
+var _lod_acc := 0.0
+var _lod_check := 0.0
 
 ## Seconds after death before the body crumbles into embers.
 var dissolve_delay := 1.4
@@ -134,9 +139,21 @@ func set_glow_intensity(v: float) -> void:
 		g.set_instance_shader_parameter(&"intensity", v)
 
 
-func _process(delta: float) -> void:
+func _process(frame_delta: float) -> void:
 	if not _built:
 		return
+	var delta := frame_delta
+	if lod_enabled:
+		_lod_check -= frame_delta
+		if _lod_check <= 0.0:
+			_lod_check = 0.35 + randf() * 0.2
+			_lod_step = _lod_interval()
+		if _lod_step > 0.0 and _flash <= 0.0 and not _dead:
+			_lod_acc += frame_delta
+			if _lod_acc < _lod_step:
+				return
+			delta = _lod_acc
+			_lod_acc = 0.0
 	_time += delta
 	if _action != "":
 		_action_t += delta
@@ -172,6 +189,29 @@ func _process(delta: float) -> void:
 		_embers.emitting = _burn > 0.05 or (_dead and _dead_t > dissolve_delay and _dissolve < 0.9)
 
 
+## Seconds between animation updates for this model right now (0 = every frame).
+func _lod_interval() -> float:
+	if not is_visible_in_tree():
+		return 0.5
+	var vp := get_viewport()
+	var cam := vp.get_camera_3d() if vp != null else null
+	if cam == null:
+		return 0.0
+	var d := cam.global_position.distance_to(global_position) / maxf(0.5, _lod_size())
+	if d > 70.0:
+		return 0.25
+	if d > 32.0:
+		return 1.0 / 15.0
+	if d > 16.0:
+		return 1.0 / 30.0
+	return 0.0
+
+
+## Rough size of the model in metres (big creatures keep full-rate animation further away).
+func _lod_size() -> float:
+	return 1.8
+
+
 func _set_param(param: StringName, value: Variant) -> void:
 	for g in _geoms:
 		g.set_instance_shader_parameter(param, value)
@@ -182,7 +222,7 @@ func _collect(node: Node) -> void:
 		if c is GeometryInstance3D and not c is GPUParticles3D:
 			var gi := c as GeometryInstance3D
 			var m := gi.material_override as ShaderMaterial
-			if m != null and m.shader == ModelKit.CREATURE:
+			if m != null and (m.shader == ModelKit.CREATURE or m.shader == CreatureSkin.SHADER):
 				_geoms.append(gi)
 			elif m != null and m.shader == ModelKit.GLOW:
 				_glows.append(gi)
