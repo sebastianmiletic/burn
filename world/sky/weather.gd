@@ -262,6 +262,7 @@ func _process(delta: float) -> void:
 
 	RenderingServer.global_shader_parameter_set(&"wind_dir", _wind_dir)
 	RenderingServer.global_shader_parameter_set(&"wind_strength", _wind_strength)
+	CharCloth.set_wind(_wind_dir, _wind_strength)
 	RenderingServer.global_shader_parameter_set(&"wetness", _wet if _dimension == 0 else 0.0)
 	RenderingServer.global_shader_parameter_set(&"snow_cover", _snow_cover)
 	RenderingServer.global_shader_parameter_set(&"rain_amount", rain)

@@ -331,7 +331,10 @@ func _rasterise_pads() -> void:
 	for loc in locations:
 		if loc.pad_radius > 0.0:
 			# Wide, gentle shoulders so building sites never leave cut walls in the smooth land.
-			add_pad(Vector2(loc.center.x, loc.center.z), loc.pad_radius, maxf(loc.pad_falloff * 1.8, 10.0), loc.ground_y + 0.0)
+			# (Islets out at sea keep their steep shores: the sea around them must stay deep.)
+			var at_sea := biome_at(int(loc.center.x), int(loc.center.z)) == Biome.OCEAN
+			var falloff := loc.pad_falloff if at_sea else maxf(loc.pad_falloff * 1.8, 10.0)
+			add_pad(Vector2(loc.center.x, loc.center.z), loc.pad_radius, falloff, loc.ground_y + 0.0)
 	for road: PackedVector2Array in LocationPlanner.roads(self):
 		add_road(road, 2.0)
 

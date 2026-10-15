@@ -33,6 +33,7 @@ Ownership (each part is written by one person; touch other parts only through th
 | `snow_cover` | float | atmosphere | 0..1 fresh snow dusting on up-facing surfaces (snowfall weather in the peaks) |
 | `foliage_pushers` | sampler2D | flora (FoliageInteraction) | RGBA32F texture, 16x1: xyz = world position of a pusher's feet, w = radius (m); w = 0 unused |
 | `foliage_pusher_count` | int | flora | number of valid texels in `foliage_pushers` |
+| `rain_amount` | float | atmosphere | 0..1 rain falling on the local player (water ripples) |
 
 Read them in shaders with `global uniform float wind_strength;` etc. Set them with
 `RenderingServer.global_shader_parameter_set(&"wind_strength", v)`.
