@@ -89,15 +89,46 @@ func _run() -> void:
 	for stop: String in tour:
 		# "arena_<location id>": stand 18 m in front of that location's boss spawn.
 		var arena := stop.begins_with("arena_")
+		var spec: Array = [StringName(stop.trim_prefix("arena_")), 13.0, 0.0, Vector3(0, 2.5, 18), -0.12] if arena else STOPS.get(stop, [])
 		# "cam:<location id>:ox:oy:oz:yaw:pitch[:time]": hover at an offset from the boss spawn
 		# (or the location centre), e.g. close-ups of arena architecture.
 		var cam := stop.begins_with("cam:")
-		var spec: Array = [StringName(stop.trim_prefix("arena_")), 13.0, 0.0, Vector3(0, 2.5, 18), -0.12] if arena else ([] if cam else STOPS[stop])
 		if cam:
-			var parts := stop.split(":")
-			spec = [StringName(parts[1]), float(parts[7]) if parts.size() > 7 else 13.0, float(parts[5]),
-					Vector3(float(parts[2]), float(parts[3]), float(parts[4])), float(parts[6])]
-			stop = "cam_%s_%02d" % [parts[1], tour.find(stop)]
+			var cparts := stop.split(":")
+			spec = [StringName(cparts[1]), float(cparts[7]) if cparts.size() > 7 else 13.0, float(cparts[5]),
+					Vector3(float(cparts[2]), float(cparts[3]), float(cparts[4])), float(cparts[6])]
+			stop = "cam_%s_%02d" % [cparts[1], tour.find(stop)]
+		# "site_<location id>": 16 m south of a location, looking north.
+		# "bld_<village>_<n>" / "in_<village>_<n>": the n-th building of a
+		# village from outside its door, or from just inside it.
+		var inside := stop.begins_with("in_")
+		if stop.begins_with("site_"):
+			spec = [StringName(stop.trim_prefix("site_")), 10.5, 0.0, Vector3(0, 2.5, 16), -0.1]
+		elif stop.begins_with("bld_") or inside:
+			var parts := stop.split("_")
+			var vloc := w.location_by_id(StringName("_".join(parts.slice(1, parts.size() - 1))))
+			var n := int(parts[parts.size() - 1])
+			var k := 0
+			if vloc != null:
+				for prop: Dictionary in vloc.props:
+					if prop.get("type", "") != "building":
+						continue
+					if k == n:
+						var door: Vector3 = prop["door_out"]
+						var front := Basis(Vector3.UP, int(prop["rot"]) * PI * 0.5) * Vector3.BACK
+						var pos := door + front * 6.5 + Vector3(0, 1.0, 0)
+						var look := -front
+						var pitch := -0.08
+						if inside:
+							var d := float(prop["d"])
+							pos = VillagePlan.to_world(prop, Vector3(-float(prop["w"]) * 0.5 + float(prop["door"]) + float(prop["door_w"]) * 0.5, 0.05, d * 0.5 - 1.5))
+							look = -front
+							pitch = -0.12
+						spec = [vloc.id, 11.0, atan2(-look.x, -look.z), pos - vloc.center, pitch]
+					k += 1
+		if spec.is_empty():
+			report.append("%s: unknown stop" % stop)
+			continue
 		var loc := w.location_by_id(spec[0])
 		if loc == null:
 			report.append("%s: location missing" % stop)
@@ -154,7 +185,7 @@ func _run() -> void:
 		var t0 := Time.get_ticks_msec()
 		while (not vw.is_area_loaded(p.global_position) or vw.loading_progress() < 0.95) and Time.get_ticks_msec() - t0 < 20000:
 			await get_tree().process_frame
-		if spec.size() > 3 or vw.is_solid(Vector3i(p.global_position.floor())) or not vw.is_solid(Vector3i((p.global_position - Vector3(0, 3, 0)).floor())):
+		if not inside and (spec.size() > 3 or vw.is_solid(Vector3i(p.global_position.floor())) or not vw.is_solid(Vector3i((p.global_position - Vector3(0, 3, 0)).floor()))):
 			var gp := p.global_position
 			var g := vw.ground_below(gp.x, gp.y + 30.0, gp.z, 60.0)
 			var y := g if absf(g) < 1e6 else float(vw.surface_y(int(gp.x), int(gp.z)) + 1)
@@ -198,6 +229,27 @@ func _run() -> void:
 				Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
+		for arg in OS.get_cmdline_user_args():
+			if arg == "--third-person" and p.camera.first_person:
+				p.camera.first_person = false
+				p.call("_apply_view")
+				await _frames(10)
+			elif arg.begins_with("--press="):
+				# Hold movement keys (e.g. move_forward,sprint) to catch locomotion mid-stride.
+				for act in arg.trim_prefix("--press=").split(","):
+					Input.action_press(act)
+				await get_tree().create_timer(1.2).timeout
+		for arg in OS.get_cmdline_user_args():
+			if arg.begins_with("--dig="):
+				# Look down a little and dig N strikes into what the crosshair hits.
+				p.camera.pitch = -0.55
+				await _frames(5)
+				for i in int(arg.trim_prefix("--dig=")):
+					var hit: Dictionary = p.call("_block_target")
+					if not hit.is_empty():
+						p.call("_sculpt_strike", hit, int(hit["block"]))
+					await get_tree().create_timer(0.45).timeout
+				await _frames(30)
 		for arg in OS.get_cmdline_user_args():
 			if arg.begins_with("--action="):
 				# Freeze-frame an action mid-swing (first-person viewmodel checks).

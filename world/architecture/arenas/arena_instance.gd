@@ -111,7 +111,7 @@ func _add_flames() -> void:
 
 
 func _add_embers() -> void:
-	if int(Settings.get_value("graphics", "quality")) < Settings.Quality.MEDIUM:
+	if ArenaLights.quality() < 1:
 		return
 	for e: Array in build.embers:
 		var host := Node3D.new()

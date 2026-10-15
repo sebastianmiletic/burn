@@ -62,6 +62,9 @@ var _data := {}
 func _ready() -> void:
 	_data = DEFAULTS.duplicate(true)
 	var cfg := ConfigFile.new()
+	var first_run := not FileAccess.file_exists(PATH)
+	if first_run:
+		_data["graphics"]["quality"] = _suggested_quality()
 	if cfg.load(PATH) == OK:
 		for section: String in cfg.get_sections():
 			if not _data.has(section):
@@ -72,6 +75,22 @@ func _ready() -> void:
 		_data["gameplay"]["player_name"] = _default_name()
 	Keybinds.apply(_data["controls"])
 	apply_display()
+
+
+## First launch on a laptop's integrated graphics starts at Medium so the game
+## runs smoothly; dedicated GPUs and Apple Silicon start at High.
+func _suggested_quality() -> int:
+	if DisplayServer.get_name() == "headless":
+		return Quality.HIGH
+	var vendor := RenderingServer.get_video_adapter_vendor().to_lower()
+	var name := RenderingServer.get_video_adapter_name().to_lower()
+	if vendor.contains("apple") or name.contains("apple"):
+		return Quality.HIGH
+	if RenderingServer.get_video_adapter_type() == RenderingDevice.DEVICE_TYPE_INTEGRATED_GPU:
+		return Quality.MEDIUM
+	if RenderingServer.get_current_rendering_method() != "forward_plus":
+		return Quality.LOW  # compatibility fallback: keep it light
+	return Quality.HIGH
 
 
 func get_value(section: String, key: String) -> Variant:

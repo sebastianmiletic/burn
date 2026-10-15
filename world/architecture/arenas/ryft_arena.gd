@@ -28,7 +28,7 @@ static func build(b: ArenaBuild) -> void:
 	var rng := k.rng
 	# Dais: rings of dark stone tiles, a raised rim, a rune ring and the inner seal.
 	k.ao_floor = -INF
-	var rr := 2.0
+	var rr := float(pr.get("inner", 2.0))
 	var ring := 0
 	while rr < r:
 		var w := minf(2.2, r - rr)
@@ -42,13 +42,11 @@ static func build(b: ArenaBuild) -> void:
 			k.lathe(PackedVector2Array([Vector2(rr + 0.03, -0.5), Vector2(rr + 0.03, h), Vector2(rr + w - 0.03, h), Vector2(rr + w - 0.03, -0.5)]), 3, a0, a1)
 		rr += w
 		ring += 1
-	k.mat(K.MARBLE, STONE * 0.8, 0.4)
-	k.lathe(PackedVector2Array([Vector2(0.0, 0.02), Vector2(2.0, 0.02), Vector2(2.0, -0.5)]), 32)
 	k.ao_floor = 0.0
 	k.mat(K.CARVED, STONE * 1.15, 0.4)
 	k.lathe(PackedVector2Array([Vector2(r + 1.2, -3.0), Vector2(r + 0.4, 0.0), Vector2(r + 0.4, 0.45), Vector2(r - 0.2, 0.45), Vector2(r - 0.2, 0.0)]), 64, 0.0, TAU, 0.03)
 	k.mat(K.GLOW, glow, 1.0, 2.4)
-	for rad: float in [r - 2.0, 6.5]:
+	for rad: float in [r - 2.0, float(pr.get("inner", 2.0)) + 0.4]:
 		k.lathe(PackedVector2Array([Vector2(rad - 0.12, -0.01), Vector2(rad - 0.1, 0.02), Vector2(rad + 0.1, 0.02), Vector2(rad + 0.12, -0.01)]), 64)
 	for i in 24:
 		var a := TAU * i / 24.0
@@ -57,11 +55,7 @@ static func build(b: ArenaBuild) -> void:
 		var c := dir * (r - 3.0)
 		k.beam(c - tan * 0.35 + Vector3(0, 0.015, 0), c + tan * 0.35 + dir * 0.4 + Vector3(0, 0.015, 0), 0.06, 0.02, 0.0)
 		k.beam(c + Vector3(0, 0.015, 0), c - dir * 0.5 + Vector3(0, 0.015, 0), 0.06, 0.02, 0.0)
-	for i in 6:
-		var a0 := TAU * i / 6.0
-		var a1 := TAU * (i + 2) / 6.0
-		k.beam(Vector3(cos(a0), 0.015, sin(a0)) * 6.4, Vector3(cos(a1), 0.015, sin(a1)) * 6.4, 0.08, 0.02, 0.0)
-	b.light(b.center + Vector3(0, 1.5, 0), glow, 2.4, 14.0, 0, 0.1, 1.0)
+	b.light(b.center + Vector3(0, 1.5, -10.0), glow, 2.4, 14.0, 0, 0.1, 1.0)
 	# Crystal pillars on the ring (collision cells), each a cluster of shards.
 	for pp: Vector3 in pr["pillars"]:
 		_cluster(k, pp, rng.randf_range(5.0, 9.0) if variant == 1 else rng.randf_range(8.0, 14.0), glow, int(pp.x * 31.0 + pp.z * 7.0))
@@ -104,16 +98,7 @@ static func _observatory(b: ArenaBuild, k: K, d: K, r: float, glow: Color) -> vo
 		for j in range(1, path.size()):
 			k.beam(prev, path[j], 0.8, 0.6, 0.06)
 			prev = path[j]
-	k.mat(K.GOLD, Color(1, 1, 1), 1.0)
-	k.push(Transform3D(Basis(Vector3(1, 0, 0.3).normalized(), 0.5), Vector3(0, 9.0, 0)))
-	k.lathe(PackedVector2Array([Vector2(5.0, -0.12), Vector2(5.3, -0.12), Vector2(5.3, 0.12), Vector2(5.0, 0.12)]), 48)
-	k.pop()
-	k.push(Transform3D(Basis(Vector3(0.2, 0, 1).normalized(), -0.9), Vector3(0, 9.0, 0)))
-	k.lathe(PackedVector2Array([Vector2(4.2, -0.1), Vector2(4.45, -0.1), Vector2(4.45, 0.1), Vector2(4.2, 0.1)]), 40)
-	k.pop()
-	k.mat(K.GLOW, glow, 1.0, 3.0)
-	k.rock(Vector3(0, 9.0, 0), Vector3(0.9, 0.9, 0.9), 0.1, 2, 5)
-	b.light(b.center + Vector3(0, 9.0, 0), glow, 3.0, 20.0, 1, 0.1, 1.5)
+	b.light(b.center + Vector3(0, 12.0, 0), glow, 3.0, 22.0, 1, 0.1, 1.5)
 
 
 static func _crown(b: ArenaBuild, k: K, d: K, r: float, glow: Color) -> void:
@@ -123,5 +108,5 @@ static func _crown(b: ArenaBuild, k: K, d: K, r: float, glow: Color) -> void:
 		var at := Vector3(cos(a), 0, sin(a)) * (r + 2.5)
 		_cluster(k, at, 18.0 + (i % 2) * 6.0, glow, 700 + i)
 	k.mat(K.GLOW, glow, 1.0, 3.0)
-	k.rock(Vector3(0, 14.0, 0), Vector3(1.4, 1.4, 1.4), 0.25, 2, 9, 1.0, 0.5)
+	k.rock(Vector3(0, 16.0, 0), Vector3(1.4, 1.4, 1.4), 0.25, 2, 9, 1.0, 0.5)
 	b.light(b.center + Vector3(0, 14.0, 0), glow, 3.5, 24.0, 1, 0.1, 1.5)

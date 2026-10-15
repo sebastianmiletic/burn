@@ -36,10 +36,11 @@ func setup(g: Dictionary, material: Material) -> void:
 
 func set_closed(closed: bool, snap := false) -> void:
 	var target := 1.0 if closed else 0.0
-	if target != _target and not snap and GameWorld.instance != null:
-		Audio.play("door", global_transform * _closed_xf.origin, 6.0, 0.5 if style != "web" else 1.4)
+	var audio := get_node_or_null("/root/Audio")
+	if target != _target and not snap and audio != null:
+		audio.call("play", "door", global_transform * _closed_xf.origin, 6.0, 0.5 if style != "web" else 1.4)
 		if style != "web":
-			Audio.play("stomp", global_transform * _closed_xf.origin, 0.0, 0.7)
+			audio.call("play", "stomp", global_transform * _closed_xf.origin, 0.0, 0.7)
 	_target = target
 	if snap:
 		_t = _target

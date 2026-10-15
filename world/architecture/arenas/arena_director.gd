@@ -47,9 +47,6 @@ func _process(delta: float) -> void:
 	var w := GameWorld.instance
 	if w == null or w.local_player == null:
 		return
-	# One build at a time, and never while the world is still loading.
-	if Game.state != Game.State.PLAYING:
-		return
 	var dim := w.local_dimension
 	var eye := w.local_player.global_position
 	var wanted := {}

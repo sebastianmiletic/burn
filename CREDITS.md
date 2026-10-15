@@ -15,6 +15,7 @@ at startup, layered with a small set of public-domain (CC0) recordings listed be
 | Crickets Ambient Noise (wolfgang) | https://opengameart.org/content/crickets-ambient-noise-loopable | CC0 1.0 | Night crickets bed (`audio/samples/field/crickets_wolfgang.ogg`) |
 | JetBrains Mono (Regular, Bold) | https://github.com/JetBrains/JetBrainsMono | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) | Glyph atlas, UI text |
 | Cinzel (variable) | https://github.com/NDISCOVER/Cinzel via Google Fonts | SIL Open Font License 1.1 (`assets/fonts/Cinzel-OFL.txt`) | Titles, banners |
+| Patterned Clay Plaster, Rough Wood, Old Planks 02, Rustic Stone Wall, Rustic Stone Wall 02, Reed Roof 04, Roof Slates 02 and 03, Rust Coarse 01, Rough Linen, Stone Pathway 02, Brown Planks 09 (diffuse, GL normal, roughness, AO; 1k, packed into texture arrays) | Poly Haven, https://polyhaven.com/textures | CC0 1.0 | Modelled buildings, villages and ruins (`assets/architecture/arch_albedo.jpg`, `arch_normal.webp`; packing script `tools/textures/pack_architecture.py`) |
 | Jolcham Oak Bark 01, Pine Bark, Bark Willow 02, Rock Boulder Dry (diffuse + GL normal, downscaled to 512 px) | Poly Haven, https://polyhaven.com/textures | CC0 1.0 | Tree trunks, fallen logs, boulders and pebbles (`world/flora/textures/*_bark_*.jpg`, `rock_*.jpg`) |
 
 The leaf atlas (`world/flora/textures/leaf_atlas*.png`) is painted procedurally by

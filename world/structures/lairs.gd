@@ -292,7 +292,7 @@ static func weeping_hollow(surface: Location, lair: Location, dir: Vector2i, cav
 	lair.props.append({"type": "arena", "material": "arena", "arena": "broodmother", "center": lair_center, "radius": 70.0, "seed": rng.randi(),
 			"along": Vector3(along), "across": Vector3(across), "cav_r": float(cav_r), "pillars": pillars, "pool": Vector3(pool - cc) + Vector3(0, 1, 0),
 			"mouth": Vector3(mouth - cc), "tunnel": tunnel, "tunnel_origin": Vector3(ls - cc), "stones": stones, "gate": 0})
-	lair.add_spawn("boss", _w(bp, Vector3(cc) + Vector3(0, 0, 0)), {"kind": "broodmother"})
+	lair.add_spawn("boss", _w(bp, Vector3(cc) + Vector3(0, 0, 0)), {"kind": "broodmother", "arena_radius": 22.0, "ceiling": float(cavern_floor + 19)})
 	lair.add_spawn("arena_gate", _w(bp, Vector3(mouth)), {"along": along, "across": across, "width": 3, "height": 6})
 	for i in 3:
 		var p := ls + along * (20 + i * 20)

@@ -17,13 +17,20 @@ var _t := 0.0
 var _reassign := 0.0
 
 
+## Graphics quality 0..3 (read through the tree so headless tools compile without autoloads).
+static func quality() -> int:
+	var tree := Engine.get_main_loop() as SceneTree
+	var settings: Node = tree.root.get_node_or_null("Settings") if tree != null else null
+	return clampi(int(settings.call("get_value", "graphics", "quality")), 0, 3) if settings != null else 2
+
+
 func setup(specs: Array, origin: Vector3) -> void:
 	for s: Dictionary in specs:
 		var d := s.duplicate()
 		d["pos"] = (s["pos"] as Vector3) - origin
 		_specs.append(d)
 	_noise.frequency = 2.0
-	var q := clampi(int(Settings.get_value("graphics", "quality")), 0, 3)
+	var q := quality()
 	var n := mini(int(POOL[q]), _specs.size())
 	for i in n:
 		var l := OmniLight3D.new()
@@ -73,7 +80,7 @@ func _assign() -> void:
 		var d := eye.distance_to(s["pos"]) - float(s["range"]) * 0.35 - float(s["shadow"]) * 6.0
 		order.append([d, i])
 	order.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
-	var q := clampi(int(Settings.get_value("graphics", "quality")), 0, 3)
+	var q := quality()
 	var shadows: int = SHADOWS[q]
 	var wanted := {}
 	for k in mini(_pool.size(), order.size()):
