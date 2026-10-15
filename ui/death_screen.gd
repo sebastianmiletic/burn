@@ -167,6 +167,6 @@ class BleedBar:
 		draw_string(font, Vector2((size.x - ts.x) * 0.5, 16), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
 				UiTheme.TEXT if left > 15.0 else UiTheme.DANGER)
 		var bar := Rect2(x, 28, w, 6)
-		draw_rect(bar.grow(1), Color(0, 0, 0, 0.6))
+		draw_rect(bar.grow(1), Color(0.22, 0.07, 0.05, 0.9))
 		draw_rect(Rect2(bar.position, Vector2(w * f, bar.size.y)), Color(0.85, 0.2, 0.14))
 		draw_rect(Rect2(bar.position, Vector2(w * f, 2)), Color(1, 0.45, 0.3))

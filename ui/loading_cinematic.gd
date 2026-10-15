@@ -15,9 +15,9 @@ const LOOP := 27.0
 const CIRCLE_R := 34.0
 const CAM_R := 78.0
 const T_REAR := 10.0
-const T_ROAR := 11.4
-const T_BITE := 15.6
-const T_DIVE := 18.6
+const T_ROAR := 12.6
+const T_BITE := 16.2
+const T_DIVE := 19.2
 
 ## 0..1 brightness of the current lightning (LoadingScreen washes the overlay with it).
 var flash := 0.0
@@ -86,14 +86,14 @@ func _environment() -> void:
 	_env.sky = sky
 	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	_env.ambient_light_color = Color(0.32, 0.38, 0.48)
-	_env.ambient_light_energy = 0.32
+	_env.ambient_light_energy = 0.55
 	_env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 	_env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	_env.tonemap_exposure = 1.05
+	_env.tonemap_exposure = 1.35
 	_env.glow_enabled = true
-	_env.glow_intensity = 0.9
+	_env.glow_intensity = 0.55
 	_env.glow_bloom = 0.04
-	_env.glow_hdr_threshold = 0.9
+	_env.glow_hdr_threshold = 1.3
 	_env.fog_enabled = true
 	_env.fog_light_color = Color(0.06, 0.075, 0.095)
 	_env.fog_light_energy = 1.0
@@ -108,7 +108,7 @@ func _environment() -> void:
 	_moon = DirectionalLight3D.new()
 	_moon.rotation = Vector3(deg_to_rad(-24.0), deg_to_rad(155.0), 0)
 	_moon.light_color = Color(0.62, 0.7, 0.9)
-	_moon.light_energy = 0.35
+	_moon.light_energy = 0.55
 	_moon.shadow_enabled = false
 	add_child(_moon)
 	_strike_light = DirectionalLight3D.new()
@@ -141,36 +141,76 @@ func _build_set() -> void:
 	var stone := StandardMaterial3D.new()
 	stone.albedo_color = Color(0.09, 0.085, 0.08)
 	stone.roughness = 0.9
-	var pieces := [
-		# [mesh kind, position, scale, material]
-		["rock", Vector3(-150, -6, -210), Vector3(46, 26, 34), rock],
-		["rock", Vector3(-110, -4, -230), Vector3(24, 40, 22), rock],
-		["rock", Vector3(210, -5, -170), Vector3(30, 18, 26), rock],
-		["rock", Vector3(60, -3, 190), Vector3(20, 9, 16), rock],
-		["tower", Vector3(-118, 20, -228), Vector3(7, 46, 7), stone],
-		["rock", Vector3(-320, -8, 60), Vector3(60, 34, 50), rock],
+	# Sea stacks: faceted, tapering crags; one bears the drowned spire.
+	var stacks := [
+		# [position, radius, height, tilt (x, z), segments]
+		[Vector3(-150, -4, -215), 22.0, 44.0, Vector2(0.06, -0.04), 7],
+		[Vector3(-122, -4, -236), 11.0, 62.0, Vector2(-0.05, 0.08), 6],
+		[Vector3(-178, -4, -190), 9.0, 26.0, Vector2(0.12, 0.1), 5],
+		[Vector3(215, -4, -168), 16.0, 30.0, Vector2(-0.08, 0.05), 6],
+		[Vector3(238, -4, -150), 7.0, 38.0, Vector2(0.1, -0.06), 5],
+		[Vector3(-330, -6, 70), 30.0, 52.0, Vector2(0.04, 0.03), 7],
+		[Vector3(90, -4, 230), 12.0, 18.0, Vector2(0.0, 0.1), 6],
 	]
-	for p: Array in pieces:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 404
+	for st: Array in stacks:
+		var c := CylinderMesh.new()
+		c.top_radius = float(st[1]) * rng.randf_range(0.06, 0.16)
+		c.bottom_radius = float(st[1])
+		c.height = float(st[2])
+		c.radial_segments = int(st[4])
+		c.rings = 3
 		var mi := MeshInstance3D.new()
-		if p[0] == "tower":
-			var c := CylinderMesh.new()
-			c.top_radius = 0.42
-			c.bottom_radius = 0.5
-			c.height = 1.0
-			c.radial_segments = 10
-			mi.mesh = c
-			mi.rotation = Vector3(0.05, 0.3, -0.08)
-		else:
-			var s := SphereMesh.new()
-			s.radial_segments = 14
-			s.rings = 8
-			mi.mesh = s
-			mi.rotation = Vector3(0, float(p[1].x) * 0.01, 0)
-		mi.position = p[1]
-		mi.scale = p[2]
-		mi.material_override = p[3]
+		mi.mesh = c
+		mi.position = (st[0] as Vector3) + Vector3(0, float(st[2]) * 0.5, 0)
+		mi.rotation = Vector3((st[3] as Vector2).x, rng.randf() * TAU, (st[3] as Vector2).y)
+		mi.material_override = rock
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mi)
+		var c2 := CylinderMesh.new()
+		c2.top_radius = float(st[1]) * 0.05
+		c2.bottom_radius = float(st[1]) * 0.6
+		c2.height = float(st[2]) * rng.randf_range(0.45, 0.7)
+		c2.radial_segments = 5
+		var m2 := MeshInstance3D.new()
+		m2.mesh = c2
+		var side := Vector3(rng.randf_range(-1, 1), 0, rng.randf_range(-1, 1)).normalized() * float(st[1]) * 0.75
+		m2.position = (st[0] as Vector3) + side + Vector3(0, c2.height * 0.5, 0)
+		m2.rotation = Vector3(side.z * 0.012, rng.randf() * TAU, -side.x * 0.012)
+		m2.material_override = rock
+		m2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(m2)
+	# The drowned spire: a slender broken tower on the tallest stack.
+	var spire := CylinderMesh.new()
+	spire.top_radius = 1.6
+	spire.bottom_radius = 3.4
+	spire.height = 34.0
+	spire.radial_segments = 8
+	var sp := MeshInstance3D.new()
+	sp.mesh = spire
+	sp.position = Vector3(-122, 70, -236)
+	sp.rotation = Vector3(-0.04, 0.0, 0.1)
+	sp.material_override = stone
+	add_child(sp)
+	var ember := MeshInstance3D.new()
+	var em := SphereMesh.new()
+	em.radius = 0.9
+	em.height = 1.8
+	ember.mesh = em
+	var em_mat := StandardMaterial3D.new()
+	em_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	em_mat.albedo_color = Color(3.0, 1.6, 0.7)
+	em_mat.disable_fog = true
+	ember.material_override = em_mat
+	ember.position = Vector3(-120.5, 84, -235)
+	add_child(ember)
+	var lamp := OmniLight3D.new()
+	lamp.light_color = Color(1.0, 0.6, 0.3)
+	lamp.light_energy = 2.0
+	lamp.omni_range = 18.0
+	lamp.position = Vector3(-120, 84, -236)
+	add_child(lamp)
 	_bolt_mat = StandardMaterial3D.new()
 	_bolt_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_bolt_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
@@ -264,15 +304,27 @@ func _update_camera(delta: float) -> void:
 	var base := Vector3(cos(_cam_theta), 0.0, sin(_cam_theta)) * CAM_R
 	# A boat's motion: slow heave, pitch and roll.
 	var heave := sin(t * 0.7) * 1.1 + sin(t * 1.31 + 1.0) * 0.45
-	var pos := base + Vector3(0, 9.5 + heave, 0)
+	# Close in and drop low while it rears, so it towers against the sky.
+	var rear := _rear_weight()
+	base = base.lerp(Vector3(_holder.global_position.x, 0, _holder.global_position.z) + (base - _holder.global_position).normalized() * 40.0, rear * 0.85)
+	var pos := base + Vector3(0, lerpf(9.5, 4.2, rear) + heave * lerpf(1.0, 0.6, rear), 0)
 	var head := _lev.head.global_position if _lev != null and _lev.head != null else Vector3(0, 4, 0)
-	var focus := Vector3(_holder.global_position.x, 3.0, _holder.global_position.z).lerp(head, 0.55 if _lev.surfaced else 0.25)
-	focus = focus.lerp(Vector3(0, 3, 0), 0.25)
+	var focus := Vector3(_holder.global_position.x, 3.0, _holder.global_position.z).lerp(head, 0.25 + 0.4 * rear)
+	focus = focus.lerp(Vector3(0, 3, 0), 0.25 * (1.0 - rear))
 	_look = focus if delta <= 0.0 else _look.lerp(focus, 1.0 - exp(-delta * 1.2))
 	_cam.global_position = pos
 	_cam.look_at(_look, Vector3.UP)
 	_cam.rotate_object_local(Vector3.FORWARD, sin(t * 0.53) * 0.025)
 	_cam.rotate_object_local(Vector3.RIGHT, sin(t * 0.81 + 0.4) * 0.012)
+
+
+## 0 cruising .. 1 reared (smooth, for the camera).
+var _rear_w := 0.0
+func _rear_weight() -> float:
+	var lt := _loop_t
+	var goal := 1.0 if (lt >= T_REAR - 1.5 and lt < T_DIVE + 0.8) else 0.0
+	_rear_w = lerpf(_rear_w, goal, 1.0 - exp(-get_process_delta_time() * 0.9))
+	return smoothstep(0.0, 1.0, _rear_w)
 
 
 # --- Lightning ----------------------------------------------------------------------------
@@ -294,9 +346,9 @@ func _lightning(delta: float) -> void:
 	flash = clampf(f * _flash_peak, 0.0, 1.5)
 	_sky_mat.set_shader_parameter(&"flash", flash)
 	_sea_mat.set_shader_parameter(&"flash", flash)
-	_strike_light.light_energy = flash * 2.6
+	_strike_light.light_energy = flash * 1.3
 	_env.fog_light_color = Color(0.06, 0.075, 0.095).lerp(Color(0.35, 0.4, 0.5), clampf(flash * 0.6, 0.0, 1.0))
-	_env.ambient_light_energy = 0.32 + flash * 0.8
+	_env.ambient_light_energy = 0.55 + flash * 0.8
 	if _bolt.visible:
 		var a := clampf(1.0 - _bolt_t / 0.55, 0.0, 1.0) * clampf(f * 1.4, 0.0, 1.0)
 		_bolt_mat.albedo_color = Color(2.6, 2.8, 3.4, a)

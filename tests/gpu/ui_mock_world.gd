@@ -99,6 +99,8 @@ class MockPlayer:
 	var yaw := 0.0
 	var dimension := 0
 	var display_name := "Ashwalker"
+	var downed := false
+	var bleed_left := 0.0
 
 	func _init() -> void:
 		inventory.add("sword_iron")

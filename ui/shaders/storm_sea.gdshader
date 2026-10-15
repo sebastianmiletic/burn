@@ -7,7 +7,7 @@ render_mode diffuse_burley, specular_schlick_ggx;
 uniform vec3 deep_color : source_color = vec3(0.008, 0.02, 0.028);
 uniform vec3 body_color : source_color = vec3(0.03, 0.065, 0.075);
 uniform vec3 foam_color : source_color = vec3(0.55, 0.6, 0.62);
-uniform vec3 horizon_color : source_color = vec3(0.07, 0.085, 0.1);
+uniform vec3 horizon_color : source_color = vec3(0.11, 0.13, 0.15);
 uniform vec3 zenith_color : source_color = vec3(0.012, 0.016, 0.022);
 uniform float flash = 0.0;
 uniform vec3 flash_dir = vec3(0.0, 0.5, -1.0);
@@ -66,7 +66,7 @@ void fragment() {
 	float n0 = noise(q1) + noise(q2) * 0.5;
 	float nx = noise(q1 + vec2(e, 0.0)) + noise(q2 + vec2(e, 0.0)) * 0.5;
 	float nz = noise(q1 + vec2(0.0, e)) + noise(q2 + vec2(0.0, e)) * 0.5;
-	n_world = normalize(n_world + vec3(n0 - nx, 0.0, n0 - nz) * 0.9);
+	n_world = normalize(n_world + vec3(n0 - nx, 0.0, n0 - nz) * 0.4);
 	NORMAL = normalize((VIEW_MATRIX * vec4(n_world, 0.0)).xyz);
 
 	vec3 view_w = normalize((INV_VIEW_MATRIX * vec4(VIEW, 0.0)).xyz);
@@ -79,8 +79,8 @@ void fragment() {
 	float foam = crest * smoothstep(0.45, 0.8, noise(p * 0.8 + vec2(t * 0.6, 0.0)) * 0.7 + noise(p * 2.6) * 0.5);
 	vec3 water = mix(deep_color, body_color, smoothstep(-1.5, 2.0, v_crest));
 	ALBEDO = mix(water, foam_color, foam * 0.75);
-	ROUGHNESS = mix(0.05, 0.6, foam);
-	SPECULAR = 0.55;
+	ROUGHNESS = mix(0.24, 0.6, foam);
+	SPECULAR = 0.35;
 	METALLIC = 0.0;
 	// Reflection is faked (the scene has no reflection probe / radiance).
 	EMISSION = sky * fres * (1.0 - foam) + foam_color * foam * flash * 0.4;

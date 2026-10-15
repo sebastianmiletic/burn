@@ -97,10 +97,21 @@ func _run() -> void:
 	if _wants("loading"):
 		var l := LoadingScreen.new()
 		add_child(l)
-		l.set_progress(0.62, "Raising the ruins")
-		await _wait(1.0)
+		l.set_progress(0.12, "Shaping the land")
+		await _wait(4.0)
+		printerr("[gallery] loading fps %d" % Engine.get_frames_per_second())
 		await _shot("loading")
+		l.set_progress(0.62, "Raising the land")
+		await _wait(7.6)
+		printerr("[gallery] loading fps %d" % Engine.get_frames_per_second())
+		await _shot("loading_roar")
+		await _wait(3.2)
+		await _shot("loading_bite")
+		l.set_progress(1.0, "")
 		l.queue_free()
+		await _wait(0.4)
+		await _shot("loading_outro")
+		await _wait(1.2)
 
 	var need_world := false
 	for n in ["hud", "inventory", "shop", "dialog", "journal", "map", "pause", "death", "victory"]:
@@ -165,13 +176,17 @@ func _run() -> void:
 		["map", func() -> void: hud.map_screen.open()],
 		["pause", func() -> void: hud.pause_menu.open()],
 		["death", func() -> void: ev.emit_signal("player_died", "Burned by the Mountain King's hearthfire")],
+		["downed", func() -> void:
+			_world.get("local_player").set("downed", true)
+			_world.get("local_player").set("bleed_left", 63.0)
+			ev.emit_signal("player_died", "Felled by the Warden")],
 		["victory", func() -> void: ev.emit_signal("campaign_won")],
 	]
 	for s: Array in screens:
 		if not _wants(s[0]):
 			continue
 		(s[1] as Callable).call()
-		await _wait(3.4 if s[0] in ["death", "victory", "dialog"] else 0.6)
+		await _wait(3.4 if s[0] in ["death", "downed", "victory", "dialog"] else 0.6)
 		await _shot(s[0])
 		hud.inventory_screen.close()
 		hud.shop_screen.close()
@@ -180,6 +195,7 @@ func _run() -> void:
 		hud.pause_menu.close()
 		hud.dialog.close()
 		hud.death_screen.hide_death()
+		_world.get("local_player").set("downed", false)
 		hud.victory_screen.close()
 		get_tree().paused = false
 		await _frames(2)

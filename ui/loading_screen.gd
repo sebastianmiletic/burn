@@ -37,7 +37,7 @@ var _veil: ColorRect        # black over the film until it is ready
 var _rain_mat: ShaderMaterial
 var _rain: ColorRect
 var _from: TextureRect      # still of the previous screen, dissolving away
-var _title: BurningTitle
+var _title: EmberTitle
 var _caption: Label
 var _status: Label
 var _percent: Label
@@ -145,17 +145,15 @@ func _shade(top: bool) -> Control:
 
 
 func _build_overlay() -> void:
-	_title = BurningTitle.new()
+	_title = EmberTitle.new()
 	_title.anchor_left = 0.0
 	_title.anchor_right = 0.0
 	_title.anchor_top = 1.0
 	_title.anchor_bottom = 1.0
-	_title.offset_left = 26
-	_title.offset_right = 26 + 460
-	_title.offset_top = -236
-	_title.offset_bottom = -96
-	_title.flames = 0.55
-	_title.letter_scale = 0.7
+	_title.offset_left = 58
+	_title.offset_right = 58 + 520
+	_title.offset_top = -210
+	_title.offset_bottom = -104
 	_root.add_child(_title)
 
 	_caption = UiTheme.title("THE GREY SEA  ·  WHERE THE LEVIATHAN WAKES", 13, Color(0.72, 0.76, 0.82), 600)
@@ -245,15 +243,15 @@ func _process(delta: float) -> void:
 		_rain_mat.set_shader_parameter(&"flash", _cinematic.flash * _film_alpha)
 		_rain_mat.set_shader_parameter(&"aspect", _root.size.x / maxf(_root.size.y, 1.0))
 		_rain_mat.set_shader_parameter(&"intensity", _film_alpha)
-		_title.modulate = Color(1, 1, 1).lerp(Color(1.25, 1.3, 1.45), clampf(_cinematic.flash, 0.0, 1.0))
+		_title.flash = clampf(_cinematic.flash, 0.0, 1.0)
 	if _from != null:
 		_from_alpha = move_toward(_from_alpha, 0.0, d / 0.7)
 		_from.modulate.a = smoothstep(0.0, 1.0, _from_alpha)
 		if _from_alpha <= 0.0:
 			_from.queue_free()
 			_from = null
-	var intro := clampf(_time / 0.8, 0.0, 1.0)
-	_title.fade = intro
+	_title.time = _time
+	_title.modulate.a = clampf(_time / 0.8, 0.0, 1.0)
 	_caption.modulate.a = clampf((_time - 0.6) / 1.0, 0.0, 1.0)
 
 
@@ -333,3 +331,35 @@ class ProgressLine:
 		var pulse := 0.6 + 0.4 * sin(time * 4.0)
 		draw_circle(Vector2(x, y), 5.0, Color(1, 0.62, 0.22, 0.18 * pulse), true, -1.0, true)
 		draw_circle(Vector2(x, y), 2.4, UiTheme.ACCENT_HOT, true, -1.0, true)
+
+
+## "BURN" in spaced Cinzel with a slow ember glow (and a cold rim in lightning).
+class EmberTitle:
+	extends Control
+
+	var time := 0.0:
+		set(v):
+			time = v
+			queue_redraw()
+	var flash := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var f := UiTheme.title_font_spaced(900, 22)
+		var fs := 92
+		var text := "BURN"
+		var base := Vector2(0, size.y - 14)
+		var flicker := 0.75 + 0.15 * sin(time * 2.3) + 0.1 * sin(time * 5.1 + 1.3)
+		# Glow: wide soft outlines, warm; lightning adds a cold rim.
+		for layer: Array in [[34, 0.05], [22, 0.08], [12, 0.12]]:
+			var c := Color(1.0, 0.42, 0.12, float(layer[1]) * flicker).lerp(Color(0.6, 0.7, 1.0, float(layer[1])), flash * 0.6)
+			draw_string_outline(f, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(layer[0]), c)
+		draw_string_outline(f, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 3, Color(0.12, 0.04, 0.02, 0.9))
+		var fill := Color(1.0, 0.8, 0.52).lerp(Color(0.95, 0.97, 1.0), flash * 0.5)
+		draw_string(f, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, fill)
+		# A hairline rule under the word.
+		var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		draw_line(Vector2(4, size.y - 2), Vector2(w * 0.55, size.y - 2), Color(1, 0.62, 0.22, 0.6), 1.0)
+		draw_circle(Vector2(w * 0.55 + 6, size.y - 2), 2.2, Color(1, 0.7, 0.35, 0.8), true, -1.0, true)

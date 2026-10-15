@@ -2,9 +2,9 @@ shader_type sky;
 // Night storm sky for the loading cinematic: low churning clouds, a moon
 // smothered behind them, and lightning that lights the cloud deck from inside.
 
-uniform vec3 zenith : source_color = vec3(0.006, 0.008, 0.012);
-uniform vec3 horizon : source_color = vec3(0.06, 0.07, 0.085);
-uniform vec3 cloud_lit : source_color = vec3(0.14, 0.16, 0.2);
+uniform vec3 zenith : source_color = vec3(0.012, 0.015, 0.022);
+uniform vec3 horizon : source_color = vec3(0.1, 0.115, 0.135);
+uniform vec3 cloud_lit : source_color = vec3(0.22, 0.25, 0.3);
 uniform vec3 moon_dir = vec3(0.4, 0.35, -0.85);
 uniform float flash = 0.0;
 uniform vec3 flash_dir = vec3(0.0, 0.4, -1.0);
