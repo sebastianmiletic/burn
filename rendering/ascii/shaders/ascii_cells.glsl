@@ -165,10 +165,12 @@ void main() {
 	// Normalise by the adapted scene luminance (see ascii_exposure.glsl).
 	float scene_lum = luma(avg);
 	float adapted = ex.initialised > 0.5 ? exp2(ex.adapted_log) : pc.p4.w;
-	float norm = clamp(pow(pc.p4.w / max(adapted, 1e-5), pc.p4.z), 0.25, 64.0);
+	// Adaptation is partial and capped, like eyes rather than a camera: a dark
+	// cave or night stays dark (dense glyphs only where the light is) instead
+	// of being lifted to a uniform grey wash of fog and rock.
+	float norm = clamp(pow(pc.p4.w / max(adapted, 1e-5), pc.p4.z), 0.25, 9.0);
 	float exposure = pc.p2.x * norm;
-	// Colour exposure: full adaptation, like a camera's auto exposure.
-	float colour_exposure = pc.p2.x * clamp(0.3 / max(adapted, 1e-5), 0.05, 60.0);
+	float colour_exposure = pc.p2.x * clamp(pow(0.3 / max(adapted, 1e-5), 0.7), 0.05, 9.0);
 	float gamma = pc.p2.y;
 	float lum = scene_lum * exposure;
 	imageStore(cell_lum_image, cell, vec4(log2(scene_lum + 1e-4), dom == M_SKY ? 0.0 : 1.0, 0.0, 0.0));

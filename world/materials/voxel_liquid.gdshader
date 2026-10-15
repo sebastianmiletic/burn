@@ -128,8 +128,11 @@ void lava(float t, out vec3 albedo, out vec3 emission, out float rough) {
 	if (side) {
 		crust *= 0.35;   // pouring lava breaks the crust apart
 	}
-	vec3 molten = mix(vec3(1.0, 0.28, 0.03), vec3(1.0, 0.72, 0.28), smoothstep(0.3, 0.9, heat));
-	vec3 hot = molten * (3.2 + 2.5 * smoothstep(0.12, 0.0, seam)) * pulse;
+	// Kept below the tonemapper's white point: molten rock reads orange with
+	// yellow seams instead of desaturating to a white sheet (and SDFGI does not
+	// flood whole caverns with its light).
+	vec3 molten = mix(vec3(1.0, 0.22, 0.02), vec3(1.0, 0.55, 0.14), smoothstep(0.3, 0.9, heat));
+	vec3 hot = molten * (1.25 + 1.5 * smoothstep(0.12, 0.0, seam)) * pulse;
 	vec3 cool = vec3(0.32, 0.06, 0.02) * (0.4 + 0.6 * smoothstep(0.35, 0.05, seam));
 	emission = mix(hot, cool, crust);
 	albedo = mix(vec3(0.08, 0.03, 0.02), vec3(0.05, 0.045, 0.045), crust);

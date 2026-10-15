@@ -31,6 +31,11 @@ uniform vec3 sky_ambient = vec3(0.2, 0.3, 0.45);  // zenith radiance (cloud ambi
 uniform vec2 wind = vec2(0.9, 0.44);       // cloud drift direction * speed (km/s)
 uniform float sky_energy = 1.0;            // overall dimming
 uniform float underworld = 0.0;
+// Underground the radiance cubemap (ambient light, reflections, SDFGI sky
+// light) is occluded by the rock overhead: it fades to the cave's own dim,
+// tinted bounce colour. The visible sky (cave mouths) is left alone.
+uniform float occlusion : hint_range(0.0, 1.0) = 0.0;
+uniform vec3 occluded_color = vec3(0.02);
 uniform sampler2D cloud_noise : filter_linear_mipmap, repeat_enable;
 
 const float EARTH_R = 6360.0;
@@ -279,13 +284,15 @@ vec3 hell_sky(vec3 d) {
 void sky() {
 	vec3 d = normalize(EYEDIR);
 	if (underworld > 0.5) {
-		if (AT_CUBEMAP_PASS || AT_HALF_RES_PASS) {
+		if (AT_CUBEMAP_PASS) {
+			COLOR = mix(hell_sky(d), occluded_color, occlusion);
+		} else if (AT_HALF_RES_PASS) {
 			COLOR = hell_sky(d);
 		} else {
 			COLOR = HALF_RES_COLOR.rgb;
 		}
 	} else if (AT_CUBEMAP_PASS) {
-		COLOR = sky_color(d, 5, true).rgb;   // lighting only: coarse is fine
+		COLOR = mix(sky_color(d, 5, true).rgb, occluded_color, occlusion);   // lighting only: coarse is fine
 	} else if (AT_HALF_RES_PASS) {
 		vec4 s = sky_color(d, 8, false);
 		COLOR = s.rgb;

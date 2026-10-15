@@ -64,13 +64,21 @@ func _rebuild(w: GameWorld, pos: Vector3, cave: bool, r: Dictionary) -> void:
 		return
 	if cave:
 		var kind := int(r["kind"])
+		# Luminous fungi and crystals light their surroundings with a few soft,
+		# shadowless pools of the biome's colour (a small per-quality budget).
+		var glow: Color = CaveBiomes.PALETTES.get(kind, CaveBiomes.PALETTES[CaveBiomes.Kind.KARST])["glow"]
+		var lights_left: int = [0, 2, 4, 6][int(Settings.get_value("graphics", "quality"))]
 		if kind == CaveBiomes.Kind.GEYSER:
 			for vent in _vents(r):
 				_add_mesh(ModelKit.cylinder(1.1, 1.8, 1.2, 16), vent, ModelKit.mat(Color(0.23, 0.22, 0.2)))
 				_make_steam(vent)
+				if lights_left > 0:
+					lights_left -= 1
+					_add_glow_light(vent + Vector3.UP * 1.4, glow, 0.6, 7.0)
 		else:
 			var rng := RandomNumberGenerator.new()
 			rng.seed = int(r["seed"])
+			var luminous := kind in [CaveBiomes.Kind.FUNGAL, CaveBiomes.Kind.FROST, CaveBiomes.Kind.CRYSTAL_REFUGE]
 			for i in 36:
 				var angle := rng.randf() * TAU
 				var radius := rng.randf_range(3, 34)
@@ -78,13 +86,34 @@ func _rebuild(w: GameWorld, pos: Vector3, cave: bool, r: Dictionary) -> void:
 				var height := rng.randf_range(0.6, 2.6)
 				if kind == CaveBiomes.Kind.FUNGAL:
 					_add_mesh(ModelKit.cylinder(0.08, 0.16, height, 8), p + Vector3.UP * height * 0.5, ModelKit.mat(Color(0.45, 0.5, 0.33)))
-					var cap := _add_mesh(ModelKit.sphere(0.7, 12), p + Vector3.UP * height, ModelKit.glow(Color(0.18, 0.65, 0.5), 1.1))
+					var cap := _add_mesh(ModelKit.sphere(0.7, 12), p + Vector3.UP * height, ModelKit.glow(Color(0.18, 0.65, 0.5), 0.75))
 					cap.scale.y = 0.35
 				else:
 					var col := Color(0.4, 0.65, 0.85) if kind == CaveBiomes.Kind.FROST else (Color(0.55, 0.28, 0.7) if kind == CaveBiomes.Kind.CRYSTAL_REFUGE else Color(0.55, 0.51, 0.4))
-					_add_mesh(ModelKit.cone(0.35, height, 7), p + Vector3.UP * height * 0.5, ModelKit.mat(col))
+					# Every third crystal glows faintly from within; the rest are
+					# glossy and catch that light.
+					var m: Material = ModelKit.glow(glow * 0.6, 0.7) if luminous and i % 3 == 0 else ModelKit.mat(col, AsciiMaterialId.SOLID, 0.3 if luminous else 0.8)
+					_add_mesh(ModelKit.cone(0.35, height, 7), p + Vector3.UP * height * 0.5, m)
+				if luminous and i % 6 == 0 and lights_left > 0:
+					lights_left -= 1
+					_add_glow_light(p + Vector3.UP * (height + 0.6), glow, 0.7, 9.0)
 	elif w.local_dimension == 0 and pos.y < WorldGen.SEA_LEVEL + 15:
 		_ocean(w.gen_for(0), pos)
+
+func _add_glow_light(at: Vector3, color: Color, energy: float, light_range: float) -> void:
+	var l := OmniLight3D.new()
+	l.position = at
+	l.light_color = color
+	l.light_energy = energy
+	l.omni_range = light_range
+	l.omni_attenuation = 1.8
+	l.light_specular = 0.25
+	l.shadow_enabled = false
+	l.light_volumetric_fog_energy = 0.6
+	l.distance_fade_enabled = true
+	l.distance_fade_begin = 70.0
+	l.distance_fade_length = 20.0
+	_root.add_child(l)
 
 func _add_mesh(mesh: Mesh, at: Vector3, mat: Material) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
