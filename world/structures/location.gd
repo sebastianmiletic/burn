@@ -22,6 +22,8 @@ var pad_falloff := 8.0
 var blueprints: Array[Blueprint] = []
 ## Each spawn: {"type": String, "pos": Vector3, ...extra}
 var spawns: Array[Dictionary] = []
+## Visual props Architecture.build() turns into meshes: [{type, transform, ...}].
+var props: Array = []
 var dimension := 0
 ## Bosses and key places show on the map once discovered; ruins only when visited.
 var major := false

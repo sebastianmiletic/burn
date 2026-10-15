@@ -95,12 +95,12 @@ static func tables() -> Array:
 	var tint := PackedVector4Array()
 	var ore := PackedVector4Array()
 	var emit := PackedVector4Array()
-	a.resize(64)
-	tint.resize(64)
-	ore.resize(64)
-	emit.resize(64)
+	a.resize(128)
+	tint.resize(128)
+	ore.resize(128)
+	emit.resize(128)
 	var t := _table()
-	for code in 64:
+	for code in 128:
 		var e: Array = t.get(code, [L.ROCK, L.ROCK, 0.25, 1.0, Color(0.9, 0.9, 0.9), ASCII_SOLID])
 		var c: Color = e[4]
 		a[code] = Vector4(e[0], e[1], e[2], e[3])

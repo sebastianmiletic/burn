@@ -323,7 +323,7 @@ func voxel_field(p: Vector3i) -> float:
 	var d := (255 if smooth else 0) if _fd.is_empty() else int(_fd[i])
 	if smooth:
 		return maxf(d, 128) / 255.0
-	if d >= 128 and Blocks.family(b) == Blocks.Family.CUBE:
+	if d >= 128 and (Blocks.family(b) == Blocks.Family.CUBE or Blocks.family(b) == Blocks.Family.STRUCTURE):
 		return 0.52  # built block sunk into the ground (see SmoothMesher)
 	return minf(d, 127) / 255.0
 

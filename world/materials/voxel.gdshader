@@ -15,10 +15,10 @@ global uniform float snow_cover;
 
 uniform sampler2DArray albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2DArray normal_tex : filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec4 mat_a[64];
-uniform vec4 mat_tint[64];
-uniform vec4 mat_ore[64];
-uniform vec4 mat_emit[64];
+uniform vec4 mat_a[128];
+uniform vec4 mat_tint[128];
+uniform vec4 mat_ore[128];
+uniform vec4 mat_emit[128];
 uniform float cave_darkness : hint_range(0.0, 1.0) = 1.0;
 
 varying vec3 v_world;

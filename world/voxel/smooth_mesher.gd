@@ -25,9 +25,9 @@ const C := 17      # cells per axis (-1..15)
 const C2 := 289
 
 ## Material codes above the block id range: biome variants of a block.
-const CODE_FOREST_FLOOR := 60
-const CODE_HELL_ASH := 61
-const CODE_PEAK_GRASS := 62
+const CODE_FOREST_FLOOR := 120
+const CODE_HELL_ASH := 121
+const CODE_PEAK_GRASS := 122
 
 # Corner k: bit0 = +x, bit1 = +z, bit2 = +y.
 const CORNER_OFS := [0, 1, P, P + 1, P2, P2 + 1, P2 + P, P2 + P + 1]
@@ -52,6 +52,7 @@ static func build(neighbours: Array, densities: Array, surface: PackedInt32Array
 	var any_solid := false
 	var any_air := false
 	var cube_fam := Blocks.Family.CUBE
+	var struct_fam := Blocks.Family.STRUCTURE
 	for i in n:
 		var d := pd[i]
 		var fb := fam[pb[i]]
@@ -59,7 +60,7 @@ static func build(neighbours: Array, densities: Array, surface: PackedInt32Array
 			sol[i] = 1
 			f[i] = float(maxi(d, 128)) / 255.0
 			any_solid = true
-		elif fb == cube_fam and d >= 128:
+		elif (fb == cube_fam or fb == struct_fam) and d >= 128:
 			# A built block set into the ground (floors, foundations): the ground
 			# continues just under it so there are no pits around it.
 			sol[i] = 1

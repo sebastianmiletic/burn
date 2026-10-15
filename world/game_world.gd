@@ -36,6 +36,8 @@ var tracker: LocationTracker
 var sky: SkyController
 var weather: Weather
 var fx: MiningFx
+## Set when Hades falls: the portal to the Ryft Island opens (saved).
+var ryft_unlocked := false
 var hud: CanvasLayer
 var ui_open := false
 
@@ -765,6 +767,7 @@ func save_data() -> Dictionary:
 		"lit_shrines": lit_shrines.keys(),
 		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits()},
 		"stations": placed_stations,
+		"ryft_unlocked": ryft_unlocked,
 		"time_of_day": sky.time_of_day,
 		"day": sky.day,
 		"location_name": here.name if here != null else GameWorld.biome_name(self, local_player.global_position, local_dimension),
@@ -786,6 +789,7 @@ func _load_world_state(save: Dictionary) -> void:
 	for d: int in edits:
 		if worlds.has(d):
 			(worlds[d] as VoxelWorld).apply_edits(edits[d])
+	ryft_unlocked = bool(save.get("ryft_unlocked", false))
 	if save.has("time_of_day"):
 		sky.time_of_day = float(save["time_of_day"])
 		sky.day = int(save.get("day", 1))

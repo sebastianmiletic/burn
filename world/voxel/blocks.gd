@@ -68,12 +68,20 @@ const ADAMANTITE_ORE := 55
 const RUBY_ORE := 56
 const SAPPHIRE_ORE := 57
 const AMETHYST := 58
-const COUNT := 59
+## Invisible, unbreakable collision for modelled buildings (Architecture draws them).
+const STRUCTURE := 59
+# Rare trees: chopping needs a stronger axe (tier column).
+const IRONWOOD_TRUNK := 60
+const EMBERWOOD_TRUNK := 61
+const RYFTWOOD_TRUNK := 62
+## Ids 63..119 are reserved for the world-generation owner (cave, mountain, ocean
+## and Ryft materials). Material codes 120..127 are SmoothMesher biome variants.
+const COUNT := 63
 
 ## Block shape families used by the mesher.
 enum Shape { CUBE, NONE, SMALL }
 ## How a block is drawn: SMOOTH terrain surface, crisp CUBE, SMALL prop, TREE (Flora), LIQUID, NONE.
-enum Family { NONE, SMOOTH, CUBE, SMALL, TREE, LIQUID }
+enum Family { NONE, SMOOTH, CUBE, SMALL, TREE, LIQUID, STRUCTURE }
 
 # name, colour, ascii class, hardness, tier, drop item, light, solid, opaque, liquid, shape
 const DATA := [
@@ -176,8 +184,10 @@ static func _static_init() -> void:
 			_opaque[i] = 0
 		elif d[9]:
 			_family[i] = Family.LIQUID
-		elif i >= OAK_TRUNK and i <= DEAD_TRUNK:
+		elif is_trunk(i):
 			_family[i] = Family.TREE
+		elif i == STRUCTURE:
+			_family[i] = Family.STRUCTURE
 		elif d[10] == Shape.SMALL:
 			_family[i] = Family.SMALL
 		elif i in SMOOTH_BLOCKS:
@@ -239,7 +249,7 @@ static func is_smooth(id: int) -> bool:
 
 
 static func is_trunk(id: int) -> bool:
-	return id >= OAK_TRUNK and id <= DEAD_TRUNK
+	return (id >= OAK_TRUNK and id <= DEAD_TRUNK) or (id >= IRONWOOD_TRUNK and id <= RYFTWOOD_TRUNK)
 
 
 ## Material family for sounds and debris: "stone", "dirt", "sand", "snow", "wood", "crystal", "metal".
