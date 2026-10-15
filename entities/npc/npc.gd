@@ -62,10 +62,8 @@ func _make_name(s: int) -> String:
 
 
 func _make_model(s: int) -> Node3D:
-	var m: Node3D = Models.villager(role, s)
-	if role == "guard":
-		m.call("set_held", "sword_iron")
-	return m
+	# Seeded per NPC: stable faces, builds, hair and role garments.
+	return HumanoidModel.new(CharStyles.villager(role, s))
 
 
 # --- Server behaviour ----------------------------------------------------------------
@@ -109,6 +107,7 @@ func _process(delta: float) -> void:
 		_speed = lerpf(_speed, (global_position - prev).length() / maxf(delta, 0.001), 0.2)
 	if "move_speed" in _model:
 		_model.set("move_speed", _speed)
+	HumanoidModel.drive(_model, self, body.velocity if is_server() else _model.global_transform.basis * Vector3(0, 0, -_speed), body.on_floor or not is_server())
 
 
 # --- Dialogue (local) --------------------------------------------------------------------

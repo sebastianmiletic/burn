@@ -82,11 +82,21 @@ Teams: PLAYERS, MONSTERS, NEUTRAL.
 
 ## Models (models/)
 
-`HumanoidModel` (models/humanoid_model.gd) — procedural articulated character built from primitive meshes.
+`HumanoidModel` (models/humanoid_model.gd) — smooth skinned character: one procedurally generated mesh per body
+shape (models/character/: CharBody builds it, on a worker thread in the game, cached and shared; CharHead faces/hair/
+headwear; CharBones anatomical skeletons; CharStyles seeded villager variety), a 24-bone Skeleton3D (+25 verlet cloak
+bones, CharCloth), one shared palette shader (character.gdshader, colours via instance uniforms) and a procedural
+animator (leg IK, gait, jump/land, actions, ragdoll-like death). Movement FX in models/fx/ (MoveFx pooled dust,
+SwingTrail, SpeedStreaks). All style keys are documented at the top of humanoid_model.gd.
 ```
 HumanoidModel.new(style: Dictionary)   # {skin, cloth, cloth2, hood: bool, cloak: bool, height, bulk, eyes: Color(glow), helmet, beard...}
 var move_speed: float          # m/s, drives walk/run cycle
 var grounded: bool
+var velocity: Vector3          # owner's world velocity; sprinting: bool; ground_block: int
+var terrain_probe: Callable    # optional func(world_pos) -> ground y, sampled when a foot plants
+func on_jump() / on_land(impact_speed: float)
+signal footstep(strength: float)
+static func drive(model, owner: Entity, velocity, grounded := true, sprint := false)  # one-line wiring for NPCs/monsters
 func play(action: String, duration := -1.0)   # "attack", "attack2", "mine", "cast", "dodge", "hit", "die", "interact", "drink", "jump"
 func set_held(item_id: String)                # shows the item in the right hand ("" = empty)
 func set_offhand_light(on: bool)              # torch in left hand

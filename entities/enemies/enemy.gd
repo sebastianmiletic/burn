@@ -212,6 +212,7 @@ func server_tick(frame_delta: float) -> void:
 		model.move_speed = Vector2(body.velocity.x, body.velocity.z).length()
 		model.grounded = body.on_floor or body.fly
 		model.set_burning(burning > 0.0)
+		HumanoidModel.drive(model, self, body.velocity, body.on_floor or body.fly, state == State.CHASE)
 
 
 func _tick_burn(delta: float) -> void:
@@ -530,6 +531,7 @@ func _process(delta: float) -> void:
 		model.move_speed = _vis_speed
 		model.grounded = true
 		model.set_burning(burning > 0.0)
+		HumanoidModel.drive(model, self, Vector3(moved.x, 0.0, moved.z))
 		if _last_health >= 0.0 and health < _last_health - 0.01:
 			var drop := _last_health - health
 			model.flash()

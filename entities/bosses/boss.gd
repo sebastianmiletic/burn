@@ -243,6 +243,7 @@ func _physics(delta: float) -> void:
 		model.turn_rate = angle_difference(_last_yaw, yaw) / maxf(delta, 0.001)
 		_last_yaw = yaw
 		model.set_burning(burning > 0.0)
+		HumanoidModel.drive(model, self, body.velocity, body.on_floor or flying)
 		if model is DragonModel:
 			(model as DragonModel).flying = flying
 
@@ -514,6 +515,7 @@ func _process(delta: float) -> void:
 		model.move_speed = _vis_speed
 		model.grounded = not flying
 		model.set_burning(burning > 0.0)
+		HumanoidModel.drive(model, self, Vector3(moved.x, 0.0, moved.z))
 		if model is DragonModel:
 			(model as DragonModel).flying = flying
 		if _last_health >= 0.0 and health < _last_health - 0.01:

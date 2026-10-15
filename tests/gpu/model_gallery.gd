@@ -16,18 +16,31 @@ const SHOTS := [
 	["dragon_fly", Vector3(-20.0, 4.0, -38.0), Vector3(0, 7.0, -55.0)],
 	["cerberus", Vector3(-9.0, 4.0, -71.0), Vector3(0, 2.2, -80.0)],
 	["telegraphs", Vector3(30.0, 18.0, 0.0), Vector3(30.0, 0.0, -12.0)],
+	["villagers", Vector3(0, 1.7, 21.5), Vector3(0, 1.0, 14.0)],
+	["poses_move", Vector3(64.75, 1.3, 8.5), Vector3(64.75, 0.9, 0.0)],
+	["poses_action", Vector3(64.75, 1.3, -11.5), Vector3(64.75, 0.9, -20.0)],
+	["closeup", Vector3(-2.2, 1.65, 2.6), Vector3(-6.0, 1.45, 0.0)],
+	["faces", Vector3(-3.0, 1.62, 16.6), Vector3(-3.0, 1.55, 14.0)],
+	["runner_back", Vector3(-12.0, 2.0, 3.0), Vector3(-12.0, 1.2, -0.5)],
 ]
+
+## Animation pose rows: [name, x offset]. Side-on, so the models face -X.
+const MOVE_POSES := ["idle", "walk", "run", "sprint", "jump_up", "fall", "land"]
+const ACTION_POSES := ["attack", "attack2", "dodge", "cast", "mine", "hit", "die"]
 
 var camera: Camera3D
 var _models := {}
 var _capture_dir := ""
 var _shot := 0
+var _only := PackedStringArray()
 
 
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture="):
 			_capture_dir = arg.trim_prefix("--capture=")
+		elif arg.begins_with("--only="):
+			_only = arg.trim_prefix("--only=").split(",")
 		elif arg.begins_with("--style="):
 			Settings.set_value("graphics", "style", int(arg.trim_prefix("--style=")))
 	_environment()
@@ -131,6 +144,20 @@ func _place_models() -> void:
 	# Dragon and Cerberus
 	_add("dragon", Models.create("dragon"), Vector3(0, 0, -55.0), 120.0)
 	_add("cerberus", Models.create("cerberus"), Vector3(0, 0, -80.0), 130.0)
+	# Villager variety (seeded, stable).
+	var roles := ["villager", "blacksmith", "merchant", "guard", "elder", "chief", "villager", "villager"]
+	for i in roles.size():
+		var vm := HumanoidModel.new(CharStyles.villager(roles[i], 11 + i * 37))
+		_add("v%d" % i, vm, Vector3((i - 3.5) * 1.9, 0, 14.0), 180.0)
+	# Animation poses, side-on (facing -X).
+	for i in MOVE_POSES.size():
+		var pm := Models.player(i % 2) as HumanoidModel
+		_add("pose_" + MOVE_POSES[i], pm, Vector3(59.0 + i * 1.9, 0, 0), 90.0)
+		pm.set_held("sword_iron" if i % 2 == 0 else "")
+	for i in ACTION_POSES.size():
+		var am := Models.player(i % 3) as HumanoidModel
+		_add("pose_" + ACTION_POSES[i], am, Vector3(59.0 + i * 1.9, 0, -20.0), 90.0)
+		am.set_held("pickaxe_iron" if ACTION_POSES[i] == "mine" else ("" if ACTION_POSES[i] == "cast" else "sword_ember"))
 
 
 func _set_shot(i: int) -> void:
@@ -163,6 +190,39 @@ func _play_actions() -> void:
 	(_models["cerberus"] as CreatureModel).play("howl")
 
 
+## Keep the pose models in their states; fire actions so they are mid-way at capture time.
+func _drive_poses(t0: float, t1: float, total: float) -> void:
+	var speeds := {"idle": 0.0, "walk": 1.5, "run": 4.6, "sprint": 7.4, "jump_up": 4.6, "fall": 4.6, "land": 0.0}
+	for k: String in speeds:
+		var m := _models["pose_" + k] as HumanoidModel
+		var v: float = speeds[k]
+		m.move_speed = v
+		m.velocity = m.global_transform.basis * Vector3(0, 0, -v)
+		m.sprinting = k == "sprint"
+		m.grounded = not (k == "jump_up" or k == "fall")
+		if k == "jump_up":
+			m.velocity.y = 3.5
+		elif k == "fall":
+			m.velocity.y = -7.0
+	var at := func(when_before_end: float) -> bool:
+		var when := total - when_before_end
+		return t0 < when and t1 >= when
+	if at.call(0.11):
+		(_models["pose_land"] as HumanoidModel).on_land(16.0)
+	var acts := {"attack": [0.55, 0.4], "attack2": [0.6, 0.42], "dodge": [0.55, 0.45], "cast": [0.6, 0.47], "mine": [0.5, 0.58], "hit": [0.35, 0.4]}
+	for k: String in acts:
+		var d: float = acts[k][0]
+		var p: float = acts[k][1]
+		if at.call(d * p):
+			(_models["pose_" + k] as HumanoidModel).play(k, d)
+	if at.call(0.9) and SHOTS[_shot][0] == "poses_action":
+		(_models["pose_die"] as HumanoidModel).set_dead(true)
+	for k: String in acts:
+		var m := _models["pose_" + k] as HumanoidModel
+		m.move_speed = 0.0
+		m.velocity = Vector3.ZERO if k != "dodge" else m.global_transform.basis * Vector3(0, 0, -6.0)
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	var k := event as InputEventKey
 	if k == null or not k.pressed:
@@ -178,15 +238,21 @@ func _capture() -> void:
 		await get_tree().process_frame
 	for i in SHOTS.size():
 		_set_shot(i)
+		if not _only.is_empty() and not _only.has(SHOTS[i][0]):
+			continue
 		if SHOTS[i][0] in ["humanoids", "monsters", "giants", "dragon", "cerberus"]:
 			_play_actions()
 		# Mid-action poses read best: wait ~45 % into the actions.
 		var wait := 0.5 if SHOTS[i][0] != "dragon" else 1.2
 		if SHOTS[i][0] == "telegraphs":
 			wait = 1.2
+		if SHOTS[i][0].begins_with("poses"):
+			wait = 1.6
 		var t := 0.0
 		while t < wait:
-			t += get_process_delta_time()
+			var dt := get_process_delta_time()
+			_drive_poses(t, t + dt, wait)
+			t += dt
 			await get_tree().process_frame
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
