@@ -2105,7 +2105,7 @@ func _place_trees_v3(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, 
 					trunk = Blocks.EMBERWOOD_TRUNK if hsh % 3 == 0 else Blocks.DEAD_TRUNK
 					trunk_h = 3
 				Biome.REDWOOD:
-					chance = 0.58
+					chance = 0.4
 					trunk = Blocks.REDWOOD_TRUNK
 					trunk_h = 7
 					if roll < 0.08:

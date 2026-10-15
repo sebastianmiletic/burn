@@ -61,3 +61,9 @@ entity, rendering and audio contracts, but these additions supersede their world
 - Queries: `cave_name_at(pos)`, `is_underground(pos)`, `cave_biome_at(x, y, z)`, `climate_at(pos)` (weather
   snow/dust/haze), `horizon_color(x, z, h, slope)`, `mountain_weight(x, z)`, `is_protected(x, z)`.
 - `tools/world_bench.gd` prints prepare timings, land/biome areas, chunk costs and can save the map.
+- Terrain textures gained a seventh row of layers (`TerrainTextures.L.CLIFF`, `BASALT_ROCK`, `SCREE`,
+  `RED_CLIFF`). Steep columns show the bedrock of their height (`WorldGen.FACE`), so faces read as one rock.
+- Cave decoration (CaveDecor), mine dressing (MineDressing) and the geyser vents are modelled meshes in
+  world/caves/*; `CaveBiomes.decor_kind()` tells CaveDecor where the mine workings are.
+- Weather (world/sky/weather.gd) reads `climate_at()` for revision 3; the horizon (world/distant_land.gd)
+  colours its mesh with `horizon_color()`.
