@@ -543,11 +543,18 @@ func _world_stop(w: GameWorld, stop: String) -> Array:
 				yaw = face.call(along)
 				pitch = -0.05
 			else:
+				var chest := Vector3.ZERO
+				for s in m.spawns_of("chest"):
+					if int(s.get("tier", 1)) == 3:
+						chest = s["pos"]
 				for s in m.spawns_of("enemy"):
-					if s.get("guardian", false):
-						pos = (s["pos"] as Vector3) + Vector3(7, -0.4, 6)
-						yaw = face.call((s["pos"] as Vector3) - pos)
-						pitch = -0.08
+					if s.get("guardian", false) and chest != Vector3.ZERO:
+						var along := chest - (s["pos"] as Vector3)
+						along.y = 0.0
+						along = along.normalized()
+						pos = (s["pos"] as Vector3) - along * 6.5 + Vector3(0, -0.4, 0)
+						yaw = face.call(along)
+						pitch = 0.02
 	if pos == Vector3.ZERO:
 		return []
 	if pos.y < g.ground_level(pos.x, pos.z) - 4.0 and "--torch" in OS.get_cmdline_user_args():

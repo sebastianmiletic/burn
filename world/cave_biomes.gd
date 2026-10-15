@@ -81,7 +81,10 @@ static func wall_material(pos: Vector3i, kind: int, seed_value: int, floor_side 
 		return Blocks.LIMESTONE
 	match kind:
 		Kind.CRYSTAL_REFUGE:
-			return [Blocks.AMETHYST, Blocks.RUBY_ORE, Blocks.SAPPHIRE_ORE, Blocks.GOLD_ORE, Blocks.SILVER_ORE, Blocks.MITHRIL_ORE, Blocks.MARBLE, Blocks.MARBLE][h % 8]
+			# Pale marble and flowstone with rich seams (a third of the walls), not wall-to-wall ore.
+			if h % 3 != 0:
+				return Blocks.MARBLE if h % 5 != 0 else Blocks.FLOWSTONE
+			return [Blocks.AMETHYST, Blocks.RUBY_ORE, Blocks.SAPPHIRE_ORE, Blocks.GOLD_ORE, Blocks.SILVER_ORE, Blocks.MITHRIL_ORE][(h / 3) % 6]
 		Kind.GEYSER:
 			if floor_side == 1 and h % 3 != 0:
 				return Blocks.GEYSERITE

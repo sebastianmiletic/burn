@@ -171,8 +171,7 @@ func _init(dim: Dimension, seed_value: int, world_revision := LATEST_REVISION) -
 	if _v3():
 		_n_detail = make_detail_noise()
 		_n_ridge = make_ridge_noise()
-		_n_couloir = _noise(FastNoiseLite.TYPE_SIMPLEX, 0.05, 2, 41)
-		_n_couloir.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+		_n_couloir = _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.036, 1, 41)
 		_n_ravine = _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.0029, 2, 43)
 		_n_ravmask = _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.0021, 1, 44)
 		_col_ring.resize(COLUMN_CACHE)
@@ -874,11 +873,14 @@ func _couloirs(x: int, z: int, m: float) -> float:
 	var ang := atan2(dz, dx)
 	# Around the peak at a fixed circumference: continuous, gullies converge on the summit.
 	var c := _n_couloir.get_noise_3d(cos(ang) * 95.0, sin(ang) * 95.0, dist * 0.05)
-	var gully := c * c * c
+	# Smooth U-shaped troughs along the zero lines of the noise, rounded ribs between them
+	# (no knife edges: the smooth mesher would alias them into teeth).
+	var gully := 1.0 - smoothstep(0.0, 0.42, absf(c))
+	var rib := smoothstep(0.42, 0.9, absf(c))
 	var flank := smoothstep(0.05, 0.25, u) * (1.0 - smoothstep(0.62, 0.9, u))
 	var margin := smoothstep(0.0, 0.25, (best - second) / maxf(best, 1.0))
 	var w := m * flank * margin * clampf(bp.z / 200.0, 0.4, 1.3)
-	return (gully * 10.0 - 4.5) * w
+	return (rib * 2.5 - gully * 7.0) * w
 
 
 ## Ravine depth at a column: narrow winding cracks 25-40 m deep with flat floors.
