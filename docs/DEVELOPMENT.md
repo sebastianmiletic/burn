@@ -43,7 +43,7 @@ godot --path . --log-file "$PWD/build/validation/gpu-engine.log" -- \
   --style=4 --quality=2 --no-update --data-dir="$PWD/build/validation/gpu-user"
 ```
 
-The capture directory contains PNGs and `report.txt`. `--style=1` tests full-colour ASCII. F3 shows live
+The capture directory contains PNGs and `report.txt` (with the 3D render resolution and upscaler per stop). F3 shows live
 performance. Record hardware, window/output resolution, actual viewport resolution, graphics preset,
 render style, adaptive resolution, averages and worst frames. Do not report headless frame rates as game FPS.
 Captures can warm shader caches, so also measure a cold start and travel into new chunks.

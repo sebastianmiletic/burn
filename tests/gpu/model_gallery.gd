@@ -1,7 +1,7 @@
 extends Node3D
 ## Visual check for every creature model, rendered through the ASCII view.
 ##
-##   godot --path . --fullscreen res://tests/gpu/model_gallery.tscn -- --capture=/abs/dir [--style=0]
+##   godot --path . --fullscreen res://tests/gpu/model_gallery.tscn -- --capture=/abs/dir
 ##
 ## Without --capture it is an interactive gallery: 1-8 jump between shots,
 ## space replays the actions.
@@ -41,8 +41,6 @@ func _ready() -> void:
 			_capture_dir = arg.trim_prefix("--capture=")
 		elif arg.begins_with("--only="):
 			_only = arg.trim_prefix("--only=").split(",")
-		elif arg.begins_with("--style="):
-			Settings.set_value("graphics", "style", int(arg.trim_prefix("--style=")))
 	_environment()
 	_ground()
 	_place_models()
@@ -51,7 +49,7 @@ func _ready() -> void:
 	camera.near = 0.1
 	camera.far = 500.0
 	add_child(camera)
-	var view := AsciiView.new()
+	var view := WorldView.new()
 	view.source_camera = camera
 	add_child(view)
 	_set_shot(0)

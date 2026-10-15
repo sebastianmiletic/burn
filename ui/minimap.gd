@@ -82,7 +82,7 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter(&"center_uv", Vector2(_player_pos.x, _player_pos.z) / world_size)
 	_mat.set_shader_parameter(&"span", RADIUS_METRES * 2.0 * zoom / world_size)
 	_mat.set_shader_parameter(&"angle", _angle)
-	_mat.set_shader_parameter(&"style", 0 if int(UiContext.setting("graphics", "style")) == 0 else 1)
+	_mat.set_shader_parameter(&"style", 1)
 	var surface: Variant = UiContext.call_on(world, "surface_height_at", [_player_pos.x, _player_pos.z], null)
 	var under := 0.0
 	if surface != null:

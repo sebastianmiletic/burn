@@ -7,7 +7,6 @@ Godot 4.7, GDScript, Forward+. Everything is built in code; scenes are thin.
 | Name | File | Role |
 |---|---|---|
 | `Settings` | core/settings.gd | Options, persisted to user://settings.cfg. `get_value(section, key)`, `set_value`, `changed(section, key)` |
-| `Ascii` | rendering/ascii/ascii_config.gd | ASCII effect + glyph atlas |
 | `Events` | core/events.gd | Signal bus (see file for every signal) |
 | `Audio` | audio/audio.gd | Procedural SFX, ambience, music |
 | `Net` | network/net.gd | LAN parties: rune codes, discovery, ENet, lobby, chat |
@@ -15,13 +14,13 @@ Godot 4.7, GDScript, Forward+. Everything is built in code; scenes are thin.
 
 ## Rendering
 
-`AsciiView` (rendering/ascii/ascii_view.gd) renders the world through a mirrored camera into a reduced-resolution
-SubViewport, `AsciiEffect` analyses it into cell textures, `ascii_composite.gdshader` draws glyphs at native resolution.
-UI is ordinary Control nodes in CanvasLayers above it (never ASCII).
-Every 3D material must set `ROUGHNESS = ascii_roughness(r, ASCII_<CLASS>)` (rendering/materials/ascii_material.gdshaderinc)
+`WorldView` (rendering/world_view.gd) renders the world straight to the window through the gameplay camera; the
+3D resolution follows the quality preset and adaptive resolution, and MetalFX temporal (Metal) or FSR 2 (Vulkan /
+D3D12) upscales it to the window. UI is ordinary Control nodes in CanvasLayers above it.
+Legacy: many materials still call `ascii_roughness(r, ASCII_<CLASS>)` (rendering/materials/ascii_material.gdshaderinc); it now returns `r` unchanged
 or use `MaterialLibrary` / `ModelKit` helpers. FX (fire, magic, telegraphs) use transparent additive materials
 (`MaterialLibrary.fx(...)`), so they are drawn over the glyphs and bloom.
-`AsciiView.flash` (0..1) and `AsciiView.tint` are the screen-flash / grade hooks.
+`WorldView.flash` (0..1) and `WorldView.tint` are the screen-flash / grade hooks.
 
 ## World
 
@@ -38,7 +37,7 @@ Authority: **server** = host machine (solo counts as server). `Net.is_server()`.
 
 ```
 var local_player: Player
-var view: AsciiView
+var view: WorldView
 var quests: QuestLog
 var local_dimension: int
 func world_for(dim: int) -> VoxelWorld

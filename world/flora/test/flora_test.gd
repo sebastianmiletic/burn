@@ -34,7 +34,7 @@ var SHOTS := [
 ]
 
 var camera: Camera3D
-var view: AsciiView
+var view: WorldView
 var terrain := Terrain.new(7)
 var hell_terrain := Terrain.new(19)
 var interaction: FoliageInteraction
@@ -44,7 +44,7 @@ var sun: DirectionalLight3D
 var env: Environment
 var _capture_dir := ""
 var _bench := false
-var _styles := [0, 4]
+var _styles := [0]
 var _only: PackedStringArray = []
 var _walk_t := 0.0
 var _walk_path: Curve3D
@@ -58,7 +58,7 @@ var _restore: Array = []
 
 func _ready() -> void:
 	# Settings persist to user://; put the user's own values back when a scripted run ends.
-	_restore = [Settings.get_value("graphics", "style"), Settings.get_value("graphics", "quality")]
+	_restore = [Settings.get_value("graphics", "quality")]
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture="):
 			_capture_dir = arg.trim_prefix("--capture=")
@@ -97,7 +97,7 @@ func _ready() -> void:
 	camera.near = 0.05
 	camera.far = 600.0
 	add_child(camera)
-	view = AsciiView.new()
+	view = WorldView.new()
 	view.source_camera = camera
 	add_child(view)
 	_set_shot(0)
@@ -397,7 +397,6 @@ func _wait(seconds: float) -> void:
 func _capture() -> void:
 	await _wait(1.5)
 	for style: int in _styles:
-		Settings.set_value("graphics", "style", style)
 		for i in SHOTS.size():
 			var s: Array = SHOTS[i]
 			if not _only.is_empty() and not (s[0] in _only):
@@ -469,7 +468,6 @@ func _is_grass_mesh(m: Mesh) -> bool:
 
 
 func _run_bench() -> void:
-	Settings.set_value("graphics", "style", 0)
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	Engine.max_fps = 0
 	await _wait(1.0)
@@ -498,6 +496,5 @@ func _run_bench() -> void:
 
 
 func _quit() -> void:
-	Settings.set_value("graphics", "style", _restore[0])
-	Settings.set_value("graphics", "quality", _restore[1])
+	Settings.set_value("graphics", "quality", _restore[0])
 	get_tree().quit()

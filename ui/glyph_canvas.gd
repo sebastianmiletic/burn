@@ -1,13 +1,14 @@
 class_name GlyphCanvas
 extends ColorRect
-## Base for UI effects drawn with the game's glyph atlas (burning title,
-## ember background). Keeps the atlas, ramp, cell size and time uniforms in
-## step with the Ascii autoload and the control's physical pixel size.
+## Base for the menu's fire effects (burning title, ember background): keeps
+## the cell size and time uniforms in step with the control's physical pixel
+## size. Cells are a few pixels, so the effects render as continuous smoke,
+## embers and flame.
 
 const RAMP := " .:-=+*o#%8@"
 
 ## Cell size in logical UI pixels when no atlas is available yet.
-@export var fallback_cell := Vector2(8, 14)
+@export var fallback_cell := Vector2(3, 3)
 ## Multiplies the atlas cell (1 = same grid as the game view).
 @export var cell_scale := 1.0
 
@@ -21,16 +22,10 @@ func _init_shader(shader: Shader) -> void:
 	color = Color.BLACK
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var ramp := PackedInt32Array()
-	var glyphs := GlyphSet.all_glyphs()
 	for i in RAMP.length():
-		ramp.append(maxi(0, glyphs.find(RAMP[i])))
+		ramp.append(i)
 	shader_material.set_shader_parameter(&"ramp", ramp)
 	shader_material.set_shader_parameter(&"ramp_len", RAMP.length())
-	var ascii := get_node_or_null("/root/Ascii")
-	if ascii != null:
-		ascii.connect("atlas_changed", _on_atlas)
-		if ascii.get("atlas_texture") != null:
-			_on_atlas(ascii.get("atlas_texture"), ascii.get("atlas_cell"))
 
 
 func _on_atlas(texture: Texture2D, cell: Vector2i) -> void:

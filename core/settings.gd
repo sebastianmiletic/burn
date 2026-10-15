@@ -7,13 +7,10 @@ signal changed(section: String, key: String)
 var PATH := RuntimePaths.file("settings.cfg")
 
 enum Quality { LOW, MEDIUM, HIGH, ULTRA }
-enum Style { EMBER, FULL_COLOUR, CLASSIC, PHOSPHOR, OFF }
 enum WindowMode { FILL_SCREEN, WINDOWED, FULLSCREEN }
 
 const QUALITY_NAMES := ["Low", "Medium", "High", "Ultra"]
-const STYLE_NAMES := ["Ember", "Full colour", "Classic", "Phosphor", "ASCII off"]
 const WINDOW_MODE_NAMES := ["Fill screen", "Windowed", "Fullscreen"]
-const CELL_NAMES := ["Fine 6x10", "Default 8x14", "Chunky 12x20"]
 
 const DEFAULTS := {
 	"display": {
@@ -26,18 +23,12 @@ const DEFAULTS := {
 		"adaptive_resolution": true,
 		"altitude_blur": true,
 		"render_scale": -1.0,  # -1: follow the quality preset
-		"style": Style.OFF,
-		"cell_preset": 0,
 		"brightness": 0.85,
 		"fov": 80.0,
 		"fog": 1.0,
 		"bloom": 1.0,
 		"vignette": 0.3,
 		"grain": 0.0,
-		"edges": true,
-		"flicker": false,
-		"shimmer": false,
-		"bg_fill": 0.08,
 	},
 	"audio": {
 		"master": 0.8,
@@ -67,6 +58,9 @@ func _ready() -> void:
 			if not _data.has(section):
 				continue
 			for key: String in cfg.get_section_keys(section):
+				# Options that no longer exist (the retired ASCII renderer's) are dropped.
+				if section != "controls" and not (DEFAULTS[section] as Dictionary).has(key):
+					continue
 				_data[section][key] = cfg.get_value(section, key)
 	if String(_data["gameplay"]["player_name"]) == "":
 		_data["gameplay"]["player_name"] = _default_name()
@@ -119,7 +113,7 @@ func render_scale() -> float:
 	var forced: float = get_value("graphics", "render_scale")
 	if forced > 0.0:
 		return forced
-	return [0.4, 0.5, 0.65, 0.85][int(get_value("graphics", "quality"))]
+	return [0.65, 0.8, 1.0, 1.25][int(get_value("graphics", "quality"))]
 
 
 func apply_display() -> void:

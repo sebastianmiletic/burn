@@ -22,7 +22,7 @@ var worlds := {}             # dim -> VoxelWorld
 var map_images := {}         # dim -> Image
 var local_player: Player
 var local_dimension := 0
-var view: AsciiView
+var view: WorldView
 var quests := QuestLog.new()
 var discovered := {}         # location id -> true
 var bosses_defeated := {}    # boss kind -> true
@@ -115,7 +115,7 @@ func setup(info: Dictionary) -> void:
 	var save: Dictionary = info.get("save", {})
 	_load_world_state(save)
 
-	# The local player and the camera the AsciiView mirrors.
+	# The local player and the camera the WorldView renders through.
 	local_player = EntityFactory.create("player") as Player
 	local_player.is_local = true
 	local_player.net_id = Replicator.player_net_id(Net.my_id())
@@ -151,7 +151,7 @@ func setup(info: Dictionary) -> void:
 		quests.accept("ryft")
 	local_dimension = local_player.dimension
 
-	view = AsciiView.new()
+	view = WorldView.new()
 	view.source_camera = local_player.camera
 	add_child(view)
 	_activate_dimension(local_dimension)
@@ -189,7 +189,7 @@ func setup(info: Dictionary) -> void:
 	ready_to_play.emit()
 
 
-## Profiling aid: --gfx=noshadow,nofog,nossao,noglow,nosun,dist4,noascii
+## Profiling aid: --gfx=noshadow,nofog,nossao,noglow,nosun,dist4
 func _apply_gfx_flags() -> void:
 	for a in OS.get_cmdline_user_args():
 		if not a.begins_with("--gfx="):
@@ -211,8 +211,6 @@ func _apply_gfx_flags() -> void:
 				"dist4":
 					for d: int in worlds:
 						(worlds[d] as VoxelWorld).view_radius = 4
-				"noascii":
-					Ascii.effect.enabled = false
 
 
 func _log_time(what: String, t0: int) -> void:

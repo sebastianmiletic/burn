@@ -151,22 +151,18 @@ func _apply_settings() -> void:
 		GraphicsQuality.apply_directional(sun, true)
 		GraphicsQuality.apply_directional(moon, false)
 	(environment.sky as Sky).radiance_size = Sky.RADIANCE_SIZE_256 if _quality >= Settings.Quality.HIGH else Sky.RADIANCE_SIZE_128
-	# Tonemapping only shapes the final image when the ASCII pass is off (and
-	# the additive FX layer when it is on, which keeps its punchy ACES look).
-	var raw := int(Settings.get_value("graphics", "style")) == Settings.Style.OFF
-	if raw:
-		environment.tonemap_mode = Environment.TONE_MAPPER_AGX
-		environment.tonemap_exposure = 1.25
-		environment.tonemap_agx_white = 8.0
-		environment.tonemap_agx_contrast = 1.45
-	else:
-		environment.tonemap_mode = Environment.TONE_MAPPER_ACES
-		environment.tonemap_exposure = 0.95
-	_raw = raw
-	# No tonemapper auto-exposure: the ASCII pass clears the scene before the
-	# tonemapper measures it. The raw image gets a gentle scripted adaptation
-	# instead (see _update_lights), the ASCII styles adapt their glyphs.
+	# Filmic AgX tonemapping; eye adaptation is scripted (see _update_lights)
+	# so caves, nights and storms adapt by a believable, bounded amount.
+	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
+	environment.tonemap_exposure = 1.25
+	environment.tonemap_agx_white = 8.0
+	environment.tonemap_agx_contrast = 1.45
+	_raw = true
 	camera_attributes.auto_exposure_enabled = false
+	# The brightness slider (default 85 %) grades the final image.
+	var bright := float(Settings.get_value("graphics", "brightness"))
+	environment.adjustment_enabled = absf(bright - 0.85) > 0.005
+	environment.adjustment_brightness = bright / 0.85
 
 
 func set_dimension(dim: int) -> void:
@@ -259,6 +255,10 @@ func _update_lights(delta: float, force: bool) -> void:
 	var fog := wx.fog_amount() if wx != null else 0.0
 	var wet := wx.wetness() if wx != null else 0.0
 	var dust := wx.dust_amount() if wx != null else 0.0
+	var heat := wx.heat_amount() if wx != null else 0.0
+	var ember := wx.ember_amount() if wx != null else 0.0
+	var aurora := wx.aurora_amount() if wx != null else 0.0
+	var meteors := wx.meteor_amount() if wx != null else 0.0
 
 	_atmos_timer -= delta
 	if _atmos_timer <= 0.0 or force:
@@ -280,8 +280,10 @@ func _update_lights(delta: float, force: bool) -> void:
 	var t_lum := _sun_trans.dot(Vector3(0.2126, 0.7152, 0.0722))
 	var t_max := maxf(maxf(_sun_trans.x, _sun_trans.y), maxf(_sun_trans.z, 1e-4))
 	var sun_col := Color(_sun_trans.x / t_max, _sun_trans.y / t_max, _sun_trans.z / t_max)
-	var cloud_block := overcast * 0.78 + storm * 0.15
+	var cloud_block := overcast * 0.78 + storm * 0.15 + ember * 0.3
 	var sun_e := SUN_ENERGY * clampf(t_lum / 0.78, 0.0, 1.0) * (1.0 - cloud_block) * smoothstep(-0.03, 0.06, _sun_dir.y)
+	if wx != null and wx.ember_amount() > 0.0:
+		sun_col = sun_col.lerp(Color(1.0, 0.45, 0.2), wx.ember_amount() * 0.6)
 	sun.light_color = sun_col
 	sun.light_energy = sun_e * surface_light * surface_light
 	# Overcast skies soften shadows into a broad penumbra.
@@ -307,7 +309,11 @@ func _update_lights(delta: float, force: bool) -> void:
 	_sky_mat.set_shader_parameter(&"cloud_cover", clampf(0.32 + overcast * 0.68, 0.0, 1.0))
 	_sky_mat.set_shader_parameter(&"cloud_dark", clampf(storm * 0.9 + rain * 0.35, 0.0, 1.0))
 	_sky_mat.set_shader_parameter(&"cirrus", clampf(0.45 + overcast * 0.4 - storm * 0.5, 0.0, 1.0))
-	_sky_mat.set_shader_parameter(&"haze", clampf(fog * 0.85 + rain * 0.45 + dust * 0.6, 0.0, 1.0))
+	_sky_mat.set_shader_parameter(&"haze", clampf(fog * 0.85 + rain * 0.45 + dust * 0.6 + heat * 0.25, 0.0, 1.0))
+	_sky_mat.set_shader_parameter(&"aurora", aurora)
+	_sky_mat.set_shader_parameter(&"meteors", meteors)
+	_sky_mat.set_shader_parameter(&"heat", heat)
+	_sky_mat.set_shader_parameter(&"embers", ember)
 	_sky_mat.set_shader_parameter(&"sun_light", sun_light)
 	_sky_mat.set_shader_parameter(&"sky_ambient", amb)
 	_sky_mat.set_shader_parameter(&"sky_energy", sky_dim)
@@ -337,7 +343,7 @@ func _update_lights(delta: float, force: bool) -> void:
 	var floor_col := Vector3(0.012, 0.015, 0.024)
 	var amb_col := (amb * 0.8 + floor_col).lerp(_cave_bounce, u)
 	environment.ambient_light_color = Color(amb_col.x, amb_col.y, amb_col.z)
-	environment.ambient_light_energy = lerpf(0.45 * (1.0 - storm * 0.35), 1.5, u)
+	environment.ambient_light_energy = lerpf(0.45 * (1.0 - storm * 0.35), 2.3, u)
 	environment.background_energy_multiplier = 1.0
 	# Fog takes the colour of the horizon away from the sun; aerial perspective
 	# then pulls it towards the actual sky behind each object.
@@ -346,6 +352,12 @@ func _update_lights(delta: float, force: bool) -> void:
 	hz = hz.lerp(Vector3(hz_grey, hz_grey, hz_grey * 1.05), overcast * 0.7 + fog * 0.3) * sky_dim
 	if dust > 0.0:
 		hz = hz.lerp(Vector3(0.42, 0.3, 0.2) * maxf(dayf, 0.08), dust * 0.6)
+	if ember > 0.0:
+		# Crater smoke: a brown-red murk, glowing faintly at night.
+		hz = hz.lerp(Vector3(0.22, 0.08, 0.035) * maxf(dayf, 0.25), ember * 0.65)
+	if heat > 0.0:
+		var hl := hz.dot(Vector3(0.3, 0.5, 0.2))
+		hz = hz.lerp(Vector3(hl * 1.12, hl * 1.0, hl * 0.84), heat * 0.4)
 	# Underground, distance falls off into the cave's dark tinted murk. It also
 	# covers the sky (fog_sky_affect) so the void past the streamed rock never
 	# shows daylight.
@@ -355,7 +367,7 @@ func _update_lights(delta: float, force: bool) -> void:
 	environment.fog_sun_scatter = 0.18 * (1.0 - overcast) * dayf * surface_light
 	var morning := _mist_amount()
 	var mist := morning + wet * (1.0 - rain) * 0.5
-	var surface_density := (0.0013 + fog * 0.028 + rain * 0.006 + storm * 0.004 + dust * 0.012 + mist * 0.003) * _fog_mult
+	var surface_density := (0.0013 + fog * 0.028 + rain * 0.006 + storm * 0.004 + dust * 0.012 + mist * 0.003 + ember * 0.004 + heat * 0.0008) * _fog_mult
 	# High in the mountains a little cold haze hangs between the ranges (kept
 	# light so the view across the peaks stays the reward for the climb).
 	var alt := 0.0
@@ -363,7 +375,7 @@ func _update_lights(delta: float, force: bool) -> void:
 	if gw != null and gw.weather != null:
 		alt = gw.weather.altitude
 	surface_density += alt * 0.0016 * _fog_mult
-	var cave_density := 0.016 * (0.6 + 0.4 * _fog_mult)
+	var cave_density := 0.012 * (0.6 + 0.4 * _fog_mult)
 	environment.fog_density = lerpf(surface_density, cave_density, u)
 	camera_attributes.dof_blur_far_enabled = alt > 0.03 and u < 0.5 and bool(Settings.get_value("graphics", "altitude_blur"))
 	if alt > 0.03:
@@ -399,11 +411,25 @@ func _update_lights(delta: float, force: bool) -> void:
 	# brightest crystals) should bloom, not every lit wall.
 	environment.glow_hdr_threshold = lerpf(1.0, 1.35, u)
 	# Horizon haze for DistantLand (its own aerial perspective).
-	var sky_hz := (_horizon * (1.0 - nightf) + Vector3(0.008, 0.01, 0.016) * nightf) * sky_dim
-	var sky_hz_sun := (_horizon_sun.limit_length(1.5) * (1.0 - nightf) + Vector3(0.008, 0.01, 0.016) * nightf) * sky_dim
-	var sky_grey := sky_hz.dot(Vector3(0.3, 0.5, 0.2))
-	sky_hz = sky_hz.lerp(Vector3(sky_grey, sky_grey, sky_grey * 1.05), overcast * 0.7 + fog * 0.3)
-	sky_hz_sun = sky_hz_sun.lerp(Vector3(sky_grey, sky_grey, sky_grey * 1.05), overcast * 0.7 + fog * 0.3)
+	# The horizon of the sky as the sky shader actually draws it (atmosphere,
+	# pulled towards the cloud murk by haze, dimmed by the cloud deck), so far
+	# ranges fade into the real sky colour - in a storm a dark grey, never a
+	# pale silhouette.
+	var haze_k := clampf(fog * 0.85 + rain * 0.45 + dust * 0.6 + heat * 0.25, 0.0, 1.0)
+	var murk_k := clampf(haze_k * 0.8 + haze_k * 0.35, 0.0, 1.0)
+	var night_hz := Vector3(0.008, 0.01, 0.016)
+	var sky_hz := _horizon * (1.0 - nightf) + night_hz * nightf
+	var sky_hz_sun := _horizon_sun.limit_length(1.5) * (1.0 - nightf) + night_hz * nightf
+	var murk_a := amb * 1.1
+	sky_hz = sky_hz.lerp(murk_a.lerp(Vector3.ONE * sky_hz.dot(Vector3(0.3, 0.5, 0.2)), 0.4), murk_k)
+	sky_hz_sun = sky_hz_sun.lerp(murk_a.lerp(Vector3.ONE * sky_hz_sun.dot(Vector3(0.3, 0.5, 0.2)), 0.4), murk_k)
+	# Low cloud near the horizon (the deck the sky shader fades into haze).
+	var deck := clampf(overcast * 0.6 + storm * 0.3, 0.0, 0.85)
+	sky_hz = sky_hz.lerp(amb * 0.9, deck) * sky_dim
+	sky_hz_sun = sky_hz_sun.lerp(amb * 0.9, deck) * sky_dim
+	if ember > 0.0:
+		sky_hz = sky_hz.lerp(Vector3(0.22, 0.08, 0.035) * maxf(dayf, 0.25), ember * 0.7)
+		sky_hz_sun = sky_hz_sun.lerp(Vector3(0.3, 0.1, 0.04) * maxf(dayf, 0.25), ember * 0.7)
 	_haze = {
 		"fog_col": hz,
 		"sky_hz": sky_hz,
@@ -423,7 +449,7 @@ func _update_lights(delta: float, force: bool) -> void:
 	if _raw:
 		# Eyes adapt a little to the dark (and to gloomy storms), never fully.
 		var gloom := clampf(nightf * 0.8 + storm * 0.3 + overcast * 0.15, 0.0, 1.0) * surface_light
-		environment.tonemap_exposure = 1.1 * lerpf(1.0, 1.6, gloom) * lerpf(1.0, 1.3, u)
+		environment.tonemap_exposure = 1.1 * lerpf(1.0, 1.6, gloom) * lerpf(1.0, 1.38, u)
 
 
 ## Aerial-perspective inputs for the horizon (DistantLand's shader uniforms).
@@ -458,7 +484,7 @@ func _set_cave_darkness() -> void:
 	var w := _world()
 	if w == null:
 		return
-	var value := lerpf(1.0, 0.45, _underground)
+	var value := lerpf(1.0, 0.3, _underground)
 	if "--cave-debug=cd1" in OS.get_cmdline_user_args():
 		value = 1.0
 	for d: int in w.worlds:

@@ -184,25 +184,18 @@ func _build_graphics() -> void:
 	_heading(p, "Rendering")
 	_option(p, "graphics", "quality", "Quality preset", UiContext.settings_const("QUALITY_NAMES"),
 			"Low and Medium skip global illumination and reflections. High and Ultra add them.")
-	_option(p, "graphics", "style", "Render style", UiContext.settings_const("STYLE_NAMES"),
-			"Ember is the warm sepia look. Full colour keeps the scene's own colours. ASCII off shows the plain 3D scene.")
-	_option(p, "graphics", "cell_preset", "Glyph size", UiContext.settings_const("CELL_NAMES"), "Smaller glyphs show more detail.")
 	var scale_names: Array = ["Follow preset", "50%", "62%", "75%", "85%", "100%"]
 	_option_values(p, "graphics", "render_scale", "3D resolution", scale_names, RENDER_SCALES,
-			"3D scene resolution. UI and ASCII glyphs stay sharp at native resolution.")
+			"Resolution the 3D scene renders at before temporal upscaling (MetalFX / FSR 2) to the full window. The UI is always native.")
 	_check(p, "graphics", "adaptive_resolution", "Adaptive resolution", "With Follow preset selected, adjusts 3D resolution toward 60 FPS. Does not guarantee a minimum frame rate.")
 	_check(p, "graphics", "altitude_blur", "Mountain distance blur", "Softens distant scenery as altitude increases. Turn off for a clearer view; snow remains.")
 	_slider(p, "graphics", "fov", "Field of view", 55, 100, 1, "%d°", 1.0, "How wide the camera sees.")
 	_heading(p, "Image")
 	_slider(p, "graphics", "brightness", "Brightness", 0.5, 1.5, 0.01, "%d%%", 100.0, "Overall brightness of the image.")
-	_slider(p, "graphics", "bloom", "Glow", 0.0, 2.0, 0.05, "%d%%", 100.0, "Bloom around fire, magic and bright glyphs.")
+	_slider(p, "graphics", "bloom", "Glow", 0.0, 2.0, 0.05, "%d%%", 100.0, "Bloom around fire, magic, lava and the sun.")
 	_slider(p, "graphics", "fog", "Fog", 0.0, 2.0, 0.05, "%d%%", 100.0, "Distance haze and volumetric fog.")
-	_slider(p, "graphics", "bg_fill", "Cell background", 0.0, 0.6, 0.01, "%d%%", 100.0, "Tints the space behind each glyph with the scene colour.")
 	_slider(p, "graphics", "vignette", "Vignette", 0.0, 1.0, 0.01, "%d%%", 100.0, "Darkens the corners of the screen.")
 	_slider(p, "graphics", "grain", "Film grain", 0.0, 0.2, 0.005, "%d%%", 500.0, "A little noise over the image.")
-	_check(p, "graphics", "edges", "Edge glyphs", "Outline silhouettes with | / - \\ strokes.")
-	_check(p, "graphics", "flicker", "Glyph flicker", "Dark glyphs flicker like dying embers.")
-	_check(p, "graphics", "shimmer", "Chromatic shimmer", "Very bright glyphs split into colour fringes.")
 
 
 func _build_display() -> void:

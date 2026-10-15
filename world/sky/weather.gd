@@ -1,41 +1,96 @@
 class_name Weather
 extends Node3D
-## Server-driven weather: clear -> overcast -> rain -> storm, and fog, with
-## convincing transitions (clouds build and the light dims first, the wind
-## rises before the rain; afterwards the rain stops first, the ground stays
-## wet, mist lingers, a rainbow may show). Synced to clients through
-## Replicator.broadcast_clock (state name only).
+## Server-driven weather that genuinely changes over time, in solo and online
+## play alike: the host walks a weighted chain of weather states and events
+## (fair weather, cloud, rain, thunderstorms with real lightning strikes, fog
+## banks, blizzards, heatwaves, dust storms, ember storms off the Cinder
+## Crater, and on clear nights the aurora or a meteor shower). Transitions are
+## gradual and physically ordered: clouds build and the wind rises before the
+## rain; afterwards the rain stops first, the ground stays wet, mist lingers,
+## and a rainbow may show in the afternoon sun.
 ##
-## What the precipitation looks like depends on where the local player is:
-## snow in the Frost Peaks and at altitude, wind-blown dust in the Cinder
-## Wastes, rain elsewhere, nothing underground; the underworld has constant
-## ash fall and embers.
+## Sync: the state name travels with Replicator.broadcast_clock (sent on every
+## change and every few seconds), so joiners and clients follow the host.
+## Gameplay can summon weather with `request(state, seconds)` (server
+## authoritative; clients forward the request to the host).
+##
+## What falls from the sky depends on where the local player is: snow in the
+## Frost Peaks, at altitude and in a blizzard; wind-blown dust in the Cinder
+## Wastes and in a dust storm; rain elsewhere; nothing underground. The
+## underworld has constant ash fall and embers.
 ##
 ## Drives the global shader uniforms (docs/REALISM_CONTRACTS.md):
 ## wind_dir, wind_strength (gusty), wetness, snow_cover, rain_amount.
 
-const STATES := ["clear", "overcast", "rain", "storm", "fog"]
-# overcast, precipitation, storm, fog, wind per state
+## Every state. The first five are the everyday ones.
+const STATES := ["clear", "overcast", "rain", "storm", "fog", "blizzard", "heatwave", "dust_storm",
+		"ember_storm", "aurora", "meteor_shower"]
+## Channels: overcast, precipitation, storm, fog, wind, snow (forces snow),
+## dust (forces dust), heat, aurora, embers, meteors.
+const CHANNELS := 11
 const LEVELS := {
-	"clear": [0.0, 0.0, 0.0, 0.0, 0.25],
-	"overcast": [0.65, 0.0, 0.0, 0.08, 0.45],
-	"rain": [0.88, 0.62, 0.0, 0.18, 0.6],
-	"storm": [1.0, 1.0, 1.0, 0.22, 1.0],
-	"fog": [0.45, 0.0, 0.0, 1.0, 0.08],
+	"clear":         [0.0,  0.0,  0.0, 0.0,  0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	"overcast":      [0.65, 0.0,  0.0, 0.08, 0.45, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	"rain":          [0.88, 0.62, 0.0, 0.18, 0.6,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	"storm":         [1.0,  1.0,  1.0, 0.22, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	"fog":           [0.45, 0.0,  0.0, 1.0,  0.08, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	"blizzard":      [0.95, 0.95, 0.0, 0.7,  1.0,  1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	"heatwave":      [0.0,  0.0,  0.0, 0.0,  0.12, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+	"dust_storm":    [0.35, 0.35, 0.0, 0.45, 1.0,  0.0, 1.0, 0.5, 0.0, 0.0, 0.0],
+	"ember_storm":   [0.75, 0.0,  0.0, 0.3,  0.6,  0.0, 0.0, 0.4, 0.0, 1.0, 0.0],
+	"aurora":        [0.0,  0.0,  0.0, 0.0,  0.2,  0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+	"meteor_shower": [0.0,  0.0,  0.0, 0.0,  0.2,  0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
 }
 ## Per channel transition speed multipliers (getting worse, getting better):
 ## clouds and wind lead the rain in; the rain leads the clouds out.
-const RATE_UP := [1.7, 0.65, 0.6, 1.0, 2.0]
-const RATE_DOWN := [0.7, 1.8, 1.8, 0.8, 0.8]
+const RATE_UP := [1.7, 0.65, 0.6, 1.0, 2.0, 1.0, 1.0, 0.6, 0.5, 0.8, 0.8]
+const RATE_DOWN := [0.7, 1.8, 1.8, 0.8, 0.8, 1.0, 1.0, 0.8, 0.8, 1.0, 1.2]
 ## Altitude (m) above which precipitation falls as snow anywhere.
 const SNOW_LINE := 62.0
+## Weighted successors [state, weight]; night-only and day-only states are
+## filtered by the clock when picked.
+const CHAIN := {
+	"clear": [["overcast", 4], ["fog", 1], ["heatwave", 1.2], ["dust_storm", 0.6], ["aurora", 1.4], ["meteor_shower", 1.0], ["clear", 1]],
+	"overcast": [["rain", 4], ["clear", 2], ["fog", 1], ["blizzard", 0.8], ["ember_storm", 0.7]],
+	"rain": [["storm", 2.5], ["overcast", 2], ["clear", 1.5], ["rain", 1]],
+	"storm": [["rain", 3], ["overcast", 1]],
+	"fog": [["clear", 2], ["overcast", 1.5]],
+	"blizzard": [["overcast", 2], ["fog", 1]],
+	"heatwave": [["clear", 2], ["dust_storm", 1], ["overcast", 1]],
+	"dust_storm": [["clear", 1.5], ["overcast", 1]],
+	"ember_storm": [["overcast", 2], ["rain", 1]],
+	"aurora": [["clear", 2], ["meteor_shower", 0.5], ["fog", 0.5]],
+	"meteor_shower": [["clear", 2], ["aurora", 0.6]],
+}
+const NIGHT_ONLY := ["aurora", "meteor_shower"]
+const DAY_ONLY := ["heatwave"]
+## Seconds a state lasts (min, max) before the host picks the next one.
+const DURATION := {
+	"clear": [150.0, 330.0], "overcast": [120.0, 260.0], "rain": [120.0, 280.0], "storm": [90.0, 200.0],
+	"fog": [90.0, 200.0], "blizzard": [90.0, 200.0], "heatwave": [150.0, 300.0], "dust_storm": [80.0, 160.0],
+	"ember_storm": [90.0, 180.0], "aurora": [120.0, 260.0], "meteor_shower": [90.0, 180.0],
+}
+const ANNOUNCE := {
+	"storm": "Thunder rolls in: a storm is breaking. Lightning seeks the high ground.",
+	"blizzard": "A blizzard sweeps down from the peaks.",
+	"heatwave": "A heatwave settles over the island.",
+	"dust_storm": "A dust storm rises out of the wastes.",
+	"ember_storm": "The Cinder Crater stirs: embers rain from a burning sky.",
+	"aurora": "The aurora is dancing tonight.",
+	"meteor_shower": "Falling stars streak across the night.",
+	"fog": "A fog bank rolls in.",
+}
+## Lightning that lands this close to a player hurts them (m).
+const STRIKE_RADIUS := 3.5
 
 var state := "clear"
-var _current := [0.0, 0.0, 0.0, 0.0, 0.25]
+var _current: Array = LEVELS["clear"].duplicate()
 var _blend_speed := 1.0 / 60.0
-var _next_change := 240.0
+var _next_change := 90.0
+var _hold := 0.0           ## requested weather: no random change until it runs out
 var _lightning_timer := 8.0
 var _sheet_timer := 3.0
+var _meteor_timer := 2.0
 var _rain: RainCurtain
 var _snow: FlakeFall
 var _dust: FlakeFall
@@ -47,13 +102,19 @@ var _snow_cover := 0.0
 var _snow_mix := 0.0      # 0 rain .. 1 snow, smoothed
 ## 0 at the foothills .. 1 near the summits of the big mountains (smoothed).
 var altitude := 0.0
-var _dust_mix := 0.0      # 0 .. 1 in the wastes, smoothed
+var _dust_mix := 0.0      # 0 .. 1 in the wastes or a dust storm, smoothed
+var _ember_near := 0.0    # 0 .. 1 how close to the Cinder Crater (smoothed)
 var _forced_snow := false
 var _time := 0.0
 var _gust := FastNoiseLite.new()
 var _wind_dir := Vector2(0.9, 0.44).normalized()
 var _wind_strength := 0.3
 var _underground := false
+
+
+func _init() -> void:
+	# A stable node path, so requests from clients reach the host's weather.
+	name = "Weather"
 
 
 func _ready() -> void:
@@ -75,6 +136,7 @@ func _ready() -> void:
 	for p: GPUParticles3D in [_rain, _snow, _dust, _ash, _embers]:
 		p.emitting = false
 		p.visible = false
+	_next_change = randf_range(60.0, 150.0)
 
 
 func set_dimension(dim: int) -> void:
@@ -85,11 +147,40 @@ func state_name() -> String:
 	return state
 
 
+## Client side of the sync: follow the host's state.
 func sync_state(s: String) -> void:
 	if s != state and LEVELS.has(s):
-		state = s
-		_blend_speed = 1.0 / 40.0
-		Events.weather_changed.emit(state)
+		_set_state(s, 1.0 / 40.0)
+
+
+## Summon weather (items, abilities, quests). Server-authoritative: on a
+## client the request is forwarded to the host, which applies it for everyone.
+## `state` is one of STATES; the weather holds for `seconds` (10..900) before
+## the natural cycle resumes. Returns false for an unknown state.
+func request(new_state: String, seconds: float, source_peer := 0) -> bool:
+	if not LEVELS.has(new_state):
+		return false
+	if not Net.is_server():
+		_request_on_host.rpc_id(1, new_state, seconds)
+		return true
+	_hold = clampf(seconds, 10.0, 900.0)
+	_next_change = _hold
+	_set_state(new_state, 1.0 / 25.0)
+	_broadcast()
+	if source_peer != 0:
+		print_verbose("[weather] %s summoned by peer %d for %.0f s" % [new_state, source_peer, _hold])
+	return true
+
+
+@rpc("any_peer", "reliable")
+func _request_on_host(new_state: String, seconds: float) -> void:
+	if Net.is_server():
+		request(new_state, seconds, multiplayer.get_remote_sender_id())
+
+
+## Seconds left on a summoned weather (0 when the natural cycle runs).
+func hold_left() -> float:
+	return _hold
 
 
 ## Development aid (captures): jump straight to a state. "snow" = rain that
@@ -102,13 +193,14 @@ func force(s: String) -> void:
 		return
 	state = s
 	var target: Array = LEVELS[s]
-	for i in 5:
+	for i in CHANNELS:
 		_current[i] = target[i]
 	_next_change = 1e9
-	_snow_mix = 1.0 if _forced_snow else 0.0
-	if s == "rain" or s == "storm":
+	_snow_mix = 1.0 if _forced_snow or s == "blizzard" else 0.0
+	_dust_mix = 1.0 if s == "dust_storm" else 0.0
+	if s in ["rain", "storm", "blizzard"]:
 		_wet = 0.8
-		_snow_cover = 0.7 if _forced_snow else 0.0
+		_snow_cover = 0.7 if _forced_snow or s == "blizzard" else 0.0
 	else:
 		_wet = 0.0
 		_snow_cover = 0.0
@@ -128,7 +220,7 @@ func rain_amount() -> float:
 
 ## Precipitation as the sky sees it (darkens clouds whatever falls from them).
 func rain_amount_visual() -> float:
-	return _current[1] if _dimension == 0 else 0.0
+	return _current[1] * (1.0 - _dust_mix * 0.7) if _dimension == 0 else 0.0
 
 
 func snow_amount() -> float:
@@ -137,11 +229,11 @@ func snow_amount() -> float:
 	return _current[1] * _snow_mix * (1.0 - _dust_mix)
 
 
-## Dust storm strength in the Cinder Wastes.
+## Dust storm strength (the Cinder Wastes in any wind, everywhere in a dust storm).
 func dust_amount() -> float:
 	if _dimension != 0:
 		return 0.0
-	return _dust_mix * clampf(_current[1] + (_current[4] - 0.4) * 0.8, 0.0, 1.0)
+	return _dust_mix * clampf(_current[1] + (_current[4] - 0.4) * 0.8 + _current[6] * 0.6, 0.0, 1.0)
 
 
 func storm_amount() -> float:
@@ -153,6 +245,28 @@ func fog_amount() -> float:
 		return 0.0
 	# Mist lingers after rain.
 	return clampf(_current[3] + _wet * (1.0 - _current[1]) * 0.25, 0.0, 1.0)
+
+
+## Heat haze 0..1 (heatwave, dust storm, ember storm).
+func heat_amount() -> float:
+	return _current[7] if _dimension == 0 else 0.0
+
+
+## Aurora curtains 0..1 (only shows at night; SkyController fades it by darkness).
+func aurora_amount() -> float:
+	return _current[8] if _dimension == 0 else 0.0
+
+
+## Ember storm 0..1, strongest near the Cinder Crater.
+func ember_amount() -> float:
+	if _dimension != 0:
+		return 0.0
+	return _current[9] * lerpf(0.45, 1.0, _ember_near)
+
+
+## Meteor shower 0..1.
+func meteor_amount() -> float:
+	return _current[10] if _dimension == 0 else 0.0
 
 
 ## Wind for the ambience: 0 calm .. 1 gale, gusty.
@@ -173,6 +287,13 @@ func snow_cover() -> float:
 	return _snow_cover
 
 
+## How far one can see outdoors, 0 (white-out) .. 1 (clear) — for AI and gameplay.
+func visibility() -> float:
+	if _dimension != 0 or _underground:
+		return 1.0
+	return clampf(1.0 - fog_amount() * 0.7 - snow_amount() * 0.35 - dust_amount() * 0.5 - rain_amount() * 0.15, 0.1, 1.0)
+
+
 func _world() -> GameWorld:
 	return get_parent() as GameWorld
 
@@ -181,15 +302,16 @@ func _process(delta: float) -> void:
 	_time += delta
 	var w := _world()
 	if Net.is_server():
+		_hold = maxf(0.0, _hold - delta)
 		_next_change -= delta
 		if _next_change <= 0.0:
 			_pick_next()
 	var target: Array = LEVELS[state]
-	for i in 5:
+	for i in CHANNELS:
 		var rate: float = RATE_UP[i] if target[i] > _current[i] else RATE_DOWN[i]
 		_current[i] = move_toward(_current[i], target[i], delta * _blend_speed * rate)
 
-	# Where is the local player? (snow / dust / underground)
+	# Where is the local player? (snow / dust / underground / crater)
 	_underground = w != null and w.tracker != null and w.tracker.underground
 	var snow_target := 1.0 if _forced_snow else 0.0
 	var dust_target := 0.0
@@ -199,6 +321,7 @@ func _process(delta: float) -> void:
 		player_pos = w.local_player.global_position
 	elif camera != null:
 		player_pos = camera.global_position
+	var ember_target := 0.0
 	if w != null and _dimension == 0:
 		var g := w.gen_for(0)
 		if g != null:
@@ -207,6 +330,11 @@ func _process(delta: float) -> void:
 				snow_target = 1.0
 			elif b == WorldGen.Biome.WASTES:
 				dust_target = 1.0
+			var crater: Vector3 = g._crater
+			ember_target = 1.0 - smoothstep(crater.z * 1.5, crater.z * 8.0, Vector2(player_pos.x, player_pos.z).distance_to(Vector2(crater.x, crater.y)))
+	# A blizzard snows everywhere; a dust storm carries dust everywhere.
+	snow_target = maxf(snow_target, _current[5])
+	dust_target = maxf(dust_target, _current[6])
 	# High up, snow blows whatever the weather below is doing.
 	var alt_target := clampf((player_pos.y - 95.0) / 120.0, 0.0, 1.0) if _dimension == 0 and not _underground else 0.0
 	altitude = move_toward(altitude, alt_target, delta * 0.25)
@@ -214,6 +342,7 @@ func _process(delta: float) -> void:
 		snow_target = 1.0
 	_snow_mix = move_toward(_snow_mix, snow_target, delta * 0.3)
 	_dust_mix = move_toward(_dust_mix, dust_target, delta * 0.3)
+	_ember_near = move_toward(_ember_near, ember_target, delta * 0.2)
 
 	_update_wind(delta)
 
@@ -233,7 +362,7 @@ func _process(delta: float) -> void:
 	_rain.brightness = light
 	_snow.intensity = snow
 	_set_active(_snow, snow > 0.01)
-	_snow.wind = wind3 * 3.0
+	_snow.wind = wind3 * (3.0 + _current[5] * 4.0)
 	_snow.brightness = light
 	_dust.intensity = dust
 	_set_active(_dust, dust > 0.02)
@@ -241,18 +370,18 @@ func _process(delta: float) -> void:
 	_dust.brightness = light
 	_rain.keep_collider = _snow.visible or _dust.visible
 	var hell := _dimension == 1
-	_ash.intensity = 0.8 if hell else 0.0
-	_set_active(_ash, hell)
+	var embers := ember_amount() if outside else 0.0
+	_ash.intensity = 0.8 if hell else embers * 0.7
+	_set_active(_ash, hell or embers > 0.03)
 	_ash.wind = wind3 * 2.0 + Vector3(0.4, 0, 0.2)
 	_ash.brightness = 0.6
-	_set_active(_embers, hell)
+	_embers.amount_ratio = 1.0 if hell else maxf(embers, 0.001)
+	_set_active(_embers, hell or embers > 0.03)
 	if camera != null:
 		_embers.global_position = camera.global_position + Vector3(0, 6, 0)
-		if _rain.visible and Ascii.effect != null:
-			Ascii.effect.wind_slant = _rain.screen_slant(camera)
 
-	# Rain soaks the ground and it dries slowly (faster in sunshine); snow
-	# settles in the cold and melts away elsewhere.
+	# Rain soaks the ground and it dries slowly (faster in sunshine and in a
+	# heatwave); snow settles in the cold and melts away elsewhere.
 	if _dimension == 0:
 		var sky: SkyController = w.sky if w != null else null
 		var sun_up := sky != null and sky.darkness() < 0.3
@@ -260,11 +389,12 @@ func _process(delta: float) -> void:
 		if wet_target > _wet:
 			_wet = move_toward(_wet, wet_target, delta / 45.0)
 		else:
-			_wet = move_toward(_wet, wet_target, delta / (260.0 if sun_up and _current[0] < 0.5 else 600.0))
+			var dry := 260.0 if sun_up and _current[0] < 0.5 else 600.0
+			_wet = move_toward(_wet, wet_target, delta / (dry * (1.0 - _current[7] * 0.7)))
 		if snow > 0.05:
-			_snow_cover = move_toward(_snow_cover, clampf(maxf(snow * 1.2, altitude * 1.4), 0.0, 1.0), delta / (90.0 if altitude < 0.2 else 20.0))
+			_snow_cover = move_toward(_snow_cover, clampf(maxf(snow * 1.2, altitude * 1.4), 0.0, 1.0), delta / (90.0 if altitude < 0.2 and _current[5] < 0.5 else 20.0))
 		else:
-			_snow_cover = move_toward(_snow_cover, 0.0, delta / (500.0 if _snow_mix > 0.5 else 40.0))
+			_snow_cover = move_toward(_snow_cover, 0.0, delta / (500.0 if _snow_mix > 0.5 else 40.0 * (1.0 - _current[7] * 0.6)))
 	else:
 		_wet = move_toward(_wet, 0.0, delta / 20.0)
 		_snow_cover = move_toward(_snow_cover, 0.0, delta / 20.0)
@@ -281,11 +411,7 @@ func _process(delta: float) -> void:
 		_lightning_timer -= delta
 		if _lightning_timer <= 0.0:
 			_lightning_timer = randf_range(4.0, 14.0) / _current[2]
-			var players := w.players_in(0)
-			if not players.is_empty():
-				var p: Player = players[randi() % players.size()]
-				var a := randf() * TAU
-				w.replicator.broadcast_lightning(p.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(35.0, 160.0), 0)
+			_strike(w)
 	# Sheet lightning: flickers inside distant clouds (local, unsynced).
 	if outside and _current[2] > 0.3:
 		_sheet_timer -= delta
@@ -293,6 +419,44 @@ func _process(delta: float) -> void:
 			_sheet_timer = randf_range(2.0, 7.0) / _current[2]
 			var a := randf() * TAU
 			_sky_flash(Vector3(cos(a), randf_range(0.15, 0.5), sin(a)), randf_range(0.25, 0.6))
+	# Meteor shower: the sky draws the streaks; now and then a bright fireball
+	# flashes the night (local, unsynced).
+	if outside and meteor_amount() > 0.3:
+		_meteor_timer -= delta
+		if _meteor_timer <= 0.0:
+			_meteor_timer = randf_range(5.0, 16.0)
+			var a := randf() * TAU
+			_sky_flash(Vector3(cos(a), randf_range(0.35, 0.8), sin(a)), randf_range(0.08, 0.18))
+
+
+## The host's lightning: mostly around players at a distance, sometimes close
+## (a strike within STRIKE_RADIUS hurts). It prefers high ground.
+func _strike(w: GameWorld) -> void:
+	var players := w.players_in(0)
+	if players.is_empty():
+		return
+	var p: Player = players[randi() % players.size()]
+	if w.tracker != null and p == w.local_player and w.tracker.underground:
+		return
+	var a := randf() * TAU
+	var close := randf() < 0.12
+	var pos := p.global_position + Vector3(cos(a), 0, sin(a)) * (randf_range(5.0, 22.0) if close else randf_range(35.0, 160.0))
+	# Seek a nearby rise.
+	var best := pos
+	var best_h := w.surface_height_at(pos.x, pos.z)
+	for i in 4:
+		var q := pos + Vector3(randf_range(-12, 12), 0, randf_range(-12, 12))
+		var h := w.surface_height_at(q.x, q.z)
+		if h > best_h:
+			best = q
+			best_h = h
+	if best_h > 0.0:
+		best.y = best_h + 1.0
+	w.replicator.broadcast_lightning(best, 0)
+	for other: Player in players:
+		if not other.dead and Vector2(other.global_position.x - best.x, other.global_position.z - best.z).length() < STRIKE_RADIUS \
+				and absf(other.global_position.y - best.y) < 6.0:
+			w.damage(other, 28.0, 0, "lightning")
 
 
 func _update_wind(_delta: float) -> void:
@@ -335,16 +499,49 @@ func _legacy_materials(w: GameWorld) -> void:
 			mat.set_shader_parameter(&"wind_strength", 0.4 + _wind_strength * 1.2)
 
 
+## Host: choose what comes next from the weighted chain, respecting the clock.
 func _pick_next() -> void:
-	var order := {"clear": ["overcast", "overcast", "fog", "clear"], "overcast": ["rain", "clear", "fog", "rain"],
-		"rain": ["storm", "overcast", "rain"], "storm": ["rain", "overcast"], "fog": ["clear", "overcast"]}
-	var options: Array = order[state]
-	state = options[randi() % options.size()]
-	_blend_speed = 1.0 / randf_range(40.0, 120.0)
-	_next_change = randf_range(180.0, 420.0)
-	Events.weather_changed.emit(state)
 	var w := _world()
-	if w != null and w.replicator != null:
+	var hour := w.sky.time_of_day if w != null and w.sky != null else 12.0
+	var night := hour < 5.0 or hour > 19.5
+	var day := hour > 8.0 and hour < 17.0
+	var options: Array = CHAIN.get(state, CHAIN["clear"])
+	var total := 0.0
+	var allowed: Array = []
+	for o: Array in options:
+		var s: String = o[0]
+		if (s in NIGHT_ONLY and not night) or (s in DAY_ONLY and not day):
+			continue
+		allowed.append(o)
+		total += float(o[1])
+	var pick := "clear"
+	var r := randf() * total
+	for o: Array in allowed:
+		r -= float(o[1])
+		if r <= 0.0:
+			pick = o[0]
+			break
+	var span: Array = DURATION.get(pick, [150.0, 300.0])
+	_next_change = randf_range(span[0], span[1])
+	_set_state(pick, 1.0 / randf_range(30.0, 90.0))
+	_broadcast()
+
+
+func _set_state(s: String, blend: float) -> void:
+	if s == state:
+		return
+	state = s
+	_blend_speed = blend
+	if s != "rain":
+		_forced_snow = false
+	Events.weather_changed.emit(state)
+	if ANNOUNCE.has(s) and _dimension == 0:
+		Events.notify.emit(ANNOUNCE[s], "info")
+
+
+func _broadcast() -> void:
+	var w := _world()
+	if w != null and w.replicator != null and w.sky != null:
 		w.replicator.broadcast_clock(w.sky.time_of_day, w.sky.day, state)
 
 

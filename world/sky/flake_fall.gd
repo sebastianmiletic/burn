@@ -81,15 +81,8 @@ func _ready() -> void:
 	_soft.shader = preload("res://world/sky/flake_soft.gdshader")
 	_quad.size = Vector2(1.0, 1.0)
 	draw_pass_1 = _quad
-	_apply_style()
-	Settings.changed.connect(func(section: String, key: String) -> void:
-		if section == "graphics" and key == "style":
-			_apply_style())
+	_quad.material = _soft
 	amount_ratio = maxf(intensity, 0.001)
-
-
-func _apply_style() -> void:
-	_quad.material = _soft if int(Settings.get_value("graphics", "style")) == Settings.Style.OFF else _hard
 
 
 func _process(_delta: float) -> void:

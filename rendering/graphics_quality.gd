@@ -7,10 +7,10 @@ extends RefCounted
 ##   Medium  the default: half-res SSAO, soft 2-split sun shadows, height fog
 ##           and aerial perspective (no volumetrics). Budgeted to cost no more
 ##           than the old Medium.
-##   High    + SDFGI (bounced light), SSR (reflections in water), filtered
+##   High    + SDFGI (bounced light), half-res SSIL, SSR (reflections in water), filtered
 ##           volumetric fog (god rays at dawn/dusk, in forests, in storms),
 ##           4-split shadows.
-##   Ultra   lavish: SSIL, 5 SDFGI cascades, finer volumetric fog, 8k shadows
+##   Ultra   lavish: finer SSIL, 5 SDFGI cascades, finer volumetric fog, 8k shadows
 ##           to 160 m with a softer filter, longer SSR.
 
 
@@ -31,9 +31,11 @@ static func apply_environment(env: Environment) -> void:
 	env.ssao_detail = 0.5
 	env.ssao_light_affect = 0.08
 	env.ssao_ao_channel_affect = 0.4
-	env.ssil_enabled = q >= Settings.Quality.ULTRA
-	env.ssil_radius = 4.0
-	env.ssil_intensity = 0.9
+	# Screen-space indirect light: colour bleeding and bounce between nearby
+	# surfaces (torch-lit walls, sunlit ground under eaves) on top of SDFGI.
+	env.ssil_enabled = q >= Settings.Quality.HIGH
+	env.ssil_radius = 3.0 if q == Settings.Quality.HIGH else 4.0
+	env.ssil_intensity = 0.8
 	env.ssr_enabled = q >= Settings.Quality.HIGH
 	env.ssr_max_steps = [16, 24, 40, 64][q]
 	env.ssr_fade_in = 0.12
@@ -66,7 +68,7 @@ static func apply_environment(env: Environment) -> void:
 			[RenderingServer.ENV_SSAO_QUALITY_VERY_LOW, RenderingServer.ENV_SSAO_QUALITY_LOW,
 			RenderingServer.ENV_SSAO_QUALITY_MEDIUM, RenderingServer.ENV_SSAO_QUALITY_HIGH][q],
 			q <= Settings.Quality.HIGH, 0.5, 2, 50, 300)
-	RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_MEDIUM, true, 0.5, 4, 50, 300)
+	RenderingServer.environment_set_ssil_quality(RenderingServer.ENV_SSIL_QUALITY_LOW if q == Settings.Quality.HIGH else RenderingServer.ENV_SSIL_QUALITY_MEDIUM, true, 0.5, 4, 50, 300)
 	RenderingServer.environment_set_sdfgi_ray_count(RenderingServer.ENV_SDFGI_RAY_COUNT_32 if q == Settings.Quality.HIGH else RenderingServer.ENV_SDFGI_RAY_COUNT_64)
 	RenderingServer.environment_set_sdfgi_frames_to_converge(RenderingServer.ENV_SDFGI_CONVERGE_IN_30_FRAMES)
 	RenderingServer.environment_set_sdfgi_frames_to_update_light(RenderingServer.ENV_SDFGI_UPDATE_LIGHT_IN_8_FRAMES if q == Settings.Quality.HIGH else RenderingServer.ENV_SDFGI_UPDATE_LIGHT_IN_4_FRAMES)

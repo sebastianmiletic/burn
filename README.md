@@ -33,7 +33,7 @@ the sound cache. If performance is poor, select **Settings → Graphics → Medi
 ### Defaults
 
 - First-person gameplay.
-- **ASCII off**, film grain off. The normal 3D renderer is the default.
+- Film grain off by default.
 - High quality, with adaptive scene resolution targeting 60 FPS. UI stays at native resolution.
 - Mountain snow and distant blur intensify with altitude. Disable distance blur independently in Settings.
 
@@ -116,16 +116,12 @@ reconciliation after loading and party-wide boss unlocks. Characters/inventories
 **this is trusted-friends co-op, not an anti-cheat-secure public server**. Host migration is not supported.
 Allow the game through your firewall only on networks you trust.
 
-## ASCII and graphics
+## Graphics
 
-Settings → Graphics → Render style supports **ASCII off**, **Full colour**, Ember, Classic and Phosphor.
-Full colour preserves scene hues and more background detail. Fine 6×10 glyphs are the initial glyph
-preset. Edges use depth/normal information; fire and spell effects pass through the glyph conversion.
-ASCII remains opt-in. Previous user settings are respected; choose ASCII off manually if an older
-settings file enabled it.
-
-Adaptive resolution adjusts only the 3D view when resolution is set to Follow preset. A fixed resolution
-or a frame cap below 60 disables adaptation. It does not compensate for every CPU or streaming bottleneck.
+The world renders in full 3D with filmic (AgX) tonemapping, SDFGI and screen-space indirect light at High, volumetric
+fog and soft shadows. The 3D resolution follows the quality preset (or the 3D resolution setting) and is upscaled to
+the window with MetalFX temporal on macOS or FSR 2 elsewhere; adaptive resolution only lowers it when the GPU is the
+bottleneck and climbs straight back when there is headroom. F3 shows the render resolution and upscaler.
 
 ## Saves, updates and privacy
 

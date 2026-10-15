@@ -158,12 +158,12 @@ static func _tile(heights: PackedFloat32Array, soft: PackedFloat32Array, water: 
 	return [fine, coarse, AABB(Vector3(x0 * FINE, lo - SKIRT, z0 * FINE), Vector3((x1 - x0) * FINE, hi_y - lo + SKIRT + 12.0, (z1 - z0) * FINE))]
 
 
-## The terrain with its finest ridged detail (spires narrower than ~60 m)
+## The terrain with its finest ridged detail (spires narrower than ~90 m)
 ## smoothed away but the massifs kept, peaks max-biased so they don't sag.
 ## Distant fine tiles morph towards it, so far ranges read as mountains, not
 ## a comb of needles; near the streamed rim they keep the exact shape.
 static func _soften(heights: PackedFloat32Array, water: PackedByteArray, n: int) -> PackedFloat32Array:
-	const R := 4
+	const R := 6
 	var rows: Array = []
 	rows.resize(n)
 	var pass1 := WorkerThreadPool.add_group_task(func(z: int) -> void:

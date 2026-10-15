@@ -3,7 +3,7 @@ extends Node3D
 ## through the ASCII view (companion to model_gallery.tscn, which shows the
 ## characters).
 ##
-##   godot --path . --fullscreen res://tests/gpu/creature_gallery.tscn -- --capture=/abs/dir [--style=4] [--only=leviathan]
+##   godot --path . --fullscreen res://tests/gpu/creature_gallery.tscn -- --capture=/abs/dir [--only=leviathan]
 ##
 ## Without --capture it is interactive: 1-9 / 0 / - jump between shots, space replays actions.
 
@@ -43,8 +43,6 @@ func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture="):
 			_capture_dir = arg.trim_prefix("--capture=")
-		elif arg.begins_with("--style="):
-			Settings.set_value("graphics", "style", int(arg.trim_prefix("--style=")))
 		elif arg.begins_with("--only="):
 			_only = arg.trim_prefix("--only=")
 	_environment()
@@ -55,7 +53,7 @@ func _ready() -> void:
 	camera.near = 0.1
 	camera.far = 900.0
 	add_child(camera)
-	var view := AsciiView.new()
+	var view := WorldView.new()
 	view.source_camera = camera
 	add_child(view)
 	_set_shot(0)

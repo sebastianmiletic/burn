@@ -30,8 +30,6 @@ func _wants(part: String) -> bool:
 
 
 func _run() -> void:
-	var style0 := int(Settings.get_value("graphics", "style"))
-	Settings.set_value("graphics", "style", Settings.Style.EMBER)
 	var t0 := Time.get_ticks_msec()
 	await _frames(20)
 	_report.append("window %s, ui scale %.2f, render scale %.2f, quality %d" % [
@@ -82,15 +80,6 @@ func _run() -> void:
 						RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)])
 					await _shot("shot_%d" % idx)
 				await get_tree().process_frame
-	if _wants("styles"):
-		Settings.set_value("graphics", "style", Settings.Style.OFF)
-		await _wait(0.6)
-		await _shot("style_off")
-		Settings.set_value("graphics", "style", Settings.Style.FULL_COLOUR)
-		await _wait(0.6)
-		await _shot("style_colour")
-		Settings.set_value("graphics", "style", Settings.Style.EMBER)
-		await _wait(0.4)
 	if _wants("panels") and menu != null and is_instance_valid(menu):
 		for p: Array in [["_show_solo", "panel_solo"], ["_show_multiplayer", "panel_multiplayer"], ["_show_credits", "panel_credits"]]:
 			menu.call(p[0])
@@ -122,7 +111,6 @@ func _run() -> void:
 		await _shot("menu_after_lobby")
 	if _wants("lifecycle"):
 		await _lifecycle()
-	Settings.set_value("graphics", "style", style0)
 	for line in _report:
 		printerr("[menu-capture] ", line)
 	var f := FileAccess.open(out_dir.path_join("report.txt"), FileAccess.WRITE)
@@ -143,11 +131,6 @@ func _tune(b: MenuBackdrop) -> void:
 			b.debug_seek(u)
 			await _wait(0.8)
 			await _shot("tune_%d_%02d" % [i, int(u * 100)])
-			Settings.set_value("graphics", "style", Settings.Style.OFF)
-			await _wait(0.25)
-			await _shot("tune_%d_%02d_raw" % [i, int(u * 100)])
-			Settings.set_value("graphics", "style", Settings.Style.EMBER)
-			await _wait(0.1)
 
 
 func _wait(seconds: float) -> void:
@@ -204,7 +187,7 @@ func _process(_delta: float) -> void:
 
 
 ## Menu -> game -> menu: the backdrop must be gone while the game runs (one
-## world, one AsciiView) and come back afterwards. Uses throwaway slot 7.
+## world, one WorldView) and come back afterwards. Uses throwaway slot 7.
 func _lifecycle() -> void:
 	var nodes0 := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
 	Game.call("start_solo", 7, true)
@@ -213,8 +196,8 @@ func _lifecycle() -> void:
 		await get_tree().process_frame
 	await _wait(1.0)
 	var worlds := get_tree().root.find_children("*", "VoxelWorld", true, false).size()
-	var views := get_tree().root.find_children("*", "AsciiView", true, false).size()
-	_report.append("in game: backdrop %s, VoxelWorlds %d (expect 2), AsciiViews %d (expect 1), root 3D disabled %s" % [
+	var views := get_tree().root.find_children("*", "WorldView", true, false).size()
+	_report.append("in game: backdrop %s, VoxelWorlds %d (expect 2), WorldViews %d (expect 1), root 3D disabled %s" % [
 		"GONE" if MenuBackdrop.instance() == null and get_tree().root.get_node_or_null("MenuBackdrop") == null else "STILL THERE",
 		worlds, views, get_tree().root.disable_3d])
 	await _shot("lifecycle_game")
@@ -224,8 +207,8 @@ func _lifecycle() -> void:
 		await get_tree().process_frame
 	await _wait(3.0)
 	worlds = get_tree().root.find_children("*", "VoxelWorld", true, false).size()
-	views = get_tree().root.find_children("*", "AsciiView", true, false).size()
-	_report.append("back in menu after %d ms: backdrops %d, VoxelWorlds %d (expect 2, both the backdrop's), AsciiViews %d, root 3D disabled %s, nodes %d -> %d" % [
+	views = get_tree().root.find_children("*", "WorldView", true, false).size()
+	_report.append("back in menu after %d ms: backdrops %d, VoxelWorlds %d (expect 2, both the backdrop's), WorldViews %d, root 3D disabled %s, nodes %d -> %d" % [
 		Time.get_ticks_msec() - t0, get_tree().root.find_children("MenuBackdrop", "", false, false).size(), worlds, views,
 		get_tree().root.disable_3d, nodes0, Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
 	await _shot("lifecycle_menu")

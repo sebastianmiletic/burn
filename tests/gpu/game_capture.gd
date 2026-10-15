@@ -1,13 +1,13 @@
 extends Node
 ## In-game capture tour (development aid):
 ##   godot --path . --fullscreen -- --capture-game=/abs/dir [--tour=a,b,c] [--seed=N]
-##       [--time=H] [--weather=clear|overcast|rain|storm|fog|snow] [--style=N] [--quality=N] [--raw]
+##       [--time=H] [--weather=clear|overcast|rain|storm|fog|snow] [--quality=N]
 ## Visits places at different times of day, saves screenshots and frame
 ## timings to report.txt, then quits. --time / --weather override every stop;
-## --style / --quality / --scale change the graphics settings for this run only (not saved).
+## --quality / --scale change the graphics settings for this run only (not saved).
 ## "3d gpu" (GPU time of the 3D view) needs timestamp queries: on macOS run with
 ## --rendering-driver vulkan (Metal reports 0). --gpu-breakdown adds the cost of
-## each feature (volumetric fog, sky, SSAO, glow, fog, sun shadow, water, weather, ASCII).
+## each feature (volumetric fog, sky, SSAO, glow, fog, sun shadow, water, weather).
 
 var out_dir := ""
 
@@ -45,10 +45,17 @@ const STOPS := {
 	"lakedusk": [&"emberfall", 18.0, 0.0, Vector3.ZERO, -0.2],
 	"underworld": [&"asphodel", 12.0, 1.0, Vector3(0, 2, 20), -0.1],
 	"fogmorning": [&"thornwick", 7.5, -1.4, Vector3(-40, 2, 30), -0.08],
+	"blizzard": [&"emberfall", 13.0, 0.25, Vector3(10, 6, -60), -0.02],
+	"heatwave": [&"emberfall", 13.0, 0.25, Vector3(10, 6, -60), -0.02],
+	"duststorm": [&"emberfall", 14.0, 1.6, Vector3(0, 6, 46), -0.05],
+	"emberstorm": [&"emberfall", 17.0, 0.25, Vector3(10, 6, -60), 0.05],
+	"aurora": [&"emberfall", 23.5, 0.25, Vector3(10, 6, -60), 0.45],
+	"meteors": [&"emberfall", 1.0, 0.25, Vector3(10, 6, -60), 0.5],
 }
 
 ## Weather forced at a stop (unless --weather overrides it).
-const STOP_WEATHER := {"storm": "storm", "rain": "rain", "snow": "snow", "fogmorning": "fog"}
+const STOP_WEATHER := {"storm": "storm", "rain": "rain", "snow": "snow", "fogmorning": "fog", "blizzard": "blizzard",
+		"heatwave": "heatwave", "duststorm": "dust_storm", "emberstorm": "ember_storm", "aurora": "aurora", "meteors": "meteor_shower"}
 ## Stops that look for open water near their location and stand on its shore.
 const WATER_STOPS := ["lake", "lakedusk"]
 
@@ -71,14 +78,12 @@ func _run() -> void:
 			force_time = float(a.trim_prefix("--time="))
 		elif a.begins_with("--weather="):
 			force_weather = a.trim_prefix("--weather=")
-		elif a.begins_with("--style="):
-			_set_graphics("style", int(a.trim_prefix("--style=")))
 		elif a.begins_with("--quality="):
 			_set_graphics("quality", int(a.trim_prefix("--quality=")))
 		elif a.begins_with("--scale="):
 			_set_graphics("render_scale", float(a.trim_prefix("--scale=")))
-	report.append("quality %s, style %s, preset scale %.2f (actual/adaptive viewport recorded per stop)" % [Settings.QUALITY_NAMES[int(Settings.get_value("graphics", "quality"))],
-			Settings.STYLE_NAMES[int(Settings.get_value("graphics", "style"))], Settings.render_scale()])
+	report.append("quality %s, preset scale %.2f (actual/adaptive render resolution recorded per stop)" % [Settings.QUALITY_NAMES[int(Settings.get_value("graphics", "quality"))],
+			Settings.render_scale()])
 	await _frames(60)
 	for stop: String in tour:
 		_clear_ui()
@@ -208,11 +213,6 @@ func _run() -> void:
 		await _shot(stop)
 		if "--gpu-breakdown" in OS.get_cmdline_user_args():
 			await _gpu_breakdown(w, report, gpu if gpu > 0.0 else (await _measure(2.0)).x)
-		if "--raw" in OS.get_cmdline_user_args():
-			Ascii.effect.enabled = false
-			await _frames(3)
-			await _shot(stop + "_raw")
-			Ascii.effect.enabled = true
 		var meshes := p.model.find_children("*", "GeometryInstance3D", true, false)
 		var first: Node3D = null
 		var nvis := 0
@@ -259,7 +259,6 @@ func _gpu_breakdown(w: GameWorld, report: PackedStringArray, all_on: float) -> v
 		"sun shadow": [func() -> void: w.sky.set_meta("no_shadow", true), func() -> void: w.sky.remove_meta("no_shadow")],
 		"water shader": [func() -> void: if liquid != null: liquid.shader = flat, func() -> void: if liquid != null: liquid.shader = liquid_shader],
 		"weather": [func() -> void: w.weather.visible = false, func() -> void: w.weather.visible = true],
-		"ascii": [func() -> void: Ascii.effect.enabled = false, func() -> void: Ascii.effect.enabled = true],
 	}
 	var line := "   gpu %.2f ms;" % all_on
 	for label: String in toggles:
@@ -386,9 +385,8 @@ func _profile(w: GameWorld, report: PackedStringArray) -> void:
 		"replicator": [w.replicator],
 		"Audio": [Audio],
 		"Net": [Net],
-		"Ascii": [Ascii],
 		"local player": [w.local_player],
-		"EVERYTHING": [w, Audio, Net, Ascii, Settings, Events],
+		"EVERYTHING": [w, Audio, Net, Settings, Events],
 	}
 	for label: String in groups:
 		var nodes: Array = groups[label]

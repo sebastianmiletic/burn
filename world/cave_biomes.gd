@@ -44,18 +44,18 @@ static func wall_material(pos: Vector3i, kind: int, seed_value: int) -> int:
 ## `glow` the colour of the biome's own luminous things (fungi, crystals, lava),
 ## `haze` the volumetric fog albedo around torches.
 const PALETTES := {
-	Kind.KARST: {"fog": Color(0.024, 0.0218, 0.0195), "bounce": Color(0.11, 0.095, 0.08), "glow": Color(1.0, 0.62, 0.32), "haze": Color(0.7, 0.62, 0.52)},
-	Kind.GEYSER: {"fog": Color(0.045, 0.0195, 0.009), "bounce": Color(0.17, 0.085, 0.04), "glow": Color(1.0, 0.42, 0.14), "haze": Color(0.85, 0.62, 0.48)},
-	Kind.FUNGAL: {"fog": Color(0.009, 0.033, 0.03), "bounce": Color(0.04, 0.15, 0.13), "glow": Color(0.2, 0.95, 0.72), "haze": Color(0.45, 0.8, 0.72)},
-	Kind.FROST: {"fog": Color(0.0135, 0.024, 0.045), "bounce": Color(0.07, 0.11, 0.18), "glow": Color(0.45, 0.75, 1.0), "haze": Color(0.62, 0.75, 0.92)},
-	Kind.CRYSTAL_REFUGE: {"fog": Color(0.0255, 0.012, 0.045), "bounce": Color(0.13, 0.065, 0.19), "glow": Color(0.72, 0.38, 1.0), "haze": Color(0.72, 0.55, 0.9)},
+	Kind.KARST: {"fog": Color(0.0312, 0.0283, 0.0254), "bounce": Color(0.11, 0.095, 0.08), "glow": Color(1.0, 0.62, 0.32), "haze": Color(0.7, 0.62, 0.52)},
+	Kind.GEYSER: {"fog": Color(0.0585, 0.0254, 0.0117), "bounce": Color(0.17, 0.085, 0.04), "glow": Color(1.0, 0.42, 0.14), "haze": Color(0.85, 0.62, 0.48)},
+	Kind.FUNGAL: {"fog": Color(0.0117, 0.0429, 0.039), "bounce": Color(0.04, 0.15, 0.13), "glow": Color(0.2, 0.95, 0.72), "haze": Color(0.45, 0.8, 0.72)},
+	Kind.FROST: {"fog": Color(0.0175, 0.0312, 0.0585), "bounce": Color(0.07, 0.11, 0.18), "glow": Color(0.45, 0.75, 1.0), "haze": Color(0.62, 0.75, 0.92)},
+	Kind.CRYSTAL_REFUGE: {"fog": Color(0.0331, 0.0156, 0.0585), "bounce": Color(0.13, 0.065, 0.19), "glow": Color(0.72, 0.38, 1.0), "haze": Color(0.72, 0.55, 0.9)},
 }
 ## Deep lava caverns, worked mines, crypts and lairs (picked by location id).
-const DEEP_PALETTE := {"fog": Color(0.06, 0.0165, 0.006), "bounce": Color(0.22, 0.07, 0.02), "glow": Color(1.0, 0.35, 0.08), "haze": Color(0.9, 0.5, 0.32)}
-const MINE_PALETTE := {"fog": Color(0.03, 0.0195, 0.0105), "bounce": Color(0.15, 0.09, 0.045), "glow": Color(1.0, 0.6, 0.28), "haze": Color(0.8, 0.62, 0.45)}
-const CRYPT_PALETTE := {"fog": Color(0.015, 0.0165, 0.024), "bounce": Color(0.075, 0.08, 0.1), "glow": Color(0.55, 0.7, 1.0), "haze": Color(0.62, 0.66, 0.75)}
-const LAIR_PALETTE := {"fog": Color(0.018, 0.0225, 0.0135), "bounce": Color(0.085, 0.1, 0.06), "glow": Color(0.62, 0.9, 0.35), "haze": Color(0.66, 0.72, 0.55)}
-const HELL_PALETTE := {"fog": Color(0.0825, 0.018, 0.0075), "bounce": Color(0.3, 0.08, 0.03), "glow": Color(1.0, 0.3, 0.06), "haze": Color(0.9, 0.42, 0.25)}
+const DEEP_PALETTE := {"fog": Color(0.078, 0.0215, 0.0078), "bounce": Color(0.22, 0.07, 0.02), "glow": Color(1.0, 0.35, 0.08), "haze": Color(0.9, 0.5, 0.32)}
+const MINE_PALETTE := {"fog": Color(0.039, 0.0254, 0.0137), "bounce": Color(0.15, 0.09, 0.045), "glow": Color(1.0, 0.6, 0.28), "haze": Color(0.8, 0.62, 0.45)}
+const CRYPT_PALETTE := {"fog": Color(0.0195, 0.0215, 0.0312), "bounce": Color(0.075, 0.08, 0.1), "glow": Color(0.55, 0.7, 1.0), "haze": Color(0.62, 0.66, 0.75)}
+const LAIR_PALETTE := {"fog": Color(0.0234, 0.0292, 0.0175), "bounce": Color(0.085, 0.1, 0.06), "glow": Color(0.62, 0.9, 0.35), "haze": Color(0.66, 0.72, 0.55)}
+const HELL_PALETTE := {"fog": Color(0.1073, 0.0234, 0.0097), "bounce": Color(0.3, 0.08, 0.03), "glow": Color(1.0, 0.3, 0.06), "haze": Color(0.9, 0.42, 0.25)}
 
 
 ## The palette at a position underground. `location_id` (may be empty) picks

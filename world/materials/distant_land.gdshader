@@ -54,7 +54,7 @@ void vertex() {
 	float d = distance(world.xz, focus.xz);
 	// Geomorph: exact terrain near the streamed rim, the softened massif shape
 	// (CUSTOM2: height, normal) further out, continuously.
-	float morph = smoothstep(300.0, 900.0, d) * 0.95;
+	float morph = smoothstep(near_end + 10.0, near_end + 320.0, d) * 0.97;
 	v_far = morph;
 	VERTEX.y = mix(VERTEX.y, CUSTOM2.x, morph);
 	NORMAL = normalize(mix(NORMAL, CUSTOM2.yzw, morph));
@@ -108,7 +108,7 @@ void fragment() {
 	// smoother than the real terrain, so the threshold is a little lower).
 	vec4 ra = mat_a[class_codes[7]];
 	vec2 side_uv = (abs(nw.x) > abs(nw.z) ? p.zy : p.xy) * ra.z * 0.8;
-	vec3 rock = texture(albedo_tex, vec3(side_uv, ra.y)).rgb * mat_tint[class_codes[7]].rgb * (0.85 + macro * 0.3);
+	vec3 rock = texture(albedo_tex, vec3(side_uv, ra.y)).rgb * mat_tint[class_codes[7]].rgb * (0.62 + macro * 0.3);
 	float cliff = smoothstep(0.84, 0.6, nw.y + (macro - 0.5) * 0.12);
 
 	vec3 alb = mix(ground, crowns, cover * (1.0 - cliff));
@@ -151,8 +151,11 @@ void fragment() {
 	vec3 vd = v / max(d, 1e-3);
 	float facing = max(dot(vd, sun_dir_w), 0.0);
 	vec3 sky = mix(sky_hz, sky_hz_sun, facing * facing);
-	vec3 col = mix(fog_col, sky, fog_aerial) + sun_col * pow(facing, 8.0) * sun_scatter;
 	float d0 = near_end + 40.0;
+	// Far away the haze is simply the sky behind (in a storm a dark grey), so
+	// fully hazed ranges dissolve into the horizon rather than standing out.
+	float aer = mix(fog_aerial, 1.0, smoothstep(d0, d0 + 700.0, d));
+	vec3 col = mix(fog_col, sky, aer) + sun_col * pow(facing, 8.0) * sun_scatter;
 	float hm = max(0.5 * (cam_height + p.y) - SEA, 0.0);
 	float od = fog_dens * min(d, d0) + far_dens * exp(-hm / 420.0) * max(d - d0, 0.0);
 	float amount = 1.0 - exp(-od);
