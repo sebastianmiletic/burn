@@ -95,7 +95,30 @@ func _nearest_unknown_structure(w: GameWorld, pos: Vector3, dim: int) -> Locatio
 func _update_ambience(w: GameWorld, loc: Location) -> void:
 	var dim := w.local_dimension
 	var rain := w.weather.rain_amount() if dim == 0 and not underground else 0.0
+	var outdoors := dim == 0 and not underground
+	var night := w.sky.darkness()
+	var pos := w.local_player.global_position if w.local_player != null else Vector3.ZERO
+	var biome := w.gen_for(dim).biome_at(int(pos.x), int(pos.z)) if w.gen_for(dim) != null else -1
+	var wooded := biome == WorldGen.Biome.FOREST or biome == WorldGen.Biome.MARSH or biome == WorldGen.Biome.PEAKS
+	var coast := 0.0
+	if outdoors:
+		var c := w.gen_for(0).center()
+		coast = clampf(1.0 - absf(Vector2(pos.x, pos.z).distance_to(c) - 920.0) / 140.0, 0.0, 1.0)
+		if biome == WorldGen.Biome.OCEAN:
+			coast = maxf(coast, 0.8)
+	var head := pos + Vector3(0, 1.6, 0)
+	var head_block := w.world_for(dim).get_block(Vector3i(head.floor())) if w.world_for(dim) != null else 0
+	var lake := 0.0
+	if outdoors and biome == WorldGen.Biome.MARSH:
+		lake = 0.35
 	Audio.set_ambience({
+		"birds": (1.0 - night) * (1.0 - rain) * (0.8 if wooded else 0.45) if outdoors else 0.0,
+		"insects": (1.0 - night) * (1.0 - rain) * (0.6 if biome in [WorldGen.Biome.PLAINS, WorldGen.Biome.MARSH, WorldGen.Biome.FOREST] else 0.15) if outdoors else 0.0,
+		"crickets": night * (1.0 - rain) * 0.8 if outdoors and biome != WorldGen.Biome.PEAKS else 0.0,
+		"leaves": (0.6 if wooded else 0.2) * (0.5 + w.weather.wind_amount()) if outdoors else 0.0,
+		"ocean": coast,
+		"stream": lake,
+		"underwater": 1.0 if head_block == Blocks.WATER else 0.0,
 		"wind": 0.0 if underground else (0.35 if dim == 0 else 0.15) + w.weather.wind_amount() * 0.5,
 		"rain": rain,
 		"cave": 1.0 if underground else 0.0,

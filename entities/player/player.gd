@@ -258,7 +258,7 @@ func _on_model_footstep(strength: float) -> void:
 	var vw := voxels()
 	if vw == null or not body.on_floor:
 		return
-	var vol := lerpf(-15.0, -5.0, clampf(strength, 0.0, 1.0))
+	var vol := lerpf(-12.0, -4.0, clampf(strength, 0.0, 1.0))
 	Audio.play(_step_sound(vw), global_position, vol, randf_range(0.92, 1.08))
 	if _sprinting and strength > 0.7:
 		Audio.play("step_run", global_position, vol - 6.0, randf_range(0.9, 1.1))
@@ -290,7 +290,7 @@ func _step_sound(vw: VoxelWorld) -> String:
 		return "water_wade"
 	match Blocks.sound_family(b):
 		"dirt":
-			return "step_grass" if b == Blocks.GRASS or b == Blocks.DRY_GRASS else "step_grass"
+			return "step_grass" if b == Blocks.GRASS or b == Blocks.DRY_GRASS else "step_dirt"
 		"wood":
 			return "step_wood"
 		"snow":
