@@ -142,6 +142,11 @@ func _run() -> void:
 		ev.emit_signal("damage_number", p + Vector3(0.5, 2.0, 0), 24, false, "hit")
 		await _wait(0.3)
 		await _shot("hud")
+		# What the crosshair rests on replaces the location block (look_info).
+		hud.status.call("_on_look", "Iron Ore Vein", "Ore · needs a stone pickaxe or better", "Smelts into iron ingots at a furnace.")
+		await _wait(0.8)
+		await _shot("hud_look")
+		hud.status.call("_on_look", "", "", "")
 	var screens := [
 		["inventory", func() -> void: hud.inventory_screen.open()],
 		["shop", func() -> void: ev.emit_signal("shop_open", "blacksmith")],

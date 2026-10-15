@@ -1,44 +1,47 @@
 class_name Minimap
 extends Control
-## Top-left circular minimap. The terrain comes from GameWorld.map_image(dim)
-## (1 px = 4 m overworld); live markers are drawn on top. The map turns with
-## the view so "up" is always where you are looking; the N marker orbits the
-## rim.
+## Top-left circular minimap. The terrain is the shared map renderer
+## (ui/shaders/map_common.gdshaderinc: hillshade, water, roads, buildings,
+## fog of war) rotated so "up" is where you are looking. Discovered places
+## and bosses show as vector symbols (MapIcons), the tracked objective as a
+## gold marker that sticks to the rim when it is out of range.
+## While on foot it also uncovers the fog of war (MapFog) around the player.
 
 const SHADER := preload("res://ui/shaders/minimap.gdshader")
-const RADIUS_METRES := 96.0
-const KIND_GLYPHS := {
-	0: "■", 1: "▲", 2: "▲", 3: "Ω", 4: "†", 5: "*", 6: "i", 7: "◆", 8: "Ω", 9: "▲", 10: "♛",
-}
+const RADIUS_METRES := 110.0
+const FOG_SAVE_SECONDS := 12.0
 
 var dimension := 0
-var metres_per_pixel := 4.0
 var zoom := 1.0
+var _zoom_target := 1.0
 
 var _map_rect: ColorRect
 var _overlay: Control
 var _mat := ShaderMaterial.new()
-var _tex: ImageTexture
-var _image_id := 0
-var _poll := 0.0
+var _layers: MapLayers
+var _fog: MapFog
+var _fog_save := FOG_SAVE_SECONDS
 var _angle := 0.0
 var _player_pos := Vector3.ZERO
-var _markers: Array = []   # [Vector2 screen offset (unit circle), glyph, colour, size]
+var _places: Array = []    # [Vector2 unit offset, place Dictionary]
+var _quests: Array = []    # [Vector2 unit offset]
+var _enemies: Array = []   # [Vector2 unit offset, is_boss]
+var _mates: Array = []     # [Vector2 unit offset, colour, yaw, downed]
 var _time := 0.0
 var _cave_poll := 0.0
 var _cave_tex: ImageTexture
 var _cave_center := Vector3.ZERO
+var _cave := false
 var _readout: Label
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(176, 176)
+	custom_minimum_size = Vector2(196, 196)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_mat.shader = SHADER
 	_map_rect = ColorRect.new()
 	_map_rect.material = _mat
 	_map_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_map_rect.position = Vector2(8, 8)
 	add_child(_map_rect)
 	# Markers must draw above the map, and a parent's _draw is under its children.
 	_overlay = Control.new()
@@ -49,16 +52,28 @@ func _ready() -> void:
 	_readout.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_readout)
 	resized.connect(_layout)
+	tree_exiting.connect(func() -> void:
+		if _fog != null:
+			_fog.save_file())
 	_layout()
 
 
 func _layout() -> void:
-	_map_rect.position = Vector2(8, 8)
-	_map_rect.size = size - Vector2(16, 16)
+	_map_rect.position = Vector2(10, 10)
+	_map_rect.size = size - Vector2(20, 20)
 	_overlay.position = Vector2.ZERO
 	_overlay.size = size
-	_readout.position = Vector2(0, size.y + 3)
-	_readout.size = Vector2(size.x, 18)
+	_readout.position = Vector2(0, size.y + 2)
+	_readout.size = Vector2(size.x, 16)
+
+
+## Smoothly change the visible range (1 = default; < 1 closer).
+func set_zoom(z: float) -> void:
+	_zoom_target = clampf(z, 0.35, 4.0)
+
+
+func _radius() -> float:
+	return minf(size.x, size.y) * 0.5 - 10.0
 
 
 func _process(delta: float) -> void:
@@ -70,28 +85,45 @@ func _process(delta: float) -> void:
 		_overlay.queue_redraw()
 		return
 	var dim_v: Variant = player.get("dimension")
-	dimension = int(dim_v) if dim_v != null else 0
-	_poll -= delta
-	if _poll <= 0.0:
-		_poll = 0.5
-		_refresh_image(world)
+	var dim := int(dim_v) if dim_v != null else 0
+	if dim != dimension or _layers == null:
+		dimension = dim
+		_layers = MapLayers.of(world, dimension)
+		_mat.set_shader_parameter(&"has_map", _layers != null)
+		if _layers != null:
+			_layers.apply(_mat)
 	_player_pos = (player as Node3D).global_position
-	var yaw: float = UiContext.call_on(world, "camera_yaw", [], player.get("yaw") if player.get("yaw") != null else 0.0)
-	_angle = lerp_angle(_angle, yaw, 1.0 - exp(-delta * 12.0))
-	var world_size := float(_tex.get_width()) * metres_per_pixel if _tex != null else 2048.0
-	_mat.set_shader_parameter(&"center_uv", Vector2(_player_pos.x, _player_pos.z) / world_size)
-	_mat.set_shader_parameter(&"span", RADIUS_METRES * 2.0 * zoom / world_size)
-	_mat.set_shader_parameter(&"angle", _angle)
-	_mat.set_shader_parameter(&"style", 0 if int(UiContext.setting("graphics", "style")) == 0 else 1)
+	var yaw_v: Variant = player.get("yaw")
+	var yaw: float = UiContext.call_on(world, "camera_yaw", [], yaw_v if yaw_v != null else 0.0)
+	_angle = lerp_angle(_angle, yaw, 1.0 - exp(-delta * 14.0))
+	if _layers == null:
+		_overlay.queue_redraw()
+		return
+	# Fog of war: uncover around the player, upload changes, save now and then.
+	if _fog == null:
+		_fog = MapFog.of(world)
+	if _fog != null:
+		_fog.reveal(dimension, _player_pos)
+		_mat.set_shader_parameter(&"fog_tex", _fog.texture(dimension))
+		_mat.set_shader_parameter(&"has_fog", true)
+		_fog_save -= delta
+		if _fog_save <= 0.0:
+			_fog_save = FOG_SAVE_SECONDS
+			_fog.save_file()
 	var surface: Variant = UiContext.call_on(world, "surface_height_at", [_player_pos.x, _player_pos.z], null)
 	var under := 0.0
 	if surface != null:
 		under = clampf((float(surface) - _player_pos.y - 6.0) / 12.0, 0.0, 1.0)
+	_cave = under > 0.5 and world is GameWorld
+	_zoom_target = 0.6 if _cave else 1.0
+	zoom = lerpf(zoom, _zoom_target, 1.0 - exp(-delta * 4.0))
+	_mat.set_shader_parameter(&"center_uv", _layers.uv(_player_pos))
+	_mat.set_shader_parameter(&"span", RADIUS_METRES * 2.0 * zoom / _layers.world_size)
+	_mat.set_shader_parameter(&"angle", _angle)
 	_mat.set_shader_parameter(&"underground", under)
+	_mat.set_shader_parameter(&"cave_mode", _cave)
 	_cave_poll -= delta
-	var cave_mode := under > 0.5 and world is GameWorld
-	_mat.set_shader_parameter(&"cave_mode", cave_mode)
-	if cave_mode:
+	if _cave:
 		if _cave_poll <= 0:
 			_cave_poll = 1.0
 			_cave_center = _player_pos
@@ -102,63 +134,46 @@ func _process(delta: float) -> void:
 				_cave_tex.update(image)
 			_mat.set_shader_parameter(&"cave_tex", _cave_tex)
 		_mat.set_shader_parameter(&"cave_offset", Vector2(_player_pos.x - _cave_center.x, _player_pos.z - _cave_center.z) / 192.0)
-	_readout.text = "%s  %dm  |  Y %d" % ["CAVE" if cave_mode else "RANGE", int(RADIUS_METRES * zoom), int(_player_pos.y)]
+	_readout.text = "%s  ·  %d m  ·  Y %d" % ["CAVE" if _cave else "SURFACE", int(RADIUS_METRES * zoom), int(_player_pos.y)]
 	_collect_markers(world, player)
 	queue_redraw()
 	_overlay.queue_redraw()
 
 
-func _refresh_image(world: Node) -> void:
-	var img: Variant = UiContext.call_on(world, "map_image", [dimension], null)
-	if not (img is Image):
-		_mat.set_shader_parameter(&"has_map", false)
-		return
-	var image: Image = img
-	var mpp: Variant = UiContext.call_on(world, "map_metres_per_pixel", [dimension], 4.0)
-	metres_per_pixel = float(mpp)
-	var id := image.get_instance_id() ^ image.get_width()
-	if _tex == null or id != _image_id or _tex.get_width() != image.get_width():
-		_tex = ImageTexture.create_from_image(image)
-		_image_id = id
-	# The world image is immutable: do not re-upload megabytes every half second.
-	_mat.set_shader_parameter(&"map_tex", _tex)
-	_mat.set_shader_parameter(&"has_map", true)
-
-
-## World position -> offset inside the unit circle (may be outside for clamping).
+## World position -> offset in the unit circle (may be outside for clamping).
 func _to_circle(p: Vector3) -> Vector2:
 	var d := Vector2(p.x - _player_pos.x, p.z - _player_pos.z) / (RADIUS_METRES * zoom)
 	return d.rotated(_angle)
 
 
 func _collect_markers(world: Node, player: Object) -> void:
-	_markers.clear()
-	if world is GameWorld:
-		var gw := world as GameWorld
-		for q: Dictionary in gw.quests.tracked():
-			for objective: Dictionary in q["objectives"]:
-				if objective["done"]:
-					continue
-				var key := String(objective.get("key", ""))
-				if objective.get("type", "") == "interact":
-					key = key.get_slice("@", 1)
-				var target := gw.location_by_id(StringName(key))
-				if target != null and target.dimension == dimension:
-					_markers.append([_to_circle(target.center), "!", UiTheme.FROST, 16, true])
-					break
+	_places.clear()
+	_quests.clear()
+	_enemies.clear()
+	_mates.clear()
+	var tracked := {}
+	var q := UiContext.quests()
+	var tr: Variant = UiContext.call_on(q, "tracked", [], [])
+	if tr is Array:
+		for quest: Dictionary in tr:
+			tracked[str(quest.get("id", ""))] = true
+	var markers := QuestMarkers.all(world)
+	for id: String in markers:
+		var m: Dictionary = markers[id]
+		if tracked.has(id) and int(m.get("dim", 0)) == dimension:
+			_quests.append(_to_circle(m["pos"]))
 	var discovered: Variant = world.get("discovered")
 	var locs: Variant = UiContext.call_on(world, "locations", [dimension], [])
 	if locs is Array:
 		for loc: Object in locs:
 			if loc == null:
 				continue
-			var id: Variant = loc.get("id")
-			if discovered is Dictionary and not (discovered as Dictionary).has(id):
+			if discovered is Dictionary and not (discovered as Dictionary).has(loc.get("id")):
 				continue
 			var c := _to_circle(loc.get("center"))
-			var kind := int(loc.get("kind"))
-			var major: bool = loc.get("major") == true
-			_markers.append([c, str(KIND_GLYPHS.get(kind, "◆")), UiTheme.ACCENT_HOT if major else UiTheme.ACCENT_DIM, 13 if major else 10, true])
+			if c.length() > 1.25 and loc.get("major") != true and MapIcons.boss_of(loc) == "":
+				continue
+			_places.append([c, MapIcons.place_of(world, loc)])
 	var enemies: Variant = UiContext.call_on(world, "entities_near", [_player_pos, RADIUS_METRES * zoom, dimension, 1], [])
 	if enemies is Array:
 		for e: Object in enemies:
@@ -166,66 +181,126 @@ func _collect_markers(world: Node, player: Object) -> void:
 				continue
 			if absf((e as Node3D).global_position.y - _player_pos.y) > 24.0:
 				continue  # Do not show surface enemies as if they occupied a cave.
-			var is_boss: bool = e.has_method("is_boss") and e.call("is_boss")
-			_markers.append([_to_circle((e as Node3D).global_position), "◆" if is_boss else "•", UiTheme.DANGER, 14 if is_boss else 11, false])
+			var is_boss: bool = (e.has_method("is_boss") and e.call("is_boss")) or (e.has_meta("boss") and e.get_meta("boss") == true)
+			_enemies.append([_to_circle((e as Node3D).global_position), is_boss])
 	var players: Variant = UiContext.call_on(world, "players_in", [dimension], [])
 	if players is Array:
+		var net := UiContext.net()
 		for p: Object in players:
 			if p == null or p == player:
 				continue
-			_markers.append([_to_circle((p as Node3D).global_position), "▲", UiTheme.FROST, 12, true])
+			var col := UiTheme.FROST
+			var peer: Variant = p.get("peer_id")
+			if net != null and peer != null:
+				col = UiContext.call_on(net, "player_color", [int(peer)], col)
+			var pyaw: Variant = p.get("yaw")
+			var downed: bool = p.get("downed") == true or p.get("dead") == true
+			_mates.append([_to_circle((p as Node3D).global_position), col, float(pyaw) if pyaw != null else 0.0, downed])
 
 
 func _draw() -> void:
 	var c := size * 0.5
-	var r := minf(size.x, size.y) * 0.5 - 8.0
-	# Rim: double ring with ticks.
-	draw_circle(c, r + 6.0, Color(0, 0, 0, 0.75))
-	draw_arc(c, r + 1.5, 0, TAU, 96, UiTheme.BORDER, 1.0, true)
-	draw_arc(c, r + 5.5, 0, TAU, 96, UiTheme.ACCENT_DIM, 1.0, true)
-	for i in 36:
-		var a := TAU * i / 36.0 + _angle
-		var len := 4.0 if i % 9 == 0 else 2.0
+	var r := _radius()
+	# Bezel: soft shadow, dark ring, fine gold hairlines and ticks.
+	draw_circle(c, r + 9.0, Color(0, 0, 0, 0.35), true, -1.0, true)
+	draw_circle(c, r + 7.0, Color(0.035, 0.028, 0.026, 0.96), true, -1.0, true)
+	draw_arc(c, r + 0.8, 0, TAU, 128, Color(0.78, 0.6, 0.36, 0.9), 1.4, true)
+	draw_arc(c, r + 6.6, 0, TAU, 128, Color(0.5, 0.38, 0.24, 0.8), 1.0, true)
+	for i in 72:
+		var a := TAU * i / 72.0 + _angle
+		var major := i % 18 == 0
+		var mid := i % 6 == 0
 		var dir := Vector2(sin(a), -cos(a))
-		draw_line(c + dir * (r + 1.5), c + dir * (r + 1.5 + len), UiTheme.ACCENT_DIM if i % 9 else UiTheme.ACCENT, 1.0)
-
+		var l0 := r + 2.2
+		var l1 := r + (5.6 if major else (4.2 if mid else 3.2))
+		draw_line(c + dir * l0, c + dir * l1, Color(0.8, 0.62, 0.38, 0.85 if (major or mid) else 0.4), 1.0, true)
 
 
 func _draw_overlay() -> void:
 	var c := size * 0.5
-	var r := minf(size.x, size.y) * 0.5 - 8.0
-	var font := UiTheme.MONO_BOLD
-	# Cardinal letters orbit the rim.
-	for card: Array in [["N", 0.0, UiTheme.ACCENT_HOT], ["E", PI * 0.5, UiTheme.TEXT_DIM], ["S", PI, UiTheme.TEXT_DIM], ["W", PI * 1.5, UiTheme.TEXT_DIM]]:
-		var a: float = card[1] + _angle
-		var pos := c + Vector2(sin(a), -cos(a)) * (r + 0.5)
-		var fs := 12 if card[0] == "N" else 10
-		_overlay.draw_circle(pos, 8.0, Color(0.02, 0.015, 0.012))
-		var tsz := font.get_string_size(card[0], HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-		_overlay.draw_string(font, pos + Vector2(-tsz.x * 0.5, fs * 0.36), card[0], HORIZONTAL_ALIGNMENT_LEFT, -1, fs, card[2])
-	# Markers (locations clamp to the rim so you can steer toward them).
-	for m: Array in _markers:
-		var off: Vector2 = m[0]
-		var at_rim := false
-		if off.length() > 0.92:
-			if not m[4]:
-				continue
-			off = off.normalized() * 0.92
-			at_rim = true
-		var pos := c + off * r
-		var fs: int = m[3]
-		var g: String = m[1]
-		var tsz := font.get_string_size(g, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
-		var col: Color = m[2]
+	var r := _radius()
+	var ci := _overlay
+	# Places (bosses and major places stay on the rim when out of range).
+	for entry: Array in _places:
+		var off: Vector2 = entry[0]
+		var place: Dictionary = entry[1]
+		var important: bool = place.get("major", false) or String(place.get("boss", "")) != ""
+		var at_rim := off.length() > 0.86
 		if at_rim:
-			col.a = 0.6
-		_overlay.draw_string_outline(font, pos + Vector2(-tsz.x * 0.5, fs * 0.35), g, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, 3, Color(0, 0, 0, 0.85 * col.a))
-		_overlay.draw_string(font, pos + Vector2(-tsz.x * 0.5, fs * 0.35), g, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
-	# The player: an arrow pointing up (the view direction).
-	var tip := c + Vector2(0, -9)
-	var arrow := PackedVector2Array([tip, c + Vector2(6, 7), c + Vector2(0, 3), c + Vector2(-6, 7)])
-	_overlay.draw_colored_polygon(arrow, UiTheme.ACCENT_HOT)
-	_overlay.draw_polyline(arrow + PackedVector2Array([tip]), Color(0, 0, 0, 0.8), 1.0, true)
-	# View cone.
-	var cone := PackedVector2Array([c, c + Vector2(-0.42, -1).normalized() * r * 0.55, c + Vector2(0.42, -1).normalized() * r * 0.55])
-	_overlay.draw_colored_polygon(cone, Color(1, 0.7, 0.3, 0.07))
+			if not important:
+				continue
+			off = off.normalized() * 0.86
+		var big := String(place.get("boss", "")) != ""
+		MapIcons.draw_place(ci, place, c + off * r, 8.5 if big else 6.5, at_rim)
+	# Enemies.
+	for e: Array in _enemies:
+		var off: Vector2 = e[0]
+		if off.length() > 0.95:
+			continue
+		var pos := c + off * r
+		if e[1]:
+			var pulse := 0.5 + 0.5 * sin(_time * 5.0)
+			ci.draw_arc(pos, 6.0 + pulse * 2.0, 0, TAU, 20, Color(1, 0.25, 0.18, 0.6), 1.5, true)
+			ci.draw_circle(pos, 3.6, Color(1, 0.3, 0.2), true, -1.0, true)
+		else:
+			ci.draw_circle(pos, 3.2, Color(0, 0, 0, 0.7), true, -1.0, true)
+			ci.draw_circle(pos, 2.3, Color(0.95, 0.27, 0.2), true, -1.0, true)
+	# Companions: chevrons in their colour; a pulsing cross when they are down.
+	for m: Array in _mates:
+		var off: Vector2 = m[0]
+		var at_rim := off.length() > 0.9
+		if at_rim:
+			off = off.normalized() * 0.9
+		var pos := c + off * r
+		if m[3]:
+			var pulse := 0.5 + 0.5 * sin(_time * 6.0)
+			ci.draw_circle(pos, 7.0, Color(0, 0, 0, 0.7), true, -1.0, true)
+			ci.draw_arc(pos, 7.0 + pulse * 3.0, 0, TAU, 20, Color(1, 0.3, 0.25, 0.8 - pulse * 0.5), 1.5, true)
+			ci.draw_line(pos + Vector2(0, -4.5), pos + Vector2(0, 4.5), Color(1, 0.35, 0.28), 2.4, true)
+			ci.draw_line(pos + Vector2(-4.5, 0), pos + Vector2(4.5, 0), Color(1, 0.35, 0.28), 2.4, true)
+		else:
+			_chevron(ci, pos, _angle - float(m[2]), 6.0, m[1], 0.6 if at_rim else 1.0)
+	# Tracked objectives on top: they matter most.
+	for off0: Vector2 in _quests:
+		var off := off0
+		var at_rim := off.length() > 0.84
+		if at_rim:
+			off = off.normalized() * 0.84
+		MapIcons.draw_quest(ci, c + off * r, 7.5, _time, MapIcons.QUEST if not at_rim else Color(1, 0.8, 0.32, 0.85))
+	# Cardinal letters ride the bezel.
+	var font := UiTheme.title_font(700)
+	for card: Array in [["N", 0.0], ["E", PI * 0.5], ["S", PI], ["W", PI * 1.5]]:
+		var a: float = card[1] + _angle
+		var pos := c + Vector2(sin(a), -cos(a)) * (r + 3.5)
+		var north: bool = card[0] == "N"
+		var fs := 13 if north else 10
+		ci.draw_circle(pos, 8.5 if north else 7.0, Color(0.035, 0.028, 0.026), true, -1.0, true)
+		if north:
+			ci.draw_arc(pos, 8.5, 0, TAU, 24, Color(0.86, 0.3, 0.2), 1.2, true)
+		var tsz := font.get_string_size(card[0], HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+		ci.draw_string(font, pos + Vector2(-tsz.x * 0.5, fs * 0.36), card[0], HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
+				Color(1, 0.82, 0.55) if north else UiTheme.TEXT_DIM)
+	# View cone and the player's arrow (always pointing up: the map turns).
+	var cone := PackedVector2Array([c])
+	for i in 9:
+		var a := lerpf(-0.42, 0.42, i / 8.0)
+		cone.append(c + Vector2(sin(a), -cos(a)) * r * 0.62)
+	var cols := PackedColorArray([Color(1, 0.78, 0.45, 0.16)])
+	for i in 9:
+		cols.append(Color(1, 0.78, 0.45, 0.0))
+	ci.draw_polygon(cone, cols)
+	_chevron(ci, c, 0.0, 8.5, Color(1, 0.86, 0.55), 1.0)
+
+
+## A navigation chevron pointing along `angle` (0 = up), outlined.
+static func _chevron(ci: CanvasItem, at: Vector2, angle: float, s: float, col: Color, alpha: float) -> void:
+	var pts := PackedVector2Array([Vector2(0, -1.15), Vector2(0.8, 0.85), Vector2(0, 0.42), Vector2(-0.8, 0.85)])
+	for i in pts.size():
+		pts[i] = at + pts[i].rotated(angle) * s
+	var closed := pts.duplicate()
+	closed.append(pts[0])
+	ci.draw_polyline(closed, Color(0, 0, 0, 0.85 * alpha), 3.0, true)
+	var fill := col
+	fill.a *= alpha
+	ci.draw_colored_polygon(pts, fill)
+	ci.draw_polyline(closed, fill, 1.0, true)

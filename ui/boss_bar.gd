@@ -17,6 +17,31 @@ var _visible_target := false
 var _defeated_timer := 0.0
 var _hit_flash := 0.0
 var _phase_flash := 0.0
+var _grace := 0.0          # seconds after an engage event before `engaged` is trusted
+var _near := true
+
+
+## True while the local player is actually at this boss's fight: same
+## dimension, within the arena (at least 60 m), and the boss still engaged.
+func _player_at_fight() -> bool:
+	if _boss == null or not is_instance_valid(_boss) or not (_boss is Node3D):
+		return true  # no live boss to measure against (gallery, defeat banner)
+	var player := UiContext.player()
+	if player == null:
+		return true
+	var bdim: Variant = _boss.get("dimension")
+	var pdim: Variant = player.get("dimension")
+	if bdim != null and pdim != null and int(bdim) != int(pdim):
+		return false
+	var reach := 60.0
+	var arena: Variant = _boss.get("arena_radius")
+	if arena != null:
+		reach = maxf(reach, float(arena) + 20.0)
+	if (player as Node3D).global_position.distance_to((_boss as Node3D).global_position) > reach:
+		return false
+	if _grace <= 0.0 and _boss.has_method("is_engaged") and not _boss.call("is_engaged"):
+		return false
+	return true
 
 
 func _ready() -> void:
@@ -36,6 +61,7 @@ func _on_engaged(boss: Node, display_name: String) -> void:
 	_phase = 1
 	_visible_target = true
 	_defeated_timer = 0.0
+	_grace = 2.0
 	if boss != null:
 		var h: Variant = boss.get("health")
 		var mx: Variant = boss.get("max_health")
@@ -74,7 +100,10 @@ func _process(delta: float) -> void:
 	elif _boss != null and not is_instance_valid(_boss):
 		_visible_target = false
 		_boss = null
-	_alpha = move_toward(_alpha, 1.0 if _visible_target else 0.0, delta * 3.0)
+	_grace = maxf(0.0, _grace - delta)
+	if _defeated_timer <= 0.0:
+		_near = _player_at_fight()
+	_alpha = move_toward(_alpha, 1.0 if (_visible_target and (_near or _defeated_timer > 0.0)) else 0.0, delta * 3.0)
 	visible = _alpha > 0.0
 	var ratio := clampf(_health / _max, 0.0, 1.0)
 	_shown = move_toward(_shown, ratio, delta * 1.5)

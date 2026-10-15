@@ -8,8 +8,14 @@ var _subtitle: Label
 var _health: StatBar
 var _rank: StatBar
 var _info: Label
+var _detail: Label
 var _poll := 0.0
 var _rank_index := 0
+# Location vs. "what you are looking at" (look_info): the block cross-fades.
+var _loc := ["Unknown Lands", ""]
+var _look := ["", "", ""]
+var _showing_look := false
+var _fade := 1.0
 
 
 func _ready() -> void:
@@ -22,6 +28,11 @@ func _ready() -> void:
 	add_child(_title)
 	_subtitle = UiTheme.label("", UiTheme.SIZE_SMALL, UiTheme.TEXT_DIM)
 	add_child(_subtitle)
+	_detail = UiTheme.label("", 11, UiTheme.TEXT_FAINT)
+	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_detail.custom_minimum_size.x = 300
+	_detail.visible = false
+	add_child(_detail)
 	add_child(UiTheme.spacer(4))
 	_health = StatBar.new()
 	_health.caption = "HP"
@@ -40,6 +51,7 @@ func _ready() -> void:
 	add_child(_info)
 
 	UiContext.on("location_changed", _on_location)
+	UiContext.on("look_info", _on_look)
 	UiContext.on("player_health_changed", func(h: float, mx: float) -> void: _health.set_values(h, mx))
 	UiContext.on("xp_changed", _on_xp)
 	_health.set_values(100, 100, true)
@@ -47,8 +59,36 @@ func _ready() -> void:
 
 
 func _on_location(title: String, subtitle: String, _first: bool) -> void:
-	_title.text = title
-	_subtitle.text = subtitle
+	_loc = [title, subtitle]
+	if not _showing_look:
+		_title.text = title
+		_subtitle.text = subtitle
+
+
+## The player's crosshair rested on something (title "" = looked away).
+func _on_look(title: String, subtitle: String, detail: String) -> void:
+	_look = [title, subtitle, detail]
+
+
+func _wants_look() -> bool:
+	return _look[0] != ""
+
+
+func _apply_text() -> void:
+	_showing_look = _wants_look()
+	if _showing_look:
+		_title.text = _look[0]
+		_subtitle.text = _look[1]
+		_detail.text = _look[2]
+		_title.add_theme_color_override("font_color", Color(0.96, 0.93, 0.86))
+		_subtitle.add_theme_color_override("font_color", UiTheme.ACCENT)
+	else:
+		_title.text = _loc[0]
+		_subtitle.text = _loc[1]
+		_detail.text = ""
+		_title.add_theme_color_override("font_color", UiTheme.ACCENT_HOT)
+		_subtitle.add_theme_color_override("font_color", UiTheme.TEXT_DIM)
+	_detail.visible = _detail.text != ""
 
 
 func _on_xp(xp: int, rank: int, into: float) -> void:
@@ -60,6 +100,17 @@ func _on_xp(xp: int, rank: int, into: float) -> void:
 
 
 func _process(delta: float) -> void:
+	# Cross-fade: fade out, swap text, fade back in (also when the looked-at thing changes).
+	var stale: bool = _wants_look() != _showing_look or (_showing_look and (_title.text != _look[0] or _subtitle.text != _look[1] or _detail.text != _look[2]))
+	if stale:
+		_fade = move_toward(_fade, 0.0, delta * 7.0)
+		if _fade <= 0.0:
+			_apply_text()
+	else:
+		_fade = move_toward(_fade, 1.0, delta * 5.0)
+	_title.modulate.a = _fade
+	_subtitle.modulate.a = _fade
+	_detail.modulate.a = _fade
 	_poll -= delta
 	if _poll > 0.0:
 		return
