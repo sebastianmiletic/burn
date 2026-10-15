@@ -133,6 +133,26 @@ func _build_host(box: VBoxContainer) -> void:
 	var pc := CenterContainer.new()
 	pc.add_child(_players)
 	box.add_child(pc)
+	box.add_child(_section("PARTY RULES"))
+	var rule := RuleToggle.new()
+	rule.caption = "Shrine respawns"
+	rule.on_text = "Fallen companions rise at their own shrine."
+	rule.off_text = "Fallen companions are downed and must be revived by the warband."
+	rule.value = bool(_lobby_option("shrine_respawn", false))
+	rule.toggled.connect(func(on: bool) -> void:
+		var net := UiContext.net()
+		if net != null and net.has_method("set_lobby_option"):
+			net.call("set_lobby_option", "shrine_respawn", on)
+		UiContext.sound("ui_click"))
+	var rc := CenterContainer.new()
+	rc.add_child(rule)
+	box.add_child(rc)
+
+
+static func _lobby_option(key: String, fallback: Variant) -> Variant:
+	var net := UiContext.net()
+	var opts: Variant = net.get("lobby_options") if net != null else null
+	return (opts as Dictionary).get(key, fallback) if opts is Dictionary else fallback
 
 
 func _build_join(box: VBoxContainer) -> void:
@@ -342,3 +362,65 @@ func _refresh() -> void:
 		var n := players.size()
 		if _status.text == "" or _status.text.begins_with("Waiting") or _status.text.ends_with("ready."):
 			_set_status("Waiting for companions…  (%d in the warband)" % n if n <= 1 else "%d in the warband — ready." % n, UiTheme.TEXT_DIM)
+
+
+## A party rule: caption, one line explaining the current choice, and a
+## switch. Click (or Enter / Space while focused) toggles it.
+class RuleToggle:
+	extends Control
+
+	signal toggled(on: bool)
+
+	var caption := ""
+	var on_text := ""
+	var off_text := ""
+	var value := false:
+		set(v):
+			value = v
+			queue_redraw()
+	var _knob := 0.0
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(640, 54)
+		focus_mode = Control.FOCUS_ALL
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		mouse_entered.connect(queue_redraw)
+		mouse_exited.connect(queue_redraw)
+
+	func _ready() -> void:
+		_knob = 1.0 if value else 0.0
+
+	func _gui_input(event: InputEvent) -> void:
+		var mb := event as InputEventMouseButton
+		var pressed := mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT
+		pressed = pressed or event.is_action_pressed("ui_accept")
+		if pressed:
+			value = not value
+			toggled.emit(value)
+			accept_event()
+
+	func _process(delta: float) -> void:
+		var goal := 1.0 if value else 0.0
+		if absf(_knob - goal) > 0.001:
+			_knob = move_toward(_knob, goal, delta * 6.0)
+			queue_redraw()
+
+	func _draw() -> void:
+		var hover := get_global_rect().has_point(get_global_mouse_position()) or has_focus()
+		if hover:
+			draw_rect(Rect2(Vector2.ZERO, size), Color(1, 0.62, 0.22, 0.06))
+		var tf := UiTheme.title_font(700)
+		draw_string(tf, Vector2(14, 22), caption, HORIZONTAL_ALIGNMENT_LEFT, -1, 17, UiTheme.ACCENT_HOT if hover else UiTheme.TEXT)
+		draw_string(UiTheme.MONO, Vector2(14, 43), on_text if value else off_text, HORIZONTAL_ALIGNMENT_LEFT, size.x - 130, 12, UiTheme.TEXT_DIM)
+		# The switch.
+		var sw := Rect2(size.x - 104, 13, 52, 24)
+		var on_col := UiTheme.ACCENT.lerp(UiTheme.ACCENT_HOT, 0.3)
+		var track := Color(0.16, 0.12, 0.1).lerp(Color(0.42, 0.22, 0.08), _knob)
+		draw_circle(sw.position + Vector2(12, 12), 12, track, true, -1.0, true)
+		draw_circle(sw.position + Vector2(40, 12), 12, track, true, -1.0, true)
+		draw_rect(Rect2(sw.position + Vector2(12, 0), Vector2(28, 24)), track)
+		var kx := lerpf(sw.position.x + 12, sw.position.x + 40, _knob)
+		draw_circle(Vector2(kx, sw.position.y + 12), 9, UiTheme.TEXT_DIM.lerp(on_col, _knob), true, -1.0, true)
+		var word := "ON" if value else "OFF"
+		draw_string(UiTheme.MONO_BOLD, Vector2(size.x - 44, 30), word, HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
+				UiTheme.ACCENT_HOT if value else UiTheme.TEXT_FAINT)

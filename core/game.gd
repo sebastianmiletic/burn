@@ -143,7 +143,8 @@ func _save_character() -> void:
 		var d := world.local_player.to_dict()
 		d.erase("pos")
 		d.erase("dim")
-		f.store_var({"player": d, "quests": world.quests.to_dict(), "discovered": world.discovered.keys()})
+		f.store_var({"player": d, "quests": world.quests.to_dict(), "discovered": world.discovered.keys(),
+			"map_fog": MapFog.save_dict(world), "map_fog_seed": int(session.get("seed", 0))})
 
 
 func _load_character() -> Dictionary:
@@ -176,7 +177,7 @@ func start_campaign() -> void:
 	# not just late joiners. Otherwise an old host world and new client differ.
 	var initial_state := {
 		"edits": save.get("edits", {}), "bosses_defeated": save.get("bosses_defeated", []),
-		"world_revision": save.get("world_revision", 2 if save.is_empty() else 1),
+		"world_revision": save.get("world_revision", WorldGen.LATEST_REVISION if save.is_empty() else 1),
 		"ryft_unlocked": save.get("ryft_unlocked", false),
 		"time_of_day": save.get("time_of_day", 8.5), "day": save.get("day", 1),
 	}
@@ -199,6 +200,9 @@ func _on_session_started(info: Dictionary) -> void:
 		var character := _load_character()
 		save = {"player": character.get("player", {}), "quests": character.get("quests", {}),
 			"discovered": character.get("discovered", [])}
+		# The explored map belongs to the world it was explored in.
+		if int(character.get("map_fog_seed", -1)) == int(info.get("seed", -2)):
+			save["map_fog"] = character.get("map_fog", {})
 		var js: Dictionary = info.get("join_state", {})
 		save["edits"] = js.get("edits", {})
 		save["bosses_defeated"] = js.get("bosses_defeated", [])

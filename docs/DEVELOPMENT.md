@@ -53,6 +53,9 @@ godot --path . --resolution 1600x900 -s res://tests/gpu/activity_capture.gd -- -
   --style=4 --quality=2 --no-update --data-dir="$PWD/build/validation/gpu-user"
 ```
 
+`--ui=map,journal` also shoots those HUD screens at every stop; `--load-timing` prints the loading film's
+frame stats (`[loading] ... frames > 33 ms`). The UI gallery (`res://tests/gpu/ui_gallery.tscn -- --capture=<dir>
+--only=hud,journal,map,icons,loading,lobby,downed`) covers the HUD, map symbols, the loading film and the lobby.
 The capture directory contains PNGs and `report.txt`. `--style=1` tests full-colour ASCII. F3 shows live
 performance. Record hardware, window/output resolution, actual viewport resolution, graphics preset,
 render style, adaptive resolution, averages and worst frames. Do not report headless frame rates as game FPS.

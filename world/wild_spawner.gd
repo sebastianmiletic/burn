@@ -25,6 +25,12 @@ const SURFACE_DAY := {
 	WorldGen.Biome.MARSH: [["bog_lurker", 0.8, 1, 1], ["ghoul", 0.4, 1, 2]],
 	WorldGen.Biome.WASTES: [["scorpion", 1.0, 1, 2], ["fire_elemental", 0.2, 1, 1]],
 	WorldGen.Biome.OCEAN: [["drowned", 0.2, 1, 1]],
+	WorldGen.Biome.REDWOOD: [["wolf", 0.7, 2, 3], ["bear", 0.8, 1, 1], ["giant_spider", 0.3, 1, 1]],
+	WorldGen.Biome.CANYON: [["scorpion", 1.0, 1, 3], ["archer", 0.3, 1, 2], ["fire_elemental", 0.15, 1, 1]],
+	WorldGen.Biome.ALPINE: [["frost_wolf", 0.8, 2, 3], ["troll", 0.4, 1, 1], ["bear", 0.3, 1, 1]],
+	WorldGen.Biome.TUNDRA: [["frost_wolf", 1.0, 2, 4], ["dire_wolf", 0.3, 1, 2]],
+	WorldGen.Biome.VOLCANIC: [["fire_elemental", 0.9, 1, 2], ["scorpion", 0.5, 1, 2], ["imp", 0.3, 1, 2]],
+	WorldGen.Biome.FJORD: [["wolf", 0.6, 2, 3], ["troll", 0.3, 1, 1], ["drowned", 0.3, 1, 1]],
 }
 const SURFACE_NIGHT := {
 	WorldGen.Biome.PLAINS: [["skeleton", 1.0, 1, 2], ["ghoul", 0.8, 1, 1], ["archer", 0.6, 1, 1], ["wolf", 0.6, 2, 4]],
@@ -33,11 +39,25 @@ const SURFACE_NIGHT := {
 	WorldGen.Biome.MARSH: [["ghoul", 1.0, 1, 2], ["bog_lurker", 0.8, 1, 1], ["drowned", 0.7, 1, 2], ["skeleton", 0.3, 1, 1]],
 	WorldGen.Biome.WASTES: [["scorpion", 0.8, 1, 2], ["fire_elemental", 0.7, 1, 1], ["skeleton", 0.6, 1, 2], ["archer", 0.5, 1, 1]],
 	WorldGen.Biome.OCEAN: [["drowned", 1.0, 1, 3]],
+	WorldGen.Biome.REDWOOD: [["dire_wolf", 0.8, 2, 3], ["giant_spider", 0.9, 1, 3], ["bear", 0.4, 1, 1], ["skeleton", 0.4, 1, 2]],
+	WorldGen.Biome.CANYON: [["skeleton", 0.8, 1, 2], ["archer", 0.8, 1, 2], ["scorpion", 0.8, 1, 2], ["ghoul", 0.3, 1, 1]],
+	WorldGen.Biome.ALPINE: [["frost_wolf", 1.0, 2, 4], ["troll", 0.7, 1, 1], ["skeleton", 0.3, 1, 1]],
+	WorldGen.Biome.TUNDRA: [["frost_wolf", 1.0, 2, 4], ["dire_wolf", 0.6, 2, 3], ["shade", 0.3, 1, 1]],
+	WorldGen.Biome.VOLCANIC: [["fire_elemental", 1.0, 1, 2], ["imp", 0.8, 1, 3], ["hellhound", 0.5, 2, 3]],
+	WorldGen.Biome.FJORD: [["drowned", 0.8, 1, 2], ["skeleton", 0.5, 1, 2], ["frost_wolf", 0.6, 2, 3], ["troll", 0.3, 1, 1]],
 }
 const WATER := [["shark", 1.0, 1, 2], ["sea_serpent", 0.2, 1, 1]]
 const CAVE_SHALLOW := [["skeleton", 0.8, 1, 1], ["ghoul", 0.6, 1, 1], ["giant_spider", 0.9, 1, 2], ["cave_bat", 0.8, 2, 4]]
 const CAVE_MID := [["giant_spider", 1.0, 1, 3], ["cave_crawler", 0.7, 1, 1], ["cave_bat", 0.6, 2, 4], ["ghoul", 0.4, 1, 1], ["skeleton", 0.4, 1, 1]]
 const CAVE_DEEP := [["cave_crawler", 1.0, 1, 2], ["rock_golem", 0.7, 1, 1], ["fire_elemental", 0.4, 1, 1], ["ghoul", 0.3, 1, 1], ["imp", 0.3, 1, 1]]
+## Extra hostiles by cave biome (CaveBiomes.Kind), mixed into the depth tables.
+const CAVE_KIND := {
+	CaveBiomes.Kind.FUNGAL: [["giant_spider", 1.0, 1, 3], ["cave_crawler", 0.6, 1, 1]],
+	CaveBiomes.Kind.FROST: [["frost_wolf", 0.6, 1, 2], ["rock_golem", 0.4, 1, 1]],
+	CaveBiomes.Kind.GEYSER: [["fire_elemental", 0.5, 1, 1], ["cave_crawler", 0.5, 1, 1]],
+	CaveBiomes.Kind.MAGMA: [["fire_elemental", 1.0, 1, 2], ["imp", 0.7, 1, 2], ["rock_golem", 0.5, 1, 1]],
+	CaveBiomes.Kind.FLOODED: [["drowned", 1.0, 1, 2], ["bog_lurker", 0.6, 1, 1], ["cave_bat", 0.4, 2, 3]],
+}
 const HELL := [["imp", 1.0, 1, 2], ["shade", 0.4, 1, 1], ["hellhound", 0.7, 2, 3], ["fire_elemental", 0.4, 1, 1]]
 
 const ANIMALS := {
@@ -47,6 +67,12 @@ const ANIMALS := {
 	WorldGen.Biome.MARSH: [["crow_flock", 0.8], ["rabbit", 0.2], ["fish_school", 0.8]],
 	WorldGen.Biome.WASTES: [["crow_flock", 0.7], ["rabbit", 0.2]],
 	WorldGen.Biome.OCEAN: [["gull_flock", 1.0], ["fish_school", 1.0]],
+	WorldGen.Biome.REDWOOD: [["deer", 1.0], ["stag", 0.6], ["boar", 0.5], ["rabbit", 0.4], ["bird_flock", 0.6]],
+	WorldGen.Biome.CANYON: [["goat", 0.8], ["rabbit", 0.4], ["crow_flock", 0.6]],
+	WorldGen.Biome.ALPINE: [["goat", 1.0], ["deer", 0.5], ["bird_flock", 0.5], ["fish_school", 0.3]],
+	WorldGen.Biome.TUNDRA: [["deer", 0.8], ["rabbit", 0.6], ["crow_flock", 0.4]],
+	WorldGen.Biome.VOLCANIC: [["crow_flock", 1.0]],
+	WorldGen.Biome.FJORD: [["goat", 0.8], ["gull_flock", 1.0], ["fish_school", 0.8], ["deer", 0.4]],
 }
 
 var _timer := 0.0
@@ -83,7 +109,7 @@ func _despawn_far(w: GameWorld) -> void:
 		var ent := e as Entity
 		if ent.dead:
 			continue
-		if ent.dimension == 0 and w.gen_for(0).revision >= 2 and CaveBiomes.sanctuary(ent.global_position, w.gen_for(0).world_seed):
+		if ent.dimension == 0 and w.gen_for(0).revision >= 2 and CaveBiomes.sanctuary(ent.global_position, w.gen_for(0).world_seed, w.gen_for(0).revision):
 			w.despawn_entity(ent)
 			continue
 		if w.nearest_player(ent.global_position, ent.dimension, DESPAWN_DISTANCE) == null:
@@ -117,9 +143,11 @@ func _populate(w: GameWorld, p: Player) -> void:
 	var surface := float(vw.gen.call("ground_level", pos.x, pos.z)) if vw.gen.has_method("ground_level") else float(vw.gen.surface_height(int(pos.x), int(pos.z)))
 	var underground := pos.y < surface - 8
 	if underground:
-		if vw.gen.revision >= 2 and CaveBiomes.sanctuary(pos, vw.gen.world_seed):
+		if vw.gen.revision >= 2 and CaveBiomes.sanctuary(pos, vw.gen.world_seed, vw.gen.revision):
 			return
 		var table: Array = CAVE_SHALLOW if pos.y > -20 else (CAVE_MID if pos.y > -60 else CAVE_DEEP)
+		if vw.gen.revision >= 3 and pos.y < -8:
+			table = table + CAVE_KIND.get(CaveBiomes.kind_at(pos, vw.gen.world_seed, vw.gen.revision), [])
 		_spawn_hostiles(w, p, table, 5 if pos.y > -20 else 6, "cave")
 		if _rng.randf() < 0.15:
 			_spawn_animals(w, p, [["bat_swarm", 1.0]], 1, "cave")
@@ -161,7 +189,7 @@ func _spawn_hostiles(w: GameWorld, p: Player, table: Array, cap: int, where: Str
 	elif where == "water":
 		return
 	var pos := _find_spot(w.world_for(p.dimension), p.global_position, spot_mode, 22.0, 36.0, 4 if kind == "sea_serpent" else 2)
-	if pos == Vector3.INF or _in_location(w, pos, p.dimension) or (p.dimension == 0 and w.gen_for(0).revision >= 2 and CaveBiomes.sanctuary(pos, w.gen_for(0).world_seed)):
+	if pos == Vector3.INF or _in_location(w, pos, p.dimension) or (p.dimension == 0 and w.gen_for(0).revision >= 2 and CaveBiomes.sanctuary(pos, w.gen_for(0).world_seed, w.gen_for(0).revision)):
 		return
 	var n := _rng.randi_range(int(pick[2]), int(pick[3]))
 	for i in n:
