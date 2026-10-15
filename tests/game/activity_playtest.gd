@@ -157,8 +157,10 @@ func _villagers() -> void:
 		var g := vw.ground_below(n.global_position.x, n.global_position.y + 1.0, n.global_position.z, 3.0)
 		if not n.body.on_floor and absf(g - n.global_position.y) > 0.3:
 			floating += 1
+			print("      floating: %s (%s) at %s ground %.2f act %d" % [n.display_name, n.role, n.global_position, g, n.act])
 		if n.body._overlaps(vw, n.global_position):
 			stuck_in_walls += 1
+			print("      in a wall: %s (%s) at %s act %d home %s goal %s" % [n.display_name, n.role, n.global_position, n.act, n.home, n._goal])
 	_check(floating == 0, "villagers stand on the ground (%d floating)" % floating)
 	_check(stuck_in_walls == 0, "no villager inside a wall (%d)" % stuck_in_walls)
 	var names := {}
@@ -207,7 +209,7 @@ func _villagers() -> void:
 	var still_out := PackedStringArray()
 	for n: Npc in _npcs():
 		if n.role != "guard" and not n.is_indoors():
-			still_out.append("%s(%s) at %s" % [n.display_name, n.role, n.global_position.round()])
+			still_out.append("%s(%s) at %s act %d goal %s %s path %d/%d replans %d door %s" % [n.display_name, n.role, n.global_position.round(), n.act, n._goal_kind, n._goal, n._path_i, n._path.size(), n.replans_total, str(n.home_door.get("outside", "-"))])
 	_check(home_ok, "everyone went home at night in %.0f s %s" % [(Time.get_ticks_msec() - t0) / 1000.0, str(still_out)])
 	var torches := 0
 	for n: Npc in _npcs():
@@ -257,7 +259,7 @@ func _bounties() -> void:
 			continue
 		var gold := _p.inventory.gold
 		var id := int(c["id"])
-		board._on_choice(board, "accept:%d" % id)
+		_acts.request("contract_accept", {"id": id})
 		await _wait(0.3)
 		c = _acts.bounties.contract(id)
 		_check(c["state"] == "active", "%s contract accepted at the board" % type)
@@ -276,7 +278,8 @@ func _bounties() -> void:
 			_check(tracks != null and tracks.points.size() >= 4, "fresh tracks lead to the den (%d prints)" % (tracks.points.size() * 2 if tracks != null else 0))
 			if tracks != null:
 				var last := tracks.points[tracks.points.size() - 1]
-				_check(Vector2(last.x - target.global_position.x, last.z - target.global_position.z).length() < 6.0, "the tracks end at the beast")
+				var den: Vector3 = c["den"]
+				_check(Vector2(last.x - den.x, last.z - den.z).length() < 3.0, "the tracks end at the den")
 		_check(target != null and target.max_health > 150.0, "%s is an elite (%.0f health)" % [c["name"], target.max_health if target != null else 0.0])
 		await _wait(0.5)
 		var mark := _w.entity(int(ids[1])) as EliteMark

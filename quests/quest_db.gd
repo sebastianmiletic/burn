@@ -87,7 +87,25 @@ const MAIN := [
 			{"type": "reach", "key": "ryft_isle_2", "count": 1, "text": "Reach the Crown of the Ryft"},
 			{"type": "collect", "key": "ryftwood", "count": 6, "text": "Harvest Ryftwood with a mithril axe"},
 		],
-		"rewards": {"xp": 800, "gold": 120, "items": {"potion_phoenix": 3}}, "next": "",
+		"rewards": {"xp": 800, "gold": 120, "items": {"potion_phoenix": 3}}, "next": "prism_sentinel",
+	},
+	{
+		"id": "prism_sentinel", "title": "The Prism Sentinel", "giver": "",
+		"description": "Something of glass and light guards the Broken Observatory. Shatter it and take its heart.",
+		"objectives": [
+			{"type": "reach", "key": "ryft_isle_1", "count": 1, "text": "Return to the Broken Observatory"},
+			{"type": "boss", "key": "ryft_sentinel", "count": 1, "text": "Defeat the Prism Sentinel"},
+		],
+		"rewards": {"xp": 1100, "gold": 260, "items": {"potion_phoenix": 2, "starmetal": 2}}, "next": "void_sovereign",
+	},
+	{
+		"id": "void_sovereign", "title": "The Void Sovereign", "giver": "",
+		"description": "On the Crown of the Ryft a ruler of nothing waits. Take its crown and the broken sky is yours.",
+		"objectives": [
+			{"type": "reach", "key": "ryft_isle_2", "count": 1, "text": "Climb to the Crown of the Ryft"},
+			{"type": "boss", "key": "void_sovereign", "count": 1, "text": "Defeat the Void Sovereign"},
+		],
+		"rewards": {"xp": 1800, "gold": 450, "items": {"starmetal": 4, "storm_horn": 1}}, "next": "",
 	},
 ]
 

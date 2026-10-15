@@ -88,7 +88,7 @@ static func step(q: Query, budget := 220) -> bool:
 			if Vector2(nb - q.start).length() > q.radius and Vector2(nb - q.goal).length() > q.radius:
 				continue
 			var ny := stand_height(q.vw, q.dim, nb.x + 0.5, nb.y + 0.5, cy)
-			if is_nan(ny) or absf(ny - cy) > STEP_UP:
+			if is_nan(ny) or not step_ok(cy, ny):
 				continue
 			if d.x != 0 and d.y != 0:
 				# No cutting corners past walls.
@@ -153,10 +153,20 @@ static func segment_clear(vw: VoxelWorld, dim: int, a: Vector3, b: Vector3) -> b
 		var t := float(k) / n
 		var p := a.lerp(b, t)
 		var h := stand_height(vw, dim, p.x, p.z, prev)
-		if is_nan(h) or absf(h - prev) > STEP_UP:
+		if is_nan(h) or not step_ok(prev, h):
 			return false
 		prev = h
 	return true
+
+
+## A stride from height a to b: gentle slopes, or one built step (a whole
+## block ledge onto a floor or porch, which VoxelBody climbs).
+static func step_ok(a: float, b: float) -> bool:
+	var dy := absf(b - a)
+	if dy <= STEP_UP:
+		return true
+	var crisp := absf(a - roundf(a)) < 0.03 or absf(b - roundf(b)) < 0.03
+	return crisp and dy <= 1.05
 
 
 ## Height a person stands at over (x, z) near `y_hint`, or NAN where nobody can
@@ -216,10 +226,11 @@ static func _measure(vw: VoxelWorld, x: float, z: float, y_hint: float) -> float
 			return NAN
 	# Narrow gaps: the corners of the body at hip height.
 	for o: Vector2 in [Vector2(0.3, 0.3), Vector2(-0.3, 0.3), Vector2(0.3, -0.3), Vector2(-0.3, -0.3)]:
-		var q := Vector3i(floori(x + o.x), floori(h + 0.9), floori(z + o.y))
-		var bq := vw.get_block(q)
-		if bq < 0 or (bq > 0 and Blocks.is_solid(bq) and not Blocks.is_smooth(bq)):
-			return NAN
+		for dy: float in [0.05, 0.9, 1.7]:
+			var q := Vector3i(floori(x + o.x), floori(h + dy), floori(z + o.y))
+			var bq := vw.get_block(q)
+			if bq < 0 or (bq > 0 and Blocks.is_solid(bq) and not Blocks.is_smooth(bq)):
+				return NAN
 	# Water and lava are no place to stroll.
 	var feet := vw.get_block(Vector3i(cx, floori(h + 0.3), cz))
 	if feet > 0 and Blocks.is_liquid(feet):

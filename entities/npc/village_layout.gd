@@ -18,6 +18,7 @@ var doors: Array[Dictionary] = []
 var stations := {}          # station kind -> Vector3
 var guard_post := Vector3.INF
 var merchant_spot := Vector3.INF
+var smith_spot := Vector3.INF
 
 
 static func of(loc: Location) -> VillageLayout:
@@ -48,10 +49,31 @@ func _read(loc: Location) -> void:
 			"npc":
 				if String(s.get("role", "")) == "merchant":
 					merchant_spot = s["pos"]
+				elif String(s.get("role", "")) == "blacksmith":
+					smith_spot = s["pos"]
 			"door":
 				# Explicit doors from the village builder win over detection.
 				var out: Vector3 = s.get("out", Vector3.FORWARD)
 				doors.append(_door(s["pos"], out, int(s.get("width", 1)), bool(s.get("hall", false))))
+	# Modelled buildings (VillagePlan) say where their doors are.
+	if doors.is_empty():
+		for prop: Variant in loc.props:
+			if not (prop is Dictionary) or String((prop as Dictionary).get("type", "")) != "building" or not (prop as Dictionary).has("door_out"):
+				continue
+			var spec: Dictionary = prop
+			var role := String(spec.get("role", "house"))
+			if role in ["chapel", "smithy"]:
+				continue
+			var out := Basis(Vector3.UP, int(spec.get("rot", 0)) * PI * 0.5) * Vector3.BACK
+			var front: Vector3 = spec["door_out"]
+			var door := _door(front - out * 1.2, out, int(spec.get("door_w", 1)), role == "hall")
+			door["enterable"] = bool(spec.get("enterable", true))
+			door["role"] = role
+			doors.append(door)
+		if not doors.is_empty():
+			doors.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+				return (a["pos"] as Vector3).distance_squared_to(center) < (b["pos"] as Vector3).distance_squared_to(center))
+			return
 	if doors.is_empty():
 		for bp in loc.blueprints:
 			_scan_doors(bp)
@@ -178,9 +200,12 @@ func home_door(role: String, seed_value: int, near: Vector3) -> Dictionary:
 		return hall
 	if houses.is_empty():
 		return hall
+	var homes: Array[Dictionary] = houses.filter(func(d: Dictionary) -> bool: return String(d.get("role", "house")) in ["house", "tavern"])
+	if homes.is_empty():
+		homes = houses
 	if role in ["merchant", "blacksmith"]:
-		return _nearest(houses, near)
-	return houses[absi(seed_value) % houses.size()]
+		return _nearest(homes, near)
+	return homes[absi(seed_value) % homes.size()]
 
 
 static func _nearest(list: Array[Dictionary], p: Vector3) -> Dictionary:
@@ -198,6 +223,8 @@ static func _nearest(list: Array[Dictionary], p: Vector3) -> Dictionary:
 func forge_spot() -> Vector3:
 	if not stations.has("anvil"):
 		return Vector3.INF
+	if smith_spot != Vector3.INF and smith_spot.distance_to(stations["anvil"]) < 3.5:
+		return smith_spot  # the builder placed the smith's spot at the open front
 	var anvil: Vector3 = stations["anvil"]
 	var to := center - anvil
 	to.y = 0.0

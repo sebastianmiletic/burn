@@ -375,6 +375,8 @@ func npc_marker(_npc: Npc) -> String:
 func _tips() -> void:
 	var w := gw()
 	var q := w.quests
+	if q.is_completed("ryft") and not q.is_active("prism_sentinel") and not q.is_completed("prism_sentinel"):
+		q.accept("prism_sentinel")
 	var tips: Dictionary = q.activity.get("tips", {})
 	if q.is_completed("kindling") and not tips.has("board"):
 		tips["board"] = true

@@ -181,3 +181,19 @@ func test_activity_progress_saves_with_the_character() -> void:
 	old.from_dict({"active": {"no_such_quest": {"progress": [0], "tracked": true}}, "completed": []})
 	check(not old.is_active("no_such_quest"), "saves from other versions drop unknown quests safely")
 	check(q.markers().is_empty() or GameWorld.instance != null, "markers need a world")
+
+
+func test_ryft_bosses_continue_the_story() -> void:
+	for relic: String in ["prism_heart", "void_crown"]:
+		check(ItemDB.exists(relic) and ItemDB.rarity(relic) == 5, relic + " is a legendary relic")
+		check(ItemDB.category(relic) == "key", relic + " cannot be sold for an endless gold source")
+	var q := QuestLog.new()
+	q.accept("ryft")
+	q.complete("ryft")
+	check(q.is_active("prism_sentinel"), "the Ryft quest leads to the Prism Sentinel")
+	q.on_event("reach", "ryft_isle_1")
+	q.on_event("boss", "ryft_sentinel")
+	check(q.is_completed("prism_sentinel") and q.is_active("void_sovereign"), "then to the Void Sovereign")
+	q.on_event("reach", "ryft_isle_2")
+	q.on_event("boss", "void_sovereign")
+	check(q.is_completed("void_sovereign"), "the post-game line completes")

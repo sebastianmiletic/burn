@@ -327,8 +327,11 @@ func _think() -> void:
 			target = _patrol_point(13.0 if (h >= 19.5 or h < 6.5) else 6.0)
 	elif kind_ == _goal_kind and target.distance_to(_goal) < 0.5:
 		# Same errand: resume it after a chat, or keep at it.
-		if _path_i >= _path.size() and _query == null and _flat_distance(global_position, _goal) < 0.9 and act in [Act.IDLE, Act.TALK]:
-			act = _arrive_act
+		if _path_i >= _path.size() and _query == null and act in [Act.IDLE, Act.TALK]:
+			if _flat_distance(global_position, _goal) < 0.9:
+				act = _arrive_act
+			elif _wait <= 0.0:
+				_set_goal(_goal)  # the last route failed: try again
 		return
 	elif kind_ == "home" and _goal_kind == "enter":
 		if _query == null and _path_i >= _path.size():
@@ -487,6 +490,7 @@ func _watch_progress(delta: float) -> void:
 func _give_up() -> void:
 	_clear_path()
 	_replans = 0
+	_stuck_total += 3.0
 	act = Act.IDLE
 	_wait = _rng.randf_range(1.5, 3.5)
 	_think_t = _wait
@@ -551,9 +555,8 @@ func _leave_home() -> void:
 		return
 	global_position = _inside_point()
 	act = Act.IDLE
-	_goal_kind = ""
-	_set_goal(home_door["outside"])
 	_goal_kind = "out"
+	_set_goal(home_door["outside"])
 
 
 ## A spot just inside our door where a person can stand (houses differ:
@@ -561,6 +564,10 @@ func _leave_home() -> void:
 func _inside_point() -> Vector3:
 	if home_door.has("inside_ok"):
 		return home_door["inside_ok"]
+	if not bool(home_door.get("enterable", true)):
+		# A house without a modelled interior: they step in and shut the door.
+		home_door["inside_ok"] = home_door["outside"]
+		return home_door["outside"]
 	var vw := _vw()
 	var t: Vector3 = home_door["pos"]
 	var out: Vector3 = home_door["out"]
@@ -587,7 +594,8 @@ func _settle(vw: VoxelWorld) -> void:
 	_settled = true
 	var p := global_position
 	var h := NpcNav.stand_height(vw, dimension, p.x, p.z, p.y)
-	if is_nan(h) or absf(h - p.y) > 1.2:
+	if is_nan(h) or absf(h - p.y) > 1.2 or body._overlaps(vw, Vector3(p.x, h if not is_nan(h) else p.y, p.z)):
+		# Spawned on a porch edge, a step or in a wall: find somewhere to stand.
 		var spot := _nearest_standable(vw, p, 6)
 		if spot != Vector3.INF:
 			global_position = spot
@@ -616,7 +624,7 @@ func _nearest_standable(vw: VoxelWorld, p: Vector3, radius: int) -> Vector3:
 			var x := p.x + cos(a) * r
 			var z := p.z + sin(a) * r
 			var h := NpcNav.stand_height(vw, dimension, x, z, p.y)
-			if not is_nan(h) and absf(h - p.y) < 3.0:
+			if not is_nan(h) and absf(h - p.y) < 3.0 and not body._overlaps(vw, Vector3(x, h + 0.002, z)):
 				return Vector3(x, h, z)
 	return Vector3.INF
 

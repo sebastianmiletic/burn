@@ -245,6 +245,10 @@ const BASE := {
 		"desc": "Opens the way to the Throne of Hades."},
 	"crown_of_hades": {"name": "Crown of Hades", "category": "key", "glyph": "&", "color": Color(1.0, 0.85, 0.4), "stack": 1, "value": 0, "rarity": 5,
 		"desc": "The underworld bows to you."},
+	"prism_heart": {"name": "Prism Heart", "category": "key", "glyph": "&", "color": Color(0.7, 0.9, 1.0), "stack": 1, "value": 0, "rarity": 5,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "The Prism Sentinel's core. Light bends around it, and so does the Ryft."},
+	"void_crown": {"name": "Void Crown", "category": "key", "glyph": "&", "color": Color(0.55, 0.3, 0.9), "stack": 1, "value": 0, "rarity": 5,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "Taken from the Void Sovereign. It is colder than anything should be."},
 	# Activities (world/activities/*): treasure, bounties, meteors, the Proving Ring ----------
 	"treasure_map": {"name": "Weathered Treasure Map", "category": "treasure", "glyph": "?", "color": Color(0.82, 0.7, 0.48), "stack": 5, "value": 15, "rarity": 1,
 		"model_script": "res://world/activities/activity_items.gd",

@@ -69,6 +69,19 @@ static func build(body: Node3D, id: String) -> bool:
 				var a := float(i) * TAU / 3.0
 				_p(body, ItemMesh.crystal(0.012, 0.07, 6), ItemMats.glow(Color(0.6, 0.9, 1.0), 3.0), Vector3(cos(a) * 0.026, 0.17, sin(a) * 0.026), Vector3(rad_to_deg(sin(a)) * 25.0, 0, rad_to_deg(cos(a)) * -25.0))
 			_p(body, ModelKit.cylinder(0.033, 0.033, 0.012, 10), ItemMats.cloth(Color(0.2, 0.35, 0.6)), Vector3(0, 0.12, 0))
+		"prism_heart":
+			_p(body, ItemMesh.gem_cut(0.05, 10, 0.55, 1.0), ItemMats.gem(Color(0.65, 0.9, 1.0), 0.03, 3.0), Vector3(0, 0.07, 0))
+			for i in 4:
+				var a := float(i) * TAU / 4.0
+				_p(body, ItemMesh.crystal(0.008, 0.06, 5), ItemMats.glow(Color(0.8, 0.6, 1.0), 4.0), Vector3(cos(a) * 0.04, 0.05, sin(a) * 0.04), Vector3(rad_to_deg(sin(a)) * 40.0, 0, rad_to_deg(cos(a)) * -40.0))
+		"void_crown":
+			var m := ItemMats.metal("dark_iron")
+			_p(body, ItemMesh.lathe(PackedVector2Array([Vector2(0.075, 0.0), Vector2(0.08, 0.004), Vector2(0.08, 0.03), Vector2(0.075, 0.034), Vector2(0.071, 0.03), Vector2(0.071, 0.004)]), 28, true), m)
+			for i in 7:
+				var a := TAU * float(i) / 7.0
+				var tall := 0.08 if i % 2 == 0 else 0.05
+				_p(body, ModelKit.cone(0.012, tall, 4), m, Vector3(cos(a) * 0.076, 0.032 + tall * 0.5, sin(a) * 0.076))
+				_p(body, ModelKit.sphere(0.008, 6), ItemMats.glow(Color(0.6, 0.3, 1.0), 6.0), Vector3(cos(a) * 0.081, 0.018, sin(a) * 0.081))
 		_:
 			return false
 	return true
