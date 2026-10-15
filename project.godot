@@ -71,6 +71,10 @@ snow_cover={
 "type": "float",
 "value": 0.0
 }
+rain_amount={
+"type": "float",
+"value": 0.0
+}
 foliage_pushers={
 "type": "sampler2D",
 "value": ""
