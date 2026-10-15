@@ -13,24 +13,27 @@ const BIOME_COLORS := {
 	WorldGen.Biome.LAKE_OF_FIRE: Color(0.85, 0.3, 0.06),
 	WorldGen.Biome.TARTARUS: Color(0.22, 0.18, 0.18),
 	WorldGen.Biome.RYFT: Color(0.4, 0.35, 0.55),
+	WorldGen.Biome.REDWOOD: WorldGen.BIOME_COLORS[WorldGen.Biome.REDWOOD],
+	WorldGen.Biome.CANYON: WorldGen.BIOME_COLORS[WorldGen.Biome.CANYON],
+	WorldGen.Biome.ALPINE: WorldGen.BIOME_COLORS[WorldGen.Biome.ALPINE],
+	WorldGen.Biome.TUNDRA: WorldGen.BIOME_COLORS[WorldGen.Biome.TUNDRA],
+	WorldGen.Biome.VOLCANIC: WorldGen.BIOME_COLORS[WorldGen.Biome.VOLCANIC],
+	WorldGen.Biome.FJORD: WorldGen.BIOME_COLORS[WorldGen.Biome.FJORD],
 }
 
 static func build(gen: WorldGen) -> Image:
 	var n := gen._coarse_n
 	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
 	var sea := WorldGen.SEA_LEVEL if gen.dimension == 0 else WorldGen.LAVA_LEVEL
-	var detail := gen.make_detail_noise()
-	var ridge := gen.make_ridge_noise()
-	var heights := PackedFloat32Array()
-	heights.resize(n * n)
-	for z in n:
-		for x in n:
-			heights[x + z * n] = gen.column_f(x * 4 + 2, z * 4 + 2, detail, ridge).x
+	# Computed once, in parallel, and shared with the horizon.
+	var heights := gen.height_map()
 	for z in n:
 		for x in n:
 			var i := x + z * n
 			var h := heights[i]
 			var c: Color = BIOME_COLORS.get(gen._biome[i], Color.GRAY)
+			if gen._biome[i] == WorldGen.Biome.FOREST:
+				c = WorldGen.FOREST_COLORS[gen.forest_region(x * 4 + 2, z * 4 + 2)]
 			if gen.dimension == 0 and h > 100:
 				c = c.lerp(Color(0.88, 0.9, 0.91), smoothstep(100, 180, h))
 			var left := heights[maxi(x - 1, 0) + z * n]
@@ -46,6 +49,16 @@ static func build(gen: WorldGen) -> Image:
 			elif h < sea + 2 and gen.dimension == 0:
 				c = Color(0.72, 0.64, 0.43)
 			img.set_pixel(x, z, c.clamp())
+	# Lakes: alpine tarns, frozen ponds, the caldera's lava.
+	for lake: Array in gen.lakes:
+		var c: Vector2 = lake[0]
+		var r: float = lake[1]
+		var lava: bool = lake[3] == Blocks.LAVA
+		var frozen: bool = lake[3] == Blocks.ICE
+		for z in range(maxi(0, int((c.y - r) / 4)), mini(n, int((c.y + r) / 4) + 1)):
+			for x in range(maxi(0, int((c.x - r) / 4)), mini(n, int((c.x + r) / 4) + 1)):
+				if Vector2(x * 4 + 2, z * 4 + 2).distance_to(c) < r and heights[x + z * n] < float(lake[2]):
+					img.set_pixel(x, z, Color(0.95, 0.42, 0.1) if lava else (Color(0.72, 0.8, 0.86) if frozen else Color(0.16, 0.34, 0.42)))
 	for key: int in gen._pads:
 		if (gen._pads[key] as Vector3).z >= 0.5:
 			img.set_pixel((key % gen.size) / 4, (key / gen.size) / 4, Color(0.78, 0.66, 0.46))

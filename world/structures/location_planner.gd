@@ -95,7 +95,13 @@ func _plan_overworld() -> Array[Location]:
 	out.append_array(_drowned_spire(out, lair_rng))
 	out.append_array(_weeping_hollow(out, lair_rng))
 	out.append_array(_hagsfen(out, lair_rng))
-	if gen.revision >= 2:
+	if gen.revision >= 3:
+		var mine_rng := RandomNumberGenerator.new()
+		mine_rng.seed = gen.world_seed * 7727 + 3
+		for site: Array in [["old_ember_mine", "Old Ember Mine", Vector2(1280, 1140), {"ore": Blocks.COPPER_ORE, "rich": Blocks.IRON_ORE, "levels": 2, "guardian": "troll"}],
+				["frost_adit", "Frosthold Adit", Vector2(870, 650), {"ore": Blocks.TIN_ORE, "rich": Blocks.SILVER_ORE, "levels": 2, "guardian": "rock_golem"}]]:
+			out.append_array(_full_mine(out, StringName(site[0]), site[1], site[2], site[3], mine_rng))
+	elif gen.revision >= 2:
 		for site: Array in [["old_ember_mine", "Old Ember Mine", Vector2(1280, 1140)], ["frost_adit", "Frosthold Adit", Vector2(870, 650)]]:
 			var p: Vector2 = site[2]
 			var mine := Location.new(StringName(site[0]), site[1], Location.Kind.CRYPT, Vector3(p.x, _ground(p.x, p.y) + 1, p.y))
@@ -114,6 +120,8 @@ func _plan_overworld() -> Array[Location]:
 				wreck_count += 1
 				if wreck_count == 4:
 					break
+	if gen.revision >= 3:
+		out.append_array(_plan_new_lands(out))
 	# The endgame gateway exists from the start, visibly sealed until Hades falls.
 	var hub := out[0]
 	hub.add_spawn("portal", hub.center + Vector3(0, 1, -12), {"to": 2, "size": Vector2(3, 5)})
@@ -308,6 +316,143 @@ func _gates(c: Vector3) -> Array[Location]:
 	return [gate, crater, _shrine(&"crater_shrine", "Crater Shrine", rim)]
 
 
+# --- Revision 3: the Eastreach and the Sunderlands ------------------------------------------
+
+## New villages: id, name, nominal position, biome (searched for level ground nearby).
+const NEW_VILLAGES := [
+	[&"elderhollow", "Elderhollow", Vector2(2430, 1120), WorldGen.Biome.REDWOOD],
+	[&"highmere", "Highmere", Vector2(3060, 960), WorldGen.Biome.ALPINE],
+	[&"kaldvik", "Kaldvik", Vector2(3860, 1180), WorldGen.Biome.FJORD],
+	[&"frostmark", "Frostmark", Vector2(3930, 640), WorldGen.Biome.TUNDRA],
+	[&"redmesa", "Redmesa", Vector2(3320, 1880), WorldGen.Biome.CANYON],
+	[&"brimhold", "Brimhold", Vector2(1560, 2440), WorldGen.Biome.VOLCANIC],
+	[&"cedarfall", "Cedarfall", Vector2(800, 3080), WorldGen.Biome.REDWOOD],
+	[&"redcliff", "Redcliff", Vector2(1930, 3140), WorldGen.Biome.CANYON],
+	[&"sunderholm", "Sunderholm", Vector2(1380, 3680), WorldGen.Biome.PLAINS],
+	[&"meadowmere", "Meadowmere", Vector2(3200, 1250), WorldGen.Biome.PLAINS],
+]
+## New mines: id, name, nominal position, biome, spec.
+const NEW_MINES := [
+	[&"redrock_delve", "Redrock Delve", Vector2(3480, 2020), WorldGen.Biome.CANYON, {"ore": Blocks.COPPER_ORE, "rich": Blocks.GOLD_ORE, "levels": 3, "guardian": "troll"}],
+	[&"kaldvik_silverworks", "Kaldvik Silverworks", Vector2(3740, 1330), WorldGen.Biome.FJORD, {"ore": Blocks.SILVER_ORE, "rich": Blocks.SAPPHIRE_ORE, "levels": 2, "guardian": "rock_golem"}],
+	[&"highmere_deepworks", "Highmere Deepworks", Vector2(2880, 760), WorldGen.Biome.ALPINE, {"ore": Blocks.IRON_ORE, "rich": Blocks.MITHRIL_ORE, "levels": 3, "guardian": "rock_golem"}],
+	[&"brimstone_pit", "Brimstone Pit", Vector2(1380, 2760), WorldGen.Biome.VOLCANIC, {"ore": Blocks.COAL_ORE, "rich": Blocks.EMBER_ORE, "levels": 2, "guardian": "fire_elemental"}],
+	[&"elder_root_mine", "Elder Root Mine", Vector2(2620, 1300), WorldGen.Biome.REDWOOD, {"ore": Blocks.IRON_ORE, "rich": Blocks.GOLD_ORE, "levels": 2, "guardian": "troll"}],
+	[&"sunderdeep_mine", "Sunderdeep Mine", Vector2(1100, 3300), WorldGen.Biome.REDWOOD, {"ore": Blocks.TIN_ORE, "rich": Blocks.RUBY_ORE, "levels": 2, "guardian": "troll"}],
+]
+const NEW_TOWERS := [["Elder Watch", Vector2(2300, 980)], ["Pass Tower", Vector2(2950, 1050)], ["Fjordwatch", Vector2(3980, 1250)],
+		["Mesa Lookout", Vector2(3060, 2050)], ["Ashen Beacon", Vector2(1250, 2350)], ["Southwatch", Vector2(1700, 3400)]]
+const NEW_RUINS := [["Giant's Stair", WorldGen.Biome.ALPINE], ["The Frozen Barrow", WorldGen.Biome.TUNDRA], ["Sunken Hall", WorldGen.Biome.FJORD],
+		["Red Arches", WorldGen.Biome.CANYON], ["Cinder Temple", WorldGen.Biome.VOLCANIC], ["Elder Ring", WorldGen.Biome.REDWOOD],
+		["Hollow Mesa", WorldGen.Biome.CANYON], ["Root Shrine", WorldGen.Biome.REDWOOD], ["Glass Fields", WorldGen.Biome.VOLCANIC],
+		["Old Fjord Hall", WorldGen.Biome.FJORD]]
+
+
+func _plan_new_lands(existing: Array[Location]) -> Array[Location]:
+	var out: Array[Location] = []
+	var lrng := RandomNumberGenerator.new()
+	lrng.seed = gen.world_seed * 15485863 + 101
+	var all: Array = existing.duplicate()
+	for v: Array in NEW_VILLAGES:
+		var p := _site(v[2], 260.0, [v[3]], 0.0, 0.16, all, 160.0, lrng)
+		if p.x < 0.0:
+			p = _site(v[2], 360.0, [], 0.0, 0.2, all, 160.0, lrng)
+		if p.x < 0.0:
+			continue
+		var g := maxi(_ground(p.x, p.y), WorldGen.SEA_LEVEL + 2)
+		var loc := Location.new(v[0], v[1], Location.Kind.VILLAGE, Vector3(p.x, g, p.y))
+		loc.major = true
+		Structures.village(loc, lrng, false)
+		if v[3] in [WorldGen.Biome.ALPINE, WorldGen.Biome.FJORD, WorldGen.Biome.CANYON]:
+			loc.pad_falloff = 40.0
+		out.append(loc)
+		all.append(loc)
+		var shrine := _shrine(StringName(String(v[0]) + "_shrine"), "%s Shrine" % v[1], p + Vector2(0, 21))
+		out.append(shrine)
+		all.append(shrine)
+	for m: Array in NEW_MINES:
+		var locs := _full_mine(all, m[0], m[1], m[2], m[4], lrng, m[3])
+		out.append_array(locs)
+		all.append_array(locs)
+	for i in NEW_TOWERS.size():
+		var t: Array = NEW_TOWERS[i]
+		var p := _site(t[1], 160.0, [], 0.0, 0.35, all, 110.0, lrng)
+		if p.x < 0.0:
+			continue
+		var g := maxi(_ground(p.x, p.y), WorldGen.SEA_LEVEL + 2)
+		var loc := Location.new(StringName("tower_e%d" % i), t[0], Location.Kind.TOWER, Vector3(p.x, g, p.y))
+		Structures.tower(loc, lrng)
+		out.append(loc)
+		all.append(loc)
+	for i in NEW_RUINS.size():
+		var r: Array = NEW_RUINS[i]
+		var p := Vector2(-1, -1)
+		for attempt in 60:
+			var q := Vector2(lrng.randf_range(300, gen.size - 300), lrng.randf_range(200, gen.size - 300))
+			if gen.biome_at(int(q.x), int(q.y)) == r[1]:
+				p = _site(q, 120.0, [r[1]], 0.0, 0.3, all, 120.0, lrng)
+				if p.x >= 0.0:
+					break
+		if p.x < 0.0:
+			continue
+		var g := maxi(_ground(p.x, p.y), WorldGen.SEA_LEVEL + 2)
+		var loc := Location.new(StringName("ruin_e%d" % i), r[0], Location.Kind.RUIN, Vector3(p.x, g, p.y))
+		Structures.ruin(loc, lrng)
+		out.append(loc)
+		all.append(loc)
+	return out
+
+
+## Searches around `nominal` for ground of one of `biomes` (any if empty) whose slope over
+## ~16 m lies in [min_slope, max_slope], dry and away from other places. (-1, -1) if none.
+func _site(nominal: Vector2, radius: float, biomes: Array, min_slope: float, max_slope: float, others: Array, spacing: float, lrng: RandomNumberGenerator) -> Vector2:
+	var best := Vector2(-1, -1)
+	var best_score := INF
+	for attempt in 70:
+		var q := nominal if attempt == 0 else nominal + Vector2.from_angle(lrng.randf() * TAU) * radius * sqrt(lrng.randf())
+		if not _inside(q, 120.0):
+			continue
+		if not biomes.is_empty() and not gen.biome_at(int(q.x), int(q.y)) in biomes:
+			continue
+		var g := float(_ground(q.x, q.y))
+		if g < WorldGen.SEA_LEVEL + 4 or gen.lake_level(q.x, q.y).x > -INF:
+			continue
+		var slope := 0.0
+		for k in 4:
+			var o := Vector2.from_angle(TAU * k / 4.0) * 16.0
+			slope = maxf(slope, absf(_ground(q.x + o.x, q.y + o.y) - g) / 16.0)
+		if slope < min_slope or slope > max_slope:
+			continue
+		var ok := true
+		for l: Location in others:
+			if l.dimension == 0 and Vector2(l.center.x, l.center.z).distance_to(q) < spacing:
+				ok = false
+				break
+		if not ok:
+			continue
+		var score := q.distance_to(nominal) + slope * 200.0
+		if score < best_score:
+			best_score = score
+			best = q
+	return best
+
+
+## A full mine: a hillside portal (searched near `nominal`) and its workings.
+func _full_mine(others: Array, id: StringName, mine_name: String, nominal: Vector2, spec: Dictionary, mrng: RandomNumberGenerator, biome := -1) -> Array[Location]:
+	var p := _site(nominal, 220.0, [] if biome < 0 else [biome], 0.28, 0.95, others, 120.0, mrng)
+	if p.x < 0.0:
+		p = _site(nominal, 320.0, [], 0.18, 1.2, others, 90.0, mrng)
+	if p.x < 0.0:
+		return []
+	var g := float(_ground(p.x, p.y))
+	var grad := Vector2(_ground(p.x + 6, p.y) - _ground(p.x - 6, p.y), _ground(p.x, p.y + 6) - _ground(p.x, p.y - 6))
+	var heading := grad.normalized() if grad.length() > 0.01 else Vector2.RIGHT
+	var surface := Location.new(id, mine_name, Location.Kind.MINE, Vector3(p.x, g + 1.0, p.y))
+	var depths := Location.new(StringName(String(id) + "_workings"), "%s Workings" % mine_name, Location.Kind.MINE, Vector3(p.x, g - 20.0, p.y))
+	ExplorationSites.full_mine(surface, depths, gen, heading, mrng, spec)
+	return [surface, depths]
+
+
 static func roads(world_gen: WorldGen) -> Array[PackedVector2Array]:
 	var out: Array[PackedVector2Array] = []
 	var by_id := {}
@@ -329,6 +474,35 @@ static func roads(world_gen: WorldGen) -> Array[PackedVector2Array]:
 				targets.append(by_id[id])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = world_gen.world_seed + 4242
+	var chains: Array = []
+	if world_gen.revision >= 3 and world_gen.dimension == WorldGen.Dimension.OVERWORLD:
+		# Over the land bridges to the new villages: [from, via (land-bridge waypoints), to].
+		var east := [Vector2(1900, 1075), Vector2(2040, 1095), Vector2(2180, 1085)]
+		var south := [Vector2(1010, 1990), Vector2(1050, 2140)]
+		chains = [[&"thornwick", east, &"elderhollow"], [&"elderhollow", [], &"meadowmere"], [&"meadowmere", [], &"highmere"],
+				[&"meadowmere", [], &"kaldvik"], [&"highmere", [], &"frostmark"], [&"meadowmere", [], &"redmesa"],
+				[&"cinderreach", south, &"brimhold"], [&"brimhold", [], &"redcliff"], [&"brimhold", [], &"cedarfall"],
+				[&"redcliff", [], &"sunderholm"]]
+	for chain: Array in chains:
+		if not by_id.has(chain[0]) or not by_id.has(chain[2]):
+			continue
+		var from: Location = by_id[chain[0]]
+		var to: Location = by_id[chain[2]]
+		var way: Array = [Vector2(from.center.x, from.center.z)]
+		way.append_array(chain[1])
+		way.append(Vector2(to.center.x, to.center.z))
+		var pts := PackedVector2Array([way[0]])
+		for k in way.size() - 1:
+			var a: Vector2 = way[k]
+			var b: Vector2 = way[k + 1]
+			var n := maxi(2, int(a.distance_to(b) / 70.0))
+			var side := (b - a).orthogonal().normalized()
+			var bend := rng.randf_range(-30, 30) if a.distance_to(b) > 200.0 else 0.0
+			for i in range(1, n):
+				var f := float(i) / n
+				pts.append(a.lerp(b, f) + side * sin(f * PI) * bend)
+			pts.append(b)
+		out.append(pts)
 	for t: Location in targets:
 		var end := Vector2(t.center.x, t.center.z)
 		var pts := PackedVector2Array([hub])

@@ -76,7 +76,19 @@ const EMBERWOOD_TRUNK := 61
 const RYFTWOOD_TRUNK := 62
 ## Ids 63..119 are reserved for the world-generation owner (cave, mountain, ocean
 ## and Ryft materials). Material codes 120..127 are SmoothMesher biome variants.
-const COUNT := 63
+# World revision 3: new biomes and cave biomes.
+const RED_ROCK := 63
+const RED_SAND := 64
+const SCORIA := 65
+const PERMAFROST := 66
+## Old-growth redwood (Elderwood): trunk column like the other trees.
+const REDWOOD_TRUNK := 67
+const UMBER_ROCK := 68
+const FLOWSTONE := 69
+const GEYSERITE := 70
+const MYCELIUM := 71
+const MAGMA_ROCK := 72
+const COUNT := 73
 
 ## Block shape families used by the mesher.
 enum Shape { CUBE, NONE, SMALL }
@@ -148,13 +160,24 @@ const DATA := [
 	["Ironwood", Color(0.25, 0.22, 0.18), AsciiMaterialId.SOLID, 3.0, 3, "ironwood", 0.0, true, true, false, Shape.NONE],
 	["Emberwood", Color(0.42, 0.16, 0.08), AsciiMaterialId.SOLID, 4.0, 4, "emberwood", 0.0, true, true, false, Shape.NONE],
 	["Ryftwood", Color(0.28, 0.22, 0.42), AsciiMaterialId.SOLID, 5.0, 5, "ryftwood", 0.0, true, true, false, Shape.NONE],
+	["Red rock", Color(0.64, 0.33, 0.21), AsciiMaterialId.SOLID, 1.0, 1, "sandstone", 0.0, true, true, false, Shape.CUBE],
+	["Red sand", Color(0.78, 0.46, 0.29), AsciiMaterialId.GROUND, 0.4, 0, "sand", 0.0, true, true, false, Shape.CUBE],
+	["Scoria", Color(0.32, 0.19, 0.16), AsciiMaterialId.SOLID, 1.2, 1, "basalt", 0.0, true, true, false, Shape.CUBE],
+	["Permafrost", Color(0.42, 0.42, 0.42), AsciiMaterialId.GROUND, 0.8, 0, "dirt", 0.0, true, true, false, Shape.CUBE],
+	["Redwood", Color(0.45, 0.22, 0.14), AsciiMaterialId.SOLID, 1.2, 0, "wood", 0.0, true, true, false, Shape.NONE],
+	["Umber rock", Color(0.45, 0.29, 0.21), AsciiMaterialId.SOLID, 1.0, 1, "sandstone", 0.0, true, true, false, Shape.CUBE],
+	["Flowstone", Color(0.8, 0.72, 0.58), AsciiMaterialId.SOLID, 1.0, 1, "limestone", 0.0, true, true, false, Shape.CUBE],
+	["Geyserite", Color(0.84, 0.66, 0.46), AsciiMaterialId.SOLID, 0.9, 1, "limestone", 0.0, true, true, false, Shape.CUBE],
+	["Mycelium", Color(0.4, 0.35, 0.42), AsciiMaterialId.GROUND, 0.5, 0, "dirt", 0.0, true, true, false, Shape.CUBE],
+	["Magma rock", Color(0.9, 0.32, 0.08), AsciiMaterialId.EMISSIVE, 1.8, 2, "basalt", 1.4, true, true, false, Shape.CUBE],
 ]
 
 ## Blocks drawn as the smooth terrain surface.
 const SMOOTH_BLOCKS := [STONE, DIRT, GRASS, SAND, SNOW, ICE, GRAVEL, COAL_ORE, IRON_ORE, GOLD_ORE, EMBER_ORE,
 		OBSIDIAN, BEDROCK, BASALT, ASH, BONE, HELLSTONE, DRY_GRASS, CRYSTAL, DEEPSLATE, MUD, SOUL_SAND,
 		GRANITE, SANDSTONE, MARBLE, SLATE, CLAY, LIMESTONE, COPPER_ORE, TIN_ORE, SILVER_ORE, MITHRIL_ORE,
-		ADAMANTITE_ORE, RUBY_ORE, SAPPHIRE_ORE, AMETHYST, THATCH]
+		ADAMANTITE_ORE, RUBY_ORE, SAPPHIRE_ORE, AMETHYST, THATCH,
+		RED_ROCK, RED_SAND, SCORIA, PERMAFROST, UMBER_ROCK, FLOWSTONE, GEYSERITE, MYCELIUM, MAGMA_ROCK]
 
 static var _solid := PackedByteArray()
 static var _opaque := PackedByteArray()
@@ -253,19 +276,19 @@ static func is_smooth(id: int) -> bool:
 
 
 static func is_trunk(id: int) -> bool:
-	return (id >= OAK_TRUNK and id <= DEAD_TRUNK) or (id >= IRONWOOD_TRUNK and id <= RYFTWOOD_TRUNK)
+	return (id >= OAK_TRUNK and id <= DEAD_TRUNK) or (id >= IRONWOOD_TRUNK and id <= RYFTWOOD_TRUNK) or id == REDWOOD_TRUNK
 
 
 ## Material family for sounds and debris: "stone", "dirt", "sand", "snow", "wood", "crystal", "metal".
 static func sound_family(id: int) -> String:
 	match id:
-		DIRT, GRASS, DRY_GRASS, MUD, CLAY, ASH, SOUL_SAND, THATCH, LEAVES, PINE_LEAVES, CRIMSON_LEAVES:
+		DIRT, GRASS, DRY_GRASS, MUD, CLAY, ASH, SOUL_SAND, THATCH, LEAVES, PINE_LEAVES, CRIMSON_LEAVES, PERMAFROST, MYCELIUM:
 			return "dirt"
-		SAND, GRAVEL:
+		SAND, GRAVEL, RED_SAND:
 			return "sand"
 		SNOW:
 			return "snow"
-		LOG, PINE_LOG, PLANKS, CHEST, OAK_TRUNK, CRIMSON_TRUNK, PINE_TRUNK, DEAD_TRUNK, IRONWOOD_TRUNK, EMBERWOOD_TRUNK, RYFTWOOD_TRUNK:
+		LOG, PINE_LOG, PLANKS, CHEST, OAK_TRUNK, CRIMSON_TRUNK, PINE_TRUNK, DEAD_TRUNK, IRONWOOD_TRUNK, EMBERWOOD_TRUNK, RYFTWOOD_TRUNK, REDWOOD_TRUNK:
 			return "wood"
 		ICE, CRYSTAL, AMETHYST, EMBER_ORE, RUBY_ORE, SAPPHIRE_ORE:
 			return "crystal"

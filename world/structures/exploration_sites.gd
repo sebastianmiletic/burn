@@ -24,6 +24,16 @@ static func mine(loc: Location) -> void:
 	loc.add_spawn("chest", Vector3(bp.origin) + Vector3(12.5, 4.5, 13.5), {"tier": 2})
 	loc.add_spawn("lore", loc.center + Vector3(5, 1, 1), {"text": "The old adit descends to the galleries. Bring an iron pick and torches. Steam vents give warning before they erupt; crystal sanctuaries shelter no creatures."})
 
+## World revision 3: a full abandoned mine (world/caves/mine_layout.gd). `surface` is the
+## timbered portal on a hillside, `depths` the workings (levels, stopes, the deep gallery).
+static func full_mine(surface: Location, depths: Location, gen: WorldGen, heading: Vector2, rng: RandomNumberGenerator, spec: Dictionary) -> void:
+	surface.radius = 16.0
+	surface.half_height = 12.0
+	surface.major = true
+	depths.major = true
+	MineLayout.build(surface, depths, gen, heading, rng, spec)
+
+
 static func shipwreck(loc: Location) -> void:
 	loc.radius = 20
 	loc.half_height = 18
