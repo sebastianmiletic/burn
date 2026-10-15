@@ -84,7 +84,7 @@ func _ready() -> void:
 	quests = QuestTracker.new()
 	quests.anchor_left = 1.0
 	quests.anchor_right = 1.0
-	quests.offset_left = -324
+	quests.offset_left = -(QuestTracker.WIDTH + 22)
 	quests.offset_right = -22
 	quests.offset_top = 20
 	root.add_child(quests)

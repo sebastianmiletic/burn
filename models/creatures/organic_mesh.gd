@@ -306,6 +306,92 @@ static func membrane(key: String, points: PackedVector2Array, cup := 0.0, thickn
 	return mesh
 
 
+## Several meshes baked into one (one draw call): parts = [[mesh, Transform3D], ...].
+## Mirrored transforms (negative determinant) keep their faces outward.
+static func merge(key: String, parts: Array) -> ArrayMesh:
+	if _cache.has(key):
+		return _cache[key]
+	var a := _gather(parts, -1)
+	var mesh := _commit(a[0], a[1], a[2], a[3])
+	_cache[key] = mesh
+	return mesh
+
+
+## Rigid parts bound to bones of a skeleton, for skinned meshes:
+## parts = [[mesh, rest Transform3D, bone index, (optional) second bone, (optional) weight of the second]].
+## Returns the arrays of one surface (ARRAY_BONES / ARRAY_WEIGHTS filled).
+static func skinned_parts(parts: Array) -> Array:
+	var a := _gather(parts, 0)
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = a[0]
+	arrays[Mesh.ARRAY_NORMAL] = a[1]
+	arrays[Mesh.ARRAY_TEX_UV] = a[2]
+	arrays[Mesh.ARRAY_INDEX] = a[3]
+	arrays[Mesh.ARRAY_BONES] = a[4]
+	arrays[Mesh.ARRAY_WEIGHTS] = a[5]
+	return arrays
+
+
+## A skinned mesh from surfaces given as arrays (see skinned_parts), cached by key.
+static func skinned_mesh(key: String, surfaces: Array) -> ArrayMesh:
+	if _cache.has(key):
+		return _cache[key]
+	var mesh := ArrayMesh.new()
+	for s: Array in surfaces:
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, s)
+	_cache[key] = mesh
+	return mesh
+
+
+## Surface arrays of a cached mesh (for combining a skinned tube with extra parts).
+static func surface_arrays(mesh: Mesh, surface := 0) -> Array:
+	return mesh.surface_get_arrays(surface)
+
+
+static func _gather(parts: Array, skin: int) -> Array:
+	var verts := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var idx := PackedInt32Array()
+	var bones := PackedInt32Array()
+	var weights := PackedFloat32Array()
+	for part: Array in parts:
+		var m: Mesh = part[0]
+		var xf: Transform3D = part[1]
+		var nb := xf.basis.inverse().transposed()
+		var flip := xf.basis.determinant() < 0.0
+		for s in m.get_surface_count():
+			var arr := m.surface_get_arrays(s)
+			var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+			var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+			var uv: Variant = arr[Mesh.ARRAY_TEX_UV]
+			var base := verts.size()
+			for i in v.size():
+				verts.append(xf * v[i])
+				normals.append((nb * n[i]).normalized() if n.size() > i else Vector3.UP)
+				uvs.append((uv as PackedVector2Array)[i] if uv != null and (uv as PackedVector2Array).size() > i else Vector2.ZERO)
+				if skin >= 0:
+					var b0: int = part[2]
+					var b1: int = part[3] if part.size() > 3 else b0
+					var w1: float = part[4] if part.size() > 4 else 0.0
+					bones.append_array([b0, b1, 0, 0])
+					weights.append_array([1.0 - w1, w1, 0.0, 0.0])
+			var ind: Variant = arr[Mesh.ARRAY_INDEX]
+			var tri := PackedInt32Array()
+			if ind == null or (ind as PackedInt32Array).is_empty():
+				for i in v.size():
+					tri.append(i)
+			else:
+				tri = ind
+			for i in range(0, tri.size(), 3):
+				if flip:
+					idx.append_array([base + tri[i], base + tri[i + 2], base + tri[i + 1]])
+				else:
+					idx.append_array([base + tri[i], base + tri[i + 1], base + tri[i + 2]])
+	return [verts, normals, uvs, idx, bones, weights]
+
+
 # --- Helpers ---------------------------------------------------------------------
 
 ## Smoothly interpolated profile row at t: [rx, ry, offset_up, offset_side].

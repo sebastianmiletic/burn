@@ -6,7 +6,7 @@ extends RefCounted
 ## from TIERS x KINDS in _static_init, so every tier is consistent.
 ##
 ## category: "tool", "weapon", "armor", "consumable", "material", "block",
-##           "light", "station", "key", "currency"
+##           "light", "station", "key", "currency", "treasure" (maps, valuables, trophies)
 ## glyph: the character the UI draws while the item's 3D icon is not ready.
 ## rarity: 0 common .. 5 mythic (frame colour in the UI).
 ##
@@ -59,8 +59,8 @@ const TIERS := {
 ## Tool / weapon kinds. dmg/speed/reach are multipliers of the tier's power.
 ## Damage per second is roughly equal across kinds; the feel differs.
 const KINDS := {
-	"pickaxe": {"category": "tool", "name": "%s Pickaxe", "glyph": "T", "dmg": 0.45, "speed": 1.0, "reach": 2.4, "cost": 3, "sticks": 2,
-		"desc": "Breaks rock and ore. Harder ores need a better pick."},
+	"pickaxe": {"category": "tool", "name": "%s Pick-Axe", "glyph": "T", "dmg": 0.45, "speed": 1.0, "reach": 2.4, "cost": 3, "sticks": 2,
+		"desc": "Pick on one side, axe on the other: digs rock and ore and fells trees. Harder ores and rare woods need a better one."},
 	"axe": {"category": "tool", "name": "%s Axe", "glyph": "P", "dmg": 0.8, "speed": 0.95, "reach": 2.5, "cost": 3, "sticks": 2,
 		"desc": "Fells trees and splits timber quickly. A fair weapon in a pinch."},
 	"sword": {"category": "weapon", "name": "%s Sword", "glyph": "/", "dmg": 1.0, "speed": 1.1, "reach": 2.8, "cost": 2, "sticks": 1,
@@ -111,6 +111,7 @@ const STATIONS := {
 }
 
 const BASE := {
+	"hiking_boots": {"name": "Ironspike Hiking Boots", "category": "armor", "kind": "boots", "slot": "feet", "glyph": "L", "color": Color(0.48, 0.36, 0.23), "stack": 1, "value": 35, "defense": 3.0, "rarity": 1, "desc": "Equip to climb steep mountain steps. Iron crampons improve footing; sheer cliffs still require another route."},
 	"ironwood": {"name": "Ironwood", "category": "material", "glyph": "=", "color": Color(0.35, 0.3, 0.22), "stack": 99, "value": 4, "rarity": 2, "desc": "Dense old-growth timber. Requires an iron axe or better."},
 	"emberwood": {"name": "Emberwood", "category": "material", "glyph": "=", "color": Color(0.7, 0.28, 0.12), "stack": 99, "value": 6, "rarity": 3, "desc": "Heat-hardened timber. Requires a steel axe or better."},
 	"ryftwood": {"name": "Ryftwood", "category": "material", "glyph": "=", "color": Color(0.55, 0.4, 0.8), "stack": 99, "value": 9, "rarity": 4, "desc": "Timber from the floating isles. Requires a mithril axe or better."},
@@ -125,7 +126,7 @@ const BASE := {
 	"sword_dragonbone": {"name": "Dragonbone Greatsword", "category": "weapon", "kind": "sword", "glyph": "/", "color": Color(0.95, 0.9, 0.75),
 		"damage": 40.0, "speed": 0.9, "reach": 3.4, "stack": 1, "value": 520, "burn": 10.0, "rarity": 4, "tier": "adamantite", "heavy": true,
 		"desc": "Carved from Ashvane's spine. Heavy, cruel, glorious."},
-	"pickaxe_obsidian": {"name": "Obsidian Pickaxe", "category": "tool", "kind": "pickaxe", "glyph": "T", "color": Color(0.5, 0.3, 0.7),
+	"pickaxe_obsidian": {"name": "Obsidian Pick-Axe", "category": "tool", "kind": "pickaxe", "glyph": "T", "color": Color(0.5, 0.3, 0.7),
 		"mine_tier": 5, "mine_speed": 2.6, "damage": 9.0, "speed": 1.0, "reach": 2.4, "stack": 1, "value": 180, "rarity": 3, "tier": "mithril",
 		"desc": "Black glass edge, gold binding. Cuts obsidian and adamantite."},
 	# Consumables --------------------------------------------------------------
@@ -244,6 +245,52 @@ const BASE := {
 		"desc": "Opens the way to the Throne of Hades."},
 	"crown_of_hades": {"name": "Crown of Hades", "category": "key", "glyph": "&", "color": Color(1.0, 0.85, 0.4), "stack": 1, "value": 0, "rarity": 5,
 		"desc": "The underworld bows to you."},
+	"prism_heart": {"name": "Prism Heart", "category": "key", "glyph": "&", "color": Color(0.7, 0.9, 1.0), "stack": 1, "value": 0, "rarity": 5,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "The Prism Sentinel's core. Light bends around it, and so does the Ryft."},
+	"void_crown": {"name": "Void Crown", "category": "key", "glyph": "&", "color": Color(0.55, 0.3, 0.9), "stack": 1, "value": 0, "rarity": 5,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "Taken from the Void Sovereign. It is colder than anything should be."},
+	# Activities (world/activities/*): treasure, bounties, meteors, the Proving Ring ----------
+	"treasure_map": {"name": "Weathered Treasure Map", "category": "treasure", "glyph": "?", "color": Color(0.82, 0.7, 0.48), "stack": 5, "value": 15, "rarity": 1,
+		"model_script": "res://world/activities/activity_items.gd",
+		"desc": "Carry it and its riddle appears in your journal: find the landmark, search for the spot, dig up the chest with a pickaxe."},
+	"ancient_coin": {"name": "Ancient Coin", "category": "treasure", "glyph": "o", "color": Color(0.95, 0.78, 0.36), "stack": 50, "value": 12, "rarity": 1,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "Stamped with a king nobody remembers. Merchants still take it."},
+	"gilded_idol": {"name": "Gilded Idol", "category": "treasure", "glyph": "&", "color": Color(1.0, 0.82, 0.35), "stack": 5, "value": 85, "rarity": 2,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "A small golden figure with ember eyes. Worth a fortune to the right trader."},
+	"starmetal": {"name": "Starmetal", "category": "material", "glyph": "*", "color": Color(0.62, 0.7, 1.0), "stack": 20, "value": 60, "rarity": 3,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "The heart of a fallen star, still faintly warm. The smiths of Emberfall would kill for it."},
+	"trophy_fang": {"name": "Elite's Fang", "category": "treasure", "glyph": "v", "color": Color(0.92, 0.88, 0.76), "stack": 10, "value": 45, "rarity": 2,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "Proof of a bounty claimed. Sells well; hunters pay more."},
+	"trophy_pelt": {"name": "Legendary Pelt", "category": "treasure", "glyph": "~", "color": Color(0.55, 0.45, 0.36), "stack": 5, "value": 95, "rarity": 3,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "From a beast that should have died of old age decades ago."},
+	"trophy_skull": {"name": "Champion's Skull", "category": "treasure", "glyph": "&", "color": Color(0.88, 0.84, 0.74), "stack": 5, "value": 120, "rarity": 3,
+		"model_script": "res://world/activities/activity_items.gd", "desc": "Taken from a champion of the Proving Ring."},
+	"pickaxe_starfall": {"name": "Starfall Pickaxe", "category": "tool", "kind": "pickaxe", "glyph": "T", "color": Color(0.62, 0.7, 1.0),
+		"mine_tier": 6, "mine_speed": 4.4, "damage": 14.0, "speed": 1.05, "reach": 2.5, "stack": 1, "value": 420, "rarity": 4, "tier": "adamantite",
+		"model_script": "res://world/activities/activity_items.gd", "desc": "Starmetal edge. Bites adamantite like chalk."},
+	"sword_starfall": {"name": "Starfall Blade", "category": "weapon", "kind": "sword", "glyph": "/", "color": Color(0.62, 0.7, 1.0),
+		"damage": 33.0, "speed": 1.15, "reach": 3.0, "crit": 0.06, "stack": 1, "value": 460, "rarity": 4, "tier": "adamantite",
+		"model_script": "res://world/activities/activity_items.gd", "desc": "Forged from a fallen star. Light, cruel and quick."},
+	# Weather charms (world/activities/weather_craft.gd): use from the hotbar.
+	"storm_horn": {"name": "Storm Horn", "category": "consumable", "glyph": "!", "color": Color(0.6, 0.7, 1.0), "buff": "storm_call", "buff_time": 90.0,
+		"stack": 3, "value": 70, "rarity": 3, "model_script": "res://world/activities/activity_items.gd",
+		"desc": "Blow it and a thunderstorm answers. For 90 s lightning strikes the monsters around you."},
+	"sunstone": {"name": "Sunstone", "category": "consumable", "glyph": "!", "color": Color(1.0, 0.85, 0.4), "buff": "sun_call", "buff_time": 60.0,
+		"stack": 3, "value": 55, "rarity": 2, "model_script": "res://world/activities/activity_items.gd",
+		"desc": "Hold it to the sky: the clouds burn away and for 60 s sunlight sears the undead near you."},
+	"fog_lantern": {"name": "Fog Lantern", "category": "consumable", "glyph": "!", "color": Color(0.75, 0.82, 0.88), "buff": "fog_call", "buff_time": 90.0,
+		"stack": 3, "value": 45, "rarity": 2, "model_script": "res://world/activities/activity_items.gd",
+		"desc": "Breathes out a fog. For 90 s monsters near you barely notice you."},
+	"frost_totem": {"name": "Frost Totem", "category": "consumable", "glyph": "!", "color": Color(0.6, 0.9, 1.0), "buff": "frost_call", "buff_time": 60.0,
+		"stack": 3, "value": 50, "rarity": 2, "model_script": "res://world/activities/activity_items.gd",
+		"desc": "Raise it and snow falls. For 60 s monsters around where you raised it move at half speed."},
+	"helm_ringchampion": {"name": "Ring Champion's Helm", "category": "armor", "kind": "helmet", "slot": "head", "glyph": "^", "color": Color(0.78, 0.6, 0.32),
+		"defense": 8.0, "stack": 1, "value": 140, "rarity": 3, "tier": "bronze", "desc": "Awarded for surviving five waves of the Proving Ring."},
+	"cuirass_ringchampion": {"name": "Ring Champion's Cuirass", "category": "armor", "kind": "chestplate", "slot": "chest", "glyph": "M", "color": Color(0.78, 0.6, 0.32),
+		"defense": 16.0, "fire_resist": 0.1, "stack": 1, "value": 260, "rarity": 3, "tier": "steel", "desc": "Awarded for surviving ten waves of the Proving Ring."},
+	"sword_champion": {"name": "Blade of the Proving", "category": "weapon", "kind": "sword", "glyph": "/", "color": Color(1.0, 0.75, 0.35),
+		"damage": 36.0, "speed": 1.1, "reach": 3.1, "crit": 0.08, "burn": 4.0, "stack": 1, "value": 520, "rarity": 4, "tier": "mithril",
+		"model_script": "res://world/activities/activity_items.gd", "desc": "Only fifteen-wave champions carry it."},
 }
 
 ## Hand-written recipes. The recipe id is always the id of the item it makes
@@ -251,6 +298,7 @@ const BASE := {
 ##   inputs: {item: count}, count: made per craft, station: "" | workbench | furnace | anvil | alchemy,
 ##   fuel: furnace fuel units per craft, time: seconds per craft (furnace / alchemy), gold: optional fee.
 const BASE_RECIPES := {
+	"hiking_boots": {"inputs": {"iron_ingot": 4, "wood": 2}, "station": "anvil", "group": "armor"},
 	# By hand
 	"planks": {"inputs": {"wood": 1}, "count": 4, "station": "", "group": "basics"},
 	"ironwood_coal": {"result": "charcoal", "inputs": {"ironwood": 1}, "count": 4, "station": "furnace", "group": "smelting"},
@@ -285,6 +333,12 @@ const BASE_RECIPES := {
 	"sword_ember": {"inputs": {"steel_ingot": 3, "ember_crystal": 4, "gold_ingot": 1}, "station": "anvil", "group": "weapons"},
 	"pickaxe_obsidian": {"inputs": {"obsidian": 6, "gold_ingot": 3, "ember_crystal": 2, "stick": 2}, "station": "anvil", "group": "tools"},
 	"sword_dragonbone": {"inputs": {"bone": 12, "hellstone": 4, "obsidian": 4, "adamantite_ingot": 2}, "station": "anvil", "group": "weapons"},
+	"pickaxe_starfall": {"inputs": {"starmetal": 4, "mithril_ingot": 2, "stick": 2}, "station": "anvil", "group": "tools"},
+	"sword_starfall": {"inputs": {"starmetal": 5, "mithril_ingot": 2, "ember_crystal": 1}, "station": "anvil", "group": "weapons"},
+	"storm_horn": {"inputs": {"bone": 6, "silver_ingot": 1, "amethyst": 1}, "time": 3.0, "station": "alchemy", "group": "potions"},
+	"sunstone": {"inputs": {"gold_ingot": 2, "ember_crystal": 1, "glass_vial": 1}, "time": 3.0, "station": "alchemy", "group": "potions"},
+	"fog_lantern": {"inputs": {"lantern": 1, "glass_vial": 2, "emberleaf": 3}, "time": 2.5, "station": "alchemy", "group": "potions"},
+	"frost_totem": {"inputs": {"frost_shard": 3, "wood": 4, "bone": 2}, "station": "workbench", "group": "basics"},
 	# Alchemy
 	"potion_health": {"inputs": {"glass_vial": 1, "emberleaf": 2}, "time": 1.5, "station": "alchemy", "group": "potions"},
 	"potion_greater": {"inputs": {"glass_vial": 1, "emberleaf": 2, "ruby": 1}, "time": 2.0, "station": "alchemy", "group": "potions"},
@@ -298,7 +352,7 @@ const RANK_XP := [0, 100, 260, 500, 850, 1350, 2000, 2900, 4100, 5800]
 
 ## Merchant stock: id -> price in gold
 const SHOP := {"potion_health": 12, "potion_greater": 40, "bread": 3, "apple": 2, "emberleaf": 3, "glass_vial": 4,
-		"torch": 1, "lantern": 10, "coal": 3, "stick": 1}
+		"torch": 1, "lantern": 10, "coal": 3, "stick": 1, "treasure_map": 40, "fog_lantern": 75}
 
 ## Every item (BASE + generated). Same shape as BASE.
 static var ITEMS := {}
@@ -468,6 +522,8 @@ static func type_label(id: String) -> String:
 			return "Crafting station"
 		"key":
 			return "Relic"
+		"treasure":
+			return "Treasure map" if id == "treasure_map" else ("Trophy" if id.begins_with("trophy_") else "Valuable")
 	return String(inf.get("category", "")).capitalize()
 
 
@@ -516,10 +572,11 @@ static func mine_time(item_id: String, block: int) -> float:
 	var speed := 0.35
 	var tier := 0
 	if kind == "pickaxe":
+		# The pick-axe is a multitool: its axe bit chops as well as an axe.
 		tier = int(inf.get("mine_tier", 1))
 		speed = float(inf.get("mine_speed", 1.0))
 		if is_wood_block(block):
-			speed *= 0.6
+			speed = speed * 1.4 + 0.4
 	elif kind == "axe":
 		tier = int(TIERS.get(String(inf.get("tier", "wood")), {}).get("mine_tier", 1)) if is_wood_block(block) else 0
 		speed = float(inf.get("chop_speed", 1.0)) if is_wood_block(block) else float(inf.get("chop_speed", 1.0)) * 0.6

@@ -23,6 +23,9 @@ python3 tools/check_log.py build/validation/play.log
 godot --headless --path . --log-file "$PWD/build/validation/flow-engine.log" \
   -s res://tests/game/flow_test.gd -- --data-dir="$PWD/build/validation/flow-user" > build/validation/flow.log 2>&1
 python3 tools/check_log.py build/validation/flow.log
+godot --headless --path . --log-file "$PWD/build/validation/act-engine.log" \
+  -s res://tests/game/activity_test.gd -- --data-dir="$PWD/build/validation/act-user" > build/validation/act.log 2>&1
+python3 tools/check_log.py build/validation/act.log   # villagers + every activity (--only=npc,board,treasure,...)
 bash tests/net/run_net_test.sh
 bash tests/net/run_game_mp_test.sh --address --latency 150 --loss 0.02
 ```
@@ -40,12 +43,22 @@ with other network tests to avoid port collisions.
 ```sh
 godot --path . --log-file "$PWD/build/validation/gpu-engine.log" -- \
   --capture-game="$PWD/build/validation/captures" --tour=village,peaks,dragonfight \
-  --style=4 --quality=2 --no-update --data-dir="$PWD/build/validation/gpu-user"
+  --quality=2 --no-update --data-dir="$PWD/build/validation/gpu-user"
 ```
 
+Villagers and activities in first person (JPGs; `--shots=npc,smith,night,board,elite,tracks,treasure,meteor,ring,raid`):
+
+```sh
+godot --path . --resolution 1600x900 -s res://tests/gpu/activity_capture.gd -- --out="$PWD/build/validation/act-shots" \
+  --quality=2 --no-update --data-dir="$PWD/build/validation/gpu-user"
+```
+
+`--ui=map,journal` also shoots those HUD screens at every stop; `--load-timing` prints the loading film's
+frame stats (`[loading] ... frames > 33 ms`). The UI gallery (`res://tests/gpu/ui_gallery.tscn -- --capture=<dir>
+--only=hud,journal,map,icons,loading,lobby,downed`) covers the HUD, map symbols, the loading film and the lobby.
 The capture directory contains PNGs and `report.txt` (with the 3D render resolution and upscaler per stop). F3 shows live
 performance. Record hardware, window/output resolution, actual viewport resolution, graphics preset,
-render style, adaptive resolution, averages and worst frames. Do not report headless frame rates as game FPS.
+upscaler, adaptive resolution, averages and worst frames. Do not report headless frame rates as game FPS.
 Captures can warm shader caches, so also measure a cold start and travel into new chunks.
 
 ## Export locally

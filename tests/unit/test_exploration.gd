@@ -1,5 +1,14 @@
 extends TestCase
 
+func test_creative_inspection_defaults_off_and_is_invulnerable() -> void:
+	var p := Player.new()
+	check(not p.creative, "normal gameplay is the default")
+	p.creative = true
+	var health := p.health
+	p.receive_damage(9999.0, Vector3.INF, "void", "test")
+	check_eq(p.health, health, "inspection ignores even environmental damage")
+	p.free()
+
 func test_material_table_is_complete() -> void:
 	check_eq(Blocks.DATA.size(), Blocks.COUNT, "every persisted material has a definition")
 	check_eq(Blocks.family(Blocks.STRUCTURE), Blocks.Family.STRUCTURE)

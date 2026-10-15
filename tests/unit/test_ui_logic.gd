@@ -60,6 +60,8 @@ func test_item_stats_cover_weapons_and_potions() -> void:
 	check(InventoryScreen.item_stats("potion_health").contains("restores"), "potion shows heal")
 
 
-func test_minimap_glyphs_cover_every_location_kind() -> void:
+func test_map_symbols_cover_every_location_kind() -> void:
 	for k in Location.Kind.size():
-		check(Minimap.KIND_GLYPHS.has(k), "glyph for location kind %d" % k)
+		var loc := Location.new(&"x", "X", k, Vector3.ZERO)
+		var place := MapIcons.place_of(null, loc)
+		check(place.get("icon", &"poi") != &"poi", "map symbol for location kind %d" % k)

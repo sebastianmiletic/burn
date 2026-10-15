@@ -1,9 +1,8 @@
 extends Node
 ## Main-menu capture (development aid):
-##   godot --path . --fullscreen -- --skip-intro --capture-menu=/abs/dir [--menu-shot-seconds=7] [--menu-only=shots,styles,panels]
+##   godot --path . --fullscreen -- --skip-intro --capture-menu=/abs/dir [--menu-shot-seconds=7] [--menu-only=shots,panels,lobby,lifecycle]
 ## Waits for the live backdrop, screenshots every camera shot, the menu in the
-## ASCII-off style and each sub-panel, measures frame times, writes
-## report.txt and quits. The render style is restored afterwards.
+## each sub-panel, measures frame times, writes report.txt and quits.
 
 var out_dir := ""
 var menu: Node

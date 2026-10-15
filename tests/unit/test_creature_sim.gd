@@ -215,6 +215,7 @@ func test_new_bosses_reset_when_abandoned() -> void:
 			if i % 15 == 0:
 				boss.take_damage(boss.max_health * 0.01, 7, "hit")
 		check(boss.engaged, "%s engaged" % kind)
+		var wounded: float = boss.health
 		# Everyone leaves.
 		player.global_position = Vector3(0, 0, 500)
 		for i in 30 * 14:
@@ -222,7 +223,7 @@ func test_new_bosses_reset_when_abandoned() -> void:
 			boss.server_tick(dt)
 		check(not boss.engaged, "%s reset after the party left" % kind)
 		check(sim.resets > 0, "%s reported its reset" % kind)
-		check_near(boss.health, boss.max_health, 0.01, "%s healed on reset" % kind)
+		check_near(boss.health, wounded, 0.01, "%s preserves damage on reset" % kind)
 		arena.queue_free()
 
 

@@ -66,6 +66,11 @@ static func _build_into(body: Node3D, item_id: String, torch_shadows: bool) -> b
 	var cat := String(inf.get("category", ""))
 	var kind := String(inf.get("kind", ""))
 	var tier := String(inf.get("tier", ""))
+	if inf.has("model_script"):
+		# Items added by other systems bring their own model builder (ItemDB "model_script").
+		var builder: Script = load(String(inf["model_script"]))
+		if builder != null and bool(builder.call("build", body, item_id)):
+			return true
 	match item_id:
 		"sword_rusty":
 			GearModels.sword(body, "iron", ItemMats.metal("rust"))

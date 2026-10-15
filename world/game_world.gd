@@ -29,6 +29,8 @@ var bosses_defeated := {}    # boss kind -> true
 var opened_chests := {}      # chest key -> true
 var lit_shrines := {}        # location id -> true
 var play_time := 0.0
+## Wounded bosses remembered across despawns and reloads (entities/bosses/boss_ledger.gd).
+var boss_ledger := BossLedger.new()
 var replicator: Replicator
 var director: LocationDirector
 var spawner: WildSpawner
@@ -111,6 +113,8 @@ func setup(info: Dictionary) -> void:
 	add_child(spawner)
 	tracker = LocationTracker.new()
 	add_child(tracker)
+	# Activities (treasure, bounties, world events, the Proving Ring): same node path on every peer.
+	add_child(ActivityDirector.new())
 
 	var save: Dictionary = info.get("save", {})
 	_load_world_state(save)
@@ -284,6 +288,8 @@ func _activate_dimension(dim: int) -> void:
 # --- Main loop -------------------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if replicator != null:
+		replicator.check_party_wipe(delta)
 	if local_player == null:
 		return
 	play_time += delta
@@ -646,7 +652,7 @@ func _set_arena_gates(boss: Node, closed: bool) -> void:
 				var p := base + across * w + Vector3i(0, h, 0)
 				var vw := world_for(dim)
 				if vw.get_block(p) == Blocks.AIR:
-					request_set_block_server(p, Blocks.IRON_BARS, dim)
+					request_set_block_server(p, Blocks.STRUCTURE, dim)  # invisible: ArenaGate draws the gate
 					_arena_gate_blocks.append([dim, p])
 
 
@@ -741,6 +747,26 @@ func fell_tree_fx(root: Vector3i, trunk: int, dim: int, dir: Vector3) -> void:
 # --- Dimensions --------------------------------------------------------------------------
 
 ## Local player moves to another dimension (portal).
+## Solo inspection only: no progression unlocks or quest travel events.
+func creative_teleport(location_id: StringName) -> bool:
+	if Net.is_online() or local_player == null or not local_player.creative:
+		return false
+	var loc := location_by_id(location_id)
+	if loc == null:
+		return false
+	var target := loc.center + Vector3(0, 3, 0)
+	for s in loc.spawns_of("boss"):
+		target = (s["pos"] as Vector3) + Vector3(0, 2, 8)
+		break
+	local_player.dimension = loc.dimension
+	_activate_dimension(loc.dimension)
+	local_player.global_position = target
+	local_player.body.velocity = Vector3.ZERO
+	world_for(loc.dimension).focus = target
+	replicator.notify_dimension(loc.dimension)
+	return true
+
+
 func travel(to_dim: int) -> void:
 	if not worlds.has(to_dim) or (to_dim == 2 and not ryft_unlocked):
 		return
@@ -801,11 +827,14 @@ func save_data() -> Dictionary:
 		"player": local_player.to_dict(),
 		"quests": quests.to_dict(),
 		"discovered": discovered.keys(),
+		"map_fog": MapFog.save_dict(self),
 		"bosses_defeated": bosses_defeated.keys(),
+		"boss_wounds": boss_ledger.to_save(play_time),
 		"opened_chests": opened_chests.keys(),
 		"lit_shrines": lit_shrines.keys(),
 		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits(), 2: world_for(2).get_edits()},
 		"stations": placed_stations,
+		"activities": ActivityDirector.of(self).save_state() if ActivityDirector.of(self) != null else {},
 		"ryft_unlocked": ryft_unlocked,
 		"time_of_day": sky.time_of_day,
 		"day": sky.day,
@@ -820,6 +849,9 @@ func _load_world_state(save: Dictionary) -> void:
 		discovered[StringName(id)] = true
 	for k in save.get("bosses_defeated", []):
 		bosses_defeated[String(k)] = true
+	var wounds: Variant = save.get("boss_wounds", {})
+	if wounds is Dictionary:
+		boss_ledger.from_save(wounds)
 	for k in save.get("opened_chests", []):
 		opened_chests[String(k)] = true
 	for k in save.get("lit_shrines", []):

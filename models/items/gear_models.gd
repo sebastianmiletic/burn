@@ -217,26 +217,30 @@ static func pickaxe(parent: Node3D, tier: String, head: Material = null) -> void
 	haft(parent, -0.12, hy + 0.05, 0.018, 0.016, haft_mat(tier))
 	grip_wrap(parent, -0.09, 0.1, 0.0185, grip_mat(tier))
 	var mat: Material = head if head != null else head_mat(tier)
-	# Curved double pick: upper and lower arcs, thinning to points at both ends.
+	# Multitool head: a curved pick on the left for rock and ore, a bearded axe
+	# bit on the right for timber.
 	var pts := PackedVector2Array()
 	var ht := PackedFloat32Array()
-	var n := 13
-	var span := 0.33 if tier not in ["mithril", "adamantite"] else 0.36
+	var n := 9
+	var span := 0.3 if tier not in ["mithril", "adamantite"] else 0.33
 	for i in n:
-		var t := -1.0 + 2.0 * float(i) / float(n - 1)
+		var t := -1.0 + float(i) / float(n - 1)
 		var yc := 0.03 * (1.0 - t * t) - 0.045 * t * t
 		var hh := 0.03 * pow(1.0 - absf(t), 0.8) + 0.003
 		pts.append(Vector2(t * span, yc + hh))
 		ht.append(0.02 * pow(1.0 - absf(t), 0.6) + 0.004)
 	for i in range(n - 1, -1, -1):
-		var t := -1.0 + 2.0 * float(i) / float(n - 1)
+		var t := -1.0 + float(i) / float(n - 1)
 		var yc := 0.03 * (1.0 - t * t) - 0.045 * t * t
 		var hh := 0.03 * pow(1.0 - absf(t), 0.8) + 0.003
-		if t > 0.7 and tier not in ["wood", "stone"]:
-			hh = hh * 1.0 + 0.012 * (t - 0.7) / 0.3  # chisel end on the right
 		pts.append(Vector2(t * span, yc - hh))
 		ht.append(0.02 * pow(1.0 - absf(t), 0.6) + 0.004)
 	_p(parent, ItemMesh.plate(pts, ht, 0.004), mat, Vector3(0, hy, 0))
+	var bit := PackedVector2Array([Vector2(0.0, 0.034), Vector2(0.04, 0.04), Vector2(0.085, 0.06), Vector2(0.125, 0.085),
+		Vector2(0.142, 0.04), Vector2(0.148, -0.01), Vector2(0.138, -0.06), Vector2(0.11, -0.095), Vector2(0.075, -0.07),
+		Vector2(0.04, -0.04), Vector2(0.0, -0.034)])
+	var bit_t := PackedFloat32Array([0.02, 0.018, 0.01, 0.004, 0.0025, 0.0025, 0.0025, 0.004, 0.01, 0.018, 0.02])
+	_p(parent, ItemMesh.plate(bit, bit_t, 0.004), mat, Vector3(0, hy, 0))
 	# Eye collar, wedge and langets.
 	_p(parent, ItemMesh.bevel_box(Vector3(0.052, 0.07, 0.046), 0.006), mat, Vector3(0, hy + 0.01, 0))
 	if tier in ["wood", "stone"]:

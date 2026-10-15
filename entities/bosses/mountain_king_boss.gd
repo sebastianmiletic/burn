@@ -57,13 +57,13 @@ func _begin_attack(name: String) -> void:
 			for p in players:
 				var dir := p.global_position - global_position
 				dir.y = 0.0
-				_tele("line", global_position, dir.normalized(), Vector3(18.0, 2.2, 0), 1.3, 34.0, "hit", 3.0,
+				_tele("line:frost", global_position, dir.normalized(), Vector3(18.0, 2.2, 0), 1.3, 34.0, "hit", 3.0,
 					_ice_line.bind(global_position, dir.normalized()))
 			if players.size() < 3:
 				for k in 3 - players.size():
 					var a := _rng.randf() * TAU
 					var dir := Vector3(cos(a), 0, sin(a))
-					_tele("line", global_position, dir, Vector3(18.0, 2.2, 0), 1.3, 34.0, "hit", 3.0,
+					_tele("line:frost", global_position, dir, Vector3(18.0, 2.2, 0), 1.3, 34.0, "hit", 3.0,
 						_ice_line.bind(global_position, dir))
 		"roar":
 			_play("roar", 1.4)

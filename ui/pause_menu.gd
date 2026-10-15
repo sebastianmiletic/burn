@@ -6,10 +6,13 @@ var _settings: SettingsMenu
 var _resume: Button
 var _status: Label
 var _paused_tree := false
+var _creative: Button
+var _destinations: OptionButton
+var _teleport: Button
 
 
 func _init() -> void:
-	panel_size = Vector2(380, 380)
+	panel_size = Vector2(460, 560)
 	panel_title = "PAUSED"
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
@@ -18,6 +21,19 @@ func _build() -> void:
 	content.add_theme_constant_override("separation", 4)
 	_resume = _entry("Resume", close)
 	_entry("Settings", _open_settings)
+	_creative = _entry("Creative inspection: off", _toggle_creative)
+	_destinations = OptionButton.new()
+	_destinations.custom_minimum_size.y = 40
+	content.add_child(_destinations)
+	var w := GameWorld.instance
+	if w != null:
+		for dim: int in w.gens:
+			for loc: Location in w.locations(dim):
+				if not loc.spawns_of("boss").is_empty() or loc.kind == Location.Kind.VILLAGE:
+					_destinations.add_item(loc.name)
+					_destinations.set_item_metadata(_destinations.item_count - 1, loc.id)
+	_teleport = _entry("Teleport to selected location", _teleport_selected)
+	_refresh_creative()
 	_entry("Save journey", _save)
 	_entry("Quit to title", func() -> void:
 		_unpause()
@@ -54,6 +70,32 @@ func _unpause() -> void:
 	if _paused_tree:
 		get_tree().paused = false
 		_paused_tree = false
+
+
+func _refresh_creative() -> void:
+	var w := GameWorld.instance
+	var allowed := w != null and w.local_player != null and not Net.is_online()
+	var enabled := allowed and w.local_player.creative
+	_creative.disabled = not allowed
+	_creative.text = "CREATIVE INSPECTION: " + ("ON" if enabled else "OFF")
+	_destinations.disabled = not enabled
+	_teleport.disabled = not enabled or _destinations.item_count == 0
+
+
+func _toggle_creative() -> void:
+	var w := GameWorld.instance
+	if w == null or Net.is_online():
+		return
+	w.local_player.creative = not w.local_player.creative
+	_refresh_creative()
+	_status.text = "Invulnerable. Teleports do not unlock quests. Solo only." if w.local_player.creative else "Normal damage restored."
+
+
+func _teleport_selected() -> void:
+	if _destinations.selected < 0:
+		return
+	if GameWorld.instance.creative_teleport(_destinations.get_item_metadata(_destinations.selected)):
+		close()
 
 
 func _save() -> void:

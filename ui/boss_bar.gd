@@ -17,6 +17,31 @@ var _visible_target := false
 var _defeated_timer := 0.0
 var _hit_flash := 0.0
 var _phase_flash := 0.0
+var _grace := 0.0          # seconds after an engage event before `engaged` is trusted
+var _near := true
+
+
+## True while the local player is actually at this boss's fight: same
+## dimension, within the arena (at least 60 m), and the boss still engaged.
+func _player_at_fight() -> bool:
+	if _boss == null or not is_instance_valid(_boss) or not (_boss is Node3D):
+		return true  # no live boss to measure against (gallery, defeat banner)
+	var player := UiContext.player()
+	if player == null:
+		return true
+	var bdim: Variant = _boss.get("dimension")
+	var pdim: Variant = player.get("dimension")
+	if bdim != null and pdim != null and int(bdim) != int(pdim):
+		return false
+	var reach := 60.0
+	var arena: Variant = _boss.get("arena_radius")
+	if arena != null:
+		reach = maxf(reach, float(arena) + 20.0)
+	if (player as Node3D).global_position.distance_to((_boss as Node3D).global_position) > reach:
+		return false
+	if _grace <= 0.0 and _boss.has_method("is_engaged") and not _boss.call("is_engaged"):
+		return false
+	return true
 
 
 func _ready() -> void:
@@ -25,9 +50,7 @@ func _ready() -> void:
 	UiContext.on("boss_engaged", _on_engaged)
 	UiContext.on("boss_health_changed", _on_health)
 	UiContext.on("boss_defeated", _on_defeated)
-	UiContext.on("boss_disengaged", func(_b: Node) -> void:
-		_visible_target = false
-		_boss = null)
+	UiContext.on("boss_disengaged", _on_disengaged)
 
 
 func _on_engaged(boss: Node, display_name: String) -> void:
@@ -36,19 +59,39 @@ func _on_engaged(boss: Node, display_name: String) -> void:
 	_phase = 1
 	_visible_target = true
 	_defeated_timer = 0.0
+	_grace = 2.0
 	if boss != null:
 		var h: Variant = boss.get("health")
 		var mx: Variant = boss.get("max_health")
 		if h != null and mx != null:
 			_health = float(h)
 			_max = maxf(float(mx), 1.0)
+		# A wounded boss re-engages in the phase it was left in.
+		var ph: Variant = boss.get("phase")
+		if ph != null:
+			_phase = clampi(int(ph), 1, 3)
 	_shown = _health / _max
 	_trail = _shown
 
 
-func _on_health(boss: Node, health: float, max_health: float, phase: int) -> void:
+## Another boss giving up (one left behind in another arena) must not hide or
+## take over the bar of the boss being fought.
+func _on_disengaged(boss: Node) -> void:
 	if boss != _boss and _boss != null:
 		return
+	_visible_target = false
+	_boss = null
+
+
+func _on_health(boss: Node, health: float, max_health: float, phase: int) -> void:
+	if not BossBar.accepts(_boss, boss):
+		return
+	if _boss == null and boss != null:
+		# Adopt a boss that is being fought (a client that joined mid-fight).
+		_boss = boss
+		var n: Variant = boss.get("display_name")
+		if n != null:
+			_name = String(n)
 	if health < _health:
 		_hit_flash = 1.0
 	if phase != _phase:
@@ -74,7 +117,10 @@ func _process(delta: float) -> void:
 	elif _boss != null and not is_instance_valid(_boss):
 		_visible_target = false
 		_boss = null
-	_alpha = move_toward(_alpha, 1.0 if _visible_target else 0.0, delta * 3.0)
+	_grace = maxf(0.0, _grace - delta)
+	if _defeated_timer <= 0.0:
+		_near = _player_at_fight()
+	_alpha = move_toward(_alpha, 1.0 if (_visible_target and (_near or _defeated_timer > 0.0)) else 0.0, delta * 3.0)
 	visible = _alpha > 0.0
 	var ratio := clampf(_health / _max, 0.0, 1.0)
 	_shown = move_toward(_shown, ratio, delta * 1.5)
@@ -134,3 +180,14 @@ func _draw() -> void:
 	var nums := "%s / %s" % [UiTheme.format_int(ceili(_health)), UiTheme.format_int(roundi(_max))]
 	var ns := font.get_string_size(nums, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
 	draw_string(font, Vector2(w - ns.x, y), nums, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, UiTheme.TEXT)
+
+
+## Health updates are shown for the tracked boss, or (with none tracked) only
+## for a boss that is actually engaged - never for one resetting elsewhere.
+static func accepts(tracked: Object, boss: Object) -> bool:
+	if tracked != null:
+		return boss == tracked
+	if boss == null:
+		return true
+	var e: Variant = boss.get("engaged")
+	return e == null or bool(e)

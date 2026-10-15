@@ -39,6 +39,17 @@ func _ready() -> void:
 	_build()
 
 
+## Resizes the panel to `wanted`, shrunk to fit the window with `margin`
+## left around it (call from _on_open / on resize for large screens).
+func fit_panel(wanted: Vector2, margin := Vector2(48, 48)) -> void:
+	var avail := get_viewport_rect().size - margin * 2.0
+	var s := Vector2(minf(wanted.x, avail.x), minf(wanted.y, avail.y)).max(Vector2(480, 360))
+	frame.offset_left = -s.x * 0.5
+	frame.offset_right = s.x * 0.5
+	frame.offset_top = -s.y * 0.5
+	frame.offset_bottom = s.y * 0.5
+
+
 ## Subclasses add their widgets to `content` here.
 func _build() -> void:
 	pass

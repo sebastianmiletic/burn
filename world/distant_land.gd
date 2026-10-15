@@ -18,8 +18,9 @@ extends Node3D
 ##  * Haze: custom aerial perspective that matches the environment fog where
 ##    the streamed terrain ends and thins with distance and altitude, so far
 ##    ranges fade into a blue horizon instead of a white wall.
-## Inside the streamed radius the horizon is discarded and sunk below the
-## detailed field, so there is no z-fighting and nothing to pop.
+## Where the streamed chunks of a column are ready the horizon is discarded
+## (VoxelWorld.horizon_coverage); around the rim it is sunk below the detailed
+## field, so there is no z-fighting, no hole while streaming and nothing to pop.
 
 const FINE := 8
 const COARSE := 32
@@ -40,6 +41,8 @@ var gen: WorldGen
 var _mat: ShaderMaterial
 var _tiles: Array[MeshInstance3D] = []
 var _profile_off := "--no-horizon" in OS.get_cmdline_user_args()
+var _coverage: ImageTexture
+var _coverage_timer := 0.0
 
 
 ## Heavy part (loading worker thread): heights, materials, horizons, arrays.
@@ -525,7 +528,7 @@ func setup(world_gen: WorldGen, data: Array) -> void:
 	add_child(smi)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var w := GameWorld.instance
 	if w == null or w.local_player == null or _mat == null:
 		return
@@ -534,6 +537,16 @@ func _process(_delta: float) -> void:
 	visible = w.local_dimension == gen.dimension and not buried and not _profile_off
 	if not visible:
 		return
+	_coverage_timer -= delta
+	if _coverage_timer <= 0.0:
+		_coverage_timer = 0.25
+		var image := w.world_for(gen.dimension).horizon_coverage()
+		if _coverage == null:
+			_coverage = ImageTexture.create_from_image(image)
+			_mat.set_shader_parameter(&"coverage", _coverage)
+			_mat.set_shader_parameter(&"world_size", float(image.get_width() * Chunk.SIZE))
+		else:
+			_coverage.update(image)
 	var pos := w.local_player.global_position
 	var cam := w.view.camera if w.view != null else null
 	_mat.set_shader_parameter(&"focus", pos)

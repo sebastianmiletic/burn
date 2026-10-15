@@ -27,6 +27,7 @@ const ACTIONS := {
 	"pause": [KEY_ESCAPE],
 	"perf": [KEY_F3],
 	"screenshot": [KEY_F12],
+	"toggle_view": [KEY_V],
 }
 
 ## Human-readable names for the settings screen.
@@ -37,7 +38,7 @@ const LABELS := {
 	"ability_fire": "Fireball", "ability_burst": "Light burst", "potion": "Drink potion",
 	"slot_1": "Hotbar 1", "slot_2": "Hotbar 2", "slot_3": "Hotbar 3",
 	"inventory": "Inventory", "map": "World map", "quests": "Quest log", "chat": "Chat",
-	"pause": "Pause", "perf": "Performance overlay", "screenshot": "Screenshot",
+	"pause": "Pause", "perf": "Performance overlay", "screenshot": "Screenshot", "toggle_view": "First / third person",
 }
 
 

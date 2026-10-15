@@ -86,13 +86,32 @@ func _run() -> void:
 		await _shot("lobby_join")
 		join.queue_free()
 
+	if _wants("icons"):
+		var sheet := IconSheet.new()
+		sheet.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		add_child(sheet)
+		await _wait(0.4)
+		await _shot("icons")
+		sheet.queue_free()
+
 	if _wants("loading"):
 		var l := LoadingScreen.new()
 		add_child(l)
-		l.set_progress(0.62, "Raising the ruins")
-		await _wait(1.0)
+		l.set_progress(0.12, "Shaping the land")
+		await _wait(4.0)
+		printerr("[gallery] loading fps %d" % Engine.get_frames_per_second())
 		await _shot("loading")
+		l.set_progress(0.62, "Raising the land")
+		await _wait(7.6)
+		printerr("[gallery] loading fps %d" % Engine.get_frames_per_second())
+		await _shot("loading_roar")
+		await _wait(3.2)
+		await _shot("loading_bite")
+		l.set_progress(1.0, "")
 		l.queue_free()
+		await _wait(0.4)
+		await _shot("loading_outro")
+		await _wait(1.2)
 
 	var need_world := false
 	for n in ["hud", "inventory", "shop", "dialog", "journal", "map", "pause", "death", "victory"]:
@@ -142,6 +161,11 @@ func _run() -> void:
 		ev.emit_signal("damage_number", p + Vector3(0.5, 2.0, 0), 24, false, "hit")
 		await _wait(0.3)
 		await _shot("hud")
+		# What the crosshair rests on replaces the location block (look_info).
+		hud.status.call("_on_look", "Iron Ore Vein", "Ore · needs a stone pickaxe or better", "Smelts into iron ingots at a furnace.")
+		await _wait(0.8)
+		await _shot("hud_look")
+		hud.status.call("_on_look", "", "", "")
 	var screens := [
 		["inventory", func() -> void: hud.inventory_screen.open()],
 		["shop", func() -> void: ev.emit_signal("shop_open", "blacksmith")],
@@ -152,13 +176,17 @@ func _run() -> void:
 		["map", func() -> void: hud.map_screen.open()],
 		["pause", func() -> void: hud.pause_menu.open()],
 		["death", func() -> void: ev.emit_signal("player_died", "Burned by the Mountain King's hearthfire")],
+		["downed", func() -> void:
+			_world.get("local_player").set("downed", true)
+			_world.get("local_player").set("bleed_left", 63.0)
+			ev.emit_signal("player_died", "Felled by the Warden")],
 		["victory", func() -> void: ev.emit_signal("campaign_won")],
 	]
 	for s: Array in screens:
 		if not _wants(s[0]):
 			continue
 		(s[1] as Callable).call()
-		await _wait(3.4 if s[0] in ["death", "victory", "dialog"] else 0.6)
+		await _wait(3.4 if s[0] in ["death", "downed", "victory", "dialog"] else 0.6)
 		await _shot(s[0])
 		hud.inventory_screen.close()
 		hud.shop_screen.close()
@@ -167,6 +195,7 @@ func _run() -> void:
 		hud.pause_menu.close()
 		hud.dialog.close()
 		hud.death_screen.hide_death()
+		_world.get("local_player").set("downed", false)
 		hud.victory_screen.close()
 		get_tree().paused = false
 		await _frames(2)
@@ -190,3 +219,36 @@ func _shot(shot_name: String) -> void:
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(_out.path_join(shot_name + ".png"))
 	printerr("[gallery] ", shot_name)
+
+
+## Every map symbol at several sizes, on map-like grounds.
+class IconSheet:
+	extends Control
+
+	const GLYPHS := [&"skull", &"serpent", &"dragon", &"spider", &"crown", &"flame", &"hound", &"witch", &"crystal",
+		&"village", &"shrine", &"cave", &"mine", &"portal", &"tower", &"keep", &"gate", &"ruin", &"anchor", &"quest"]
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.08, 0.075, 0.07))
+		draw_rect(Rect2(0, size.y * 0.5, size.x, size.y * 0.5), Color(0.5, 0.48, 0.32))
+		for i in GLYPHS.size():
+			var g: StringName = GLYPHS[i]
+			var x := 60.0 + i * 90.0
+			var boss := i < 9
+			for row in 2:
+				var y0 := 40.0 + row * size.y * 0.5
+				if boss:
+					MapIcons.draw_badge(self, g, Vector2(x, y0 + 30), 26.0, false)
+					MapIcons.draw_badge(self, g, Vector2(x, y0 + 100), 13.0, false)
+					MapIcons.draw_badge(self, g, Vector2(x, y0 + 140), 8.5, false)
+					MapIcons.draw_badge(self, g, Vector2(x, y0 + 190), 13.0, true)
+				else:
+					var col := MapIcons.STONE
+					match g:
+						&"village": col = MapIcons.VILLAGE
+						&"shrine": col = MapIcons.SHRINE
+						&"portal": col = MapIcons.PORTAL
+						&"quest": col = MapIcons.QUEST
+					MapIcons.draw_glyph(self, g, Vector2(x, y0 + 30), 26.0, col, Color(0, 0, 0, 0.85))
+					MapIcons.draw_glyph(self, g, Vector2(x, y0 + 100), 10.0, col, Color(0, 0, 0, 0.85))
+					MapIcons.draw_glyph(self, g, Vector2(x, y0 + 140), 6.5, col, Color(0, 0, 0, 0.85))

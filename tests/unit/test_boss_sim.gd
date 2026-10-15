@@ -73,7 +73,7 @@ func test_bosses_simulate() -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	var boss_script: GDScript = load("res://entities/bosses/boss.gd")
 	var entity_script: GDScript = load("res://entities/entity.gd")
-	for kind in ["warden", "mountain_king", "dragon", "cerberus", "hades"]:
+	for kind in ["warden", "mountain_king", "dragon", "cerberus", "hades", "ryft_sentinel", "void_sovereign"]:
 		var sim := SimWorld.new()
 		var arena := Node3D.new()
 		tree.root.add_child(arena)
@@ -92,6 +92,12 @@ func test_bosses_simulate() -> void:
 		boss.body.gravity = 0.0
 		arena.add_child(boss)
 		boss.global_position = Vector3.ZERO
+		boss.take_damage(10.0, 7, "hit")
+		var wounded: float = boss.health
+		boss._reset()
+		check_eq(boss.health, wounded, "%s disengagement cannot heal" % kind)
+		boss._engage()
+		check_eq(boss.health, wounded, "%s re-engagement cannot heal" % kind)
 		var dt := 1.0 / 30.0
 		var max_phase := 1
 		var hit_every := 0.5

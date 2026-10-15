@@ -28,7 +28,19 @@ static func create_mob(kind: String, seed_value: int) -> CreatureModel:
 	match kind:
 		"player":
 			return player(0)
-		"skeleton", "archer", "ghoul", "troll", "drowned", "warden", "mountain_king", "hades", "bog_hag":
+		"warden":
+			return WardenModel.new()
+		"mountain_king":
+			return MountainKingModel.new()
+		"hades":
+			return HadesModel.new()
+		"bog_hag":
+			return BogHagModel.new()
+		"ryft_sentinel":
+			return RyftSentinelModel.new()
+		"void_sovereign":
+			return VoidSovereignModel.new()
+		"skeleton", "archer", "ghoul", "troll", "drowned":
 			return _humanoid_mob(kind, rng)
 		"imp":
 			return ImpModel.new()
@@ -40,7 +52,9 @@ static func create_mob(kind: String, seed_value: int) -> CreatureModel:
 			return CerberusModel.new()
 		"leviathan", "sea_serpent":
 			return LeviathanModel.new(kind)
-		"broodmother", "giant_spider", "spiderling", "scorpion":
+		"broodmother":
+			return BroodmotherModel.new()
+		"giant_spider", "spiderling", "scorpion":
 			return ArachnidModel.new("spider" if kind == "giant_spider" else kind, seed_value)
 		"wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "deer", "stag", "rabbit", "goat", "boar", "bog_lurker":
 			return QuadrupedModel.new(kind, seed_value)

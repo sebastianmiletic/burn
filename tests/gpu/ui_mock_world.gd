@@ -6,6 +6,8 @@ var local_player: MockPlayer
 var quests := MockQuests.new()
 var view := MockView.new()
 var discovered := {}
+var bosses_defeated := {"warden": true}
+var lit_shrines := {&"emberfall_shrine": true}
 var gen: WorldGen
 var _map: Image
 var _others: Array = []
@@ -21,9 +23,10 @@ func _init() -> void:
 func setup() -> void:
 	gen = WorldGen.new(WorldGen.Dimension.OVERWORLD, 1234)
 	gen.prepare()
-	_map = _build_map()
+	_map = MapImage.build(gen)
 	for loc in gen.locations:
-		if loc.major or loc.kind == Location.Kind.SHRINE:
+		if loc.major or loc.kind == Location.Kind.SHRINE or loc.kind == Location.Kind.VILLAGE \
+				or Vector2(loc.center.x - 1030, loc.center.z - 1060).length() < 420.0:
 			discovered[loc.id] = true
 	local_player = MockPlayer.new()
 	add_child(local_player)
@@ -46,27 +49,9 @@ func setup() -> void:
 		e.global_position = local_player.global_position + Vector3(cos(i * 1.3) * 40.0, 0, sin(i * 1.3) * 40.0)
 		_enemies.append(e)
 	view.source_camera.current = true
-
-
-func _build_map() -> Image:
-	var n := 512
-	var img := Image.create(n, n, false, Image.FORMAT_RGB8)
-	var colors := {
-		WorldGen.Biome.OCEAN: Color(0.08, 0.12, 0.16), WorldGen.Biome.PLAINS: Color(0.45, 0.42, 0.24),
-		WorldGen.Biome.FOREST: Color(0.55, 0.3, 0.12), WorldGen.Biome.PEAKS: Color(0.7, 0.72, 0.75),
-		WorldGen.Biome.MARSH: Color(0.22, 0.25, 0.16), WorldGen.Biome.WASTES: Color(0.32, 0.27, 0.25),
-	}
-	for z in n:
-		for x in n:
-			var wx := x * 4 + 2
-			var wz := z * 4 + 2
-			var h := gen.smooth_height(wx, wz)
-			var c: Color = colors.get(gen.biome_at(wx, wz), Color.GRAY)
-			if h < WorldGen.SEA_LEVEL:
-				c = Color(0.05, 0.08, 0.11)
-			c = c * (0.7 + clampf(h / 90.0, 0.0, 1.0) * 0.6)
-			img.set_pixel(x, z, c)
-	return img
+	var acts := MockActivities.new()
+	acts.name = "Activities"
+	add_child(acts)
 
 
 func map_image(_dim: int) -> Image:
@@ -117,6 +102,8 @@ class MockPlayer:
 	var yaw := 0.0
 	var dimension := 0
 	var display_name := "Ashwalker"
+	var downed := false
+	var bleed_left := 0.0
 
 	func _init() -> void:
 		inventory.add("sword_iron")
@@ -162,12 +149,25 @@ class MockQuests:
 		return [
 			{"id": "embers", "title": "Embers in the Ash", "description": "Elder Maren says the old shrines went dark the night the crater woke. Light the shrine of Emberfall, then speak with the blacksmith.",
 				"objectives": [{"text": "Rest at the Emberfall Shrine", "current": 1, "target": 1, "done": true}, {"text": "Mine iron ore", "current": 3, "target": 5, "done": false}, {"text": "Speak with Hale the blacksmith", "current": 0, "target": 1, "done": false}],
-				"rewards": "120 xp · 25 gold · Iron Sword", "tracked": true},
+				"rewards": "120 xp · 25 gold · Iron Sword", "tracked": true, "main": true},
 			{"id": "mountain_king", "title": "Hall of the Mountain King", "description": "Something sits on a throne of gold beneath the Frost Peaks, and it does not like guests.",
 				"objectives": [{"text": "Find the Hall beneath the Frost Peaks", "current": 0, "target": 1, "done": false}, {"text": "Defeat the Mountain King", "current": 0, "target": 1, "done": false}],
-				"rewards": "600 xp · Frost Crown", "tracked": true},
+				"rewards": "600 xp · Frost Crown", "tracked": true, "main": true},
+			{"id": "hunt", "title": "The Ash Stag", "category": "activity", "description": "A white stag has been seen at dusk east of Emberfall. Hunters say it cannot be caught.",
+				"objectives": [{"text": "Track the ash stag", "current": 0, "target": 1, "done": false}], "rewards": "90 xp · Stag Antler", "tracked": false},
 			{"id": "wolves", "title": "Ash Hounds", "description": "Thornwick's hunters want the hounds gone.",
 				"objectives": [{"text": "Slay ghouls in Emberwood", "current": 2, "target": 6, "done": false}], "rewards": "80 xp · 30 gold", "tracked": false},
+		]
+
+	## Objective markers (the QuestLog.markers() contract).
+	func markers() -> Array:
+		return [
+			{"quest_id": "embers", "pos": Vector3(1090, 20, 1010), "dim": 0, "text": "Speak with Hale the blacksmith"},
+			{"quest_id": "mountain_king", "pos": Vector3(1020, 60, 640), "dim": 0, "text": "Find the Hall beneath the Frost Peaks"},
+			{"quest_id": "hunt", "pos": Vector3(1180, 22, 1120), "dim": 0, "text": "Track the ash stag"},
+			{"pos": Vector3(985, 20, 1105), "dim": 0, "label": "Search for the X", "kind": "activity", "icon": "treasure", "radius": 14.0, "priority": 2},
+			{"pos": Vector3(1110, 20, 1150), "dim": 0, "label": "Hunt: Old Greymaw (last seen)", "kind": "activity", "icon": "bounty", "radius": 30.0, "priority": 1},
+			{"pos": Vector3(1250, 20, 900), "dim": 0, "label": "Starfall crater", "kind": "activity", "icon": "star", "priority": 4},
 		]
 
 	func tracked() -> Array:
@@ -193,3 +193,13 @@ class MockView:
 
 	func unproject(p: Vector3) -> Vector2:
 		return source_camera.unproject_position(p)
+
+
+class MockActivities:
+	extends Node
+
+	func tracker_entries() -> Array:
+		return [
+			{"title": "Starfall", "lines": PackedStringArray(["A star fell east of Emberfall", "Reach the crater (2:10)"]), "kind": "event"},
+			{"title": "Bounty: Old Greymaw", "lines": PackedStringArray(["Last seen in the Emberwood", "Reward: 60 gold, trophy"]), "kind": "activity"},
+		]

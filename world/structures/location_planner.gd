@@ -23,6 +23,7 @@ func _init(world_gen: WorldGen) -> void:
 
 
 func plan() -> Array[Location]:
+	ArchClearings.reset(gen.dimension, gen.world_seed)
 	if gen.dimension == WorldGen.Dimension.RYFT:
 		return ExplorationSites.ryft(gen)
 	if gen.dimension == WorldGen.Dimension.HELL:
@@ -119,6 +120,8 @@ func _plan_overworld() -> Array[Location]:
 	hub.add_spawn("portal", hub.center + Vector3(0, 1, -12), {"to": 2, "size": Vector2(3, 5)})
 	for loc in out:
 		loc.dimension = 0
+	# Paths out to the roads, palisade gates and the grass-free ground.
+	VillagePlan.finish(out, gen)
 	return out
 
 
@@ -308,10 +311,10 @@ func _gates(c: Vector3) -> Array[Location]:
 	return [gate, crater, _shrine(&"crater_shrine", "Crater Shrine", rim)]
 
 
-static func roads(world_gen: WorldGen) -> Array[PackedVector2Array]:
+static func roads(world_gen: WorldGen, locs: Array[Location] = []) -> Array[PackedVector2Array]:
 	var out: Array[PackedVector2Array] = []
 	var by_id := {}
-	for l in world_gen.locations:
+	for l in (locs if not locs.is_empty() else world_gen.locations):
 		by_id[l.id] = l
 	var hub := Vector2(world_gen.size * 0.5, world_gen.size * 0.5)
 	var targets: Array = []

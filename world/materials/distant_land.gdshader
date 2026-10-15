@@ -21,6 +21,8 @@ uniform vec4 mat_tint[128];
 uniform int class_codes[8];
 uniform int snow_code = 5;
 
+uniform sampler2D coverage : filter_nearest, repeat_disable;   // VoxelWorld.horizon_coverage
+uniform float world_size = 3072.0;
 uniform vec3 focus;
 uniform float near_radius = 120.0;
 uniform float near_end = 184.0;
@@ -80,7 +82,9 @@ vec3 layer_top(int code, vec2 xz) {
 
 void fragment() {
 	vec3 p = v_world;
-	if (distance(p.xz, focus.xz) < near_radius) {
+	// Give way only where every requested chunk mesh of the column is ready:
+	// streaming gaps (fast travel, climbs) keep the horizon instead of a hole.
+	if (texture(coverage, p.xz / world_size).r > 0.5) {
 		discard;
 	}
 	vec3 nw = normalize(v_wn);

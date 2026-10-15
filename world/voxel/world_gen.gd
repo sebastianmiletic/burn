@@ -209,6 +209,16 @@ func _coarse_sample(arr: PackedFloat32Array, x: float, z: float) -> float:
 	return lerpf(a, b, tz)
 
 
+const FOREST_NAMES := ["Emberwood", "Northern Pinewoods", "Crimson Grove", "Oldgrowth Ironwood"]
+const FOREST_COLORS := [Color(0.42, 0.36, 0.18), Color(0.22, 0.36, 0.31), Color(0.51, 0.25, 0.19), Color(0.25, 0.32, 0.16)]
+
+## Forest subregions preserve the persisted base-biome IDs and ecology tables.
+func forest_region(x: int, z: int) -> int:
+	if revision < 2:
+		return 0
+	return _hash3(x >> 8, 0, z >> 8, world_seed + 771) % FOREST_NAMES.size()
+
+
 func biome_at(x: int, z: int) -> int:
 	var ix := clampi(x / COARSE, 0, _coarse_n - 1)
 	var iz := clampi(z / COARSE, 0, _coarse_n - 1)
@@ -323,6 +333,13 @@ func add_road(points: PackedVector2Array, width: float) -> void:
 		var steps := int(a.distance_to(b))
 		for s in steps + 1:
 			var p := a.lerp(b, float(s) / maxf(1.0, steps))
+			var in_village := false
+			for loc: Location in locations:
+				if loc.kind == Location.Kind.VILLAGE and p.distance_to(Vector2(loc.center.x, loc.center.z)) < loc.radius + width + BANK:
+					in_village = true
+					break
+			if in_village:
+				continue
 			# The road follows the land, smoothed over ~10 m so it doesn't ripple.
 			var natural := 0.0
 			for o: Vector2 in [Vector2.ZERO, Vector2(5, 0), Vector2(-5, 0), Vector2(0, 5), Vector2(0, -5)]:
@@ -668,7 +685,7 @@ func _place_trees(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, det
 			var biome := biome_at(rx, rz)
 			var chance := 0.0
 			match biome:
-				Biome.FOREST: chance = 0.62
+				Biome.FOREST: chance = [0.62, 0.52, 0.42, 0.72][forest_region(rx, rz)]
 				Biome.PLAINS: chance = 0.05
 				Biome.PEAKS: chance = 0.32
 				Biome.MARSH: chance = 0.16
@@ -688,6 +705,10 @@ func _place_trees(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, det
 			var trunk := Blocks.OAK_TRUNK
 			var trunk_h := 4
 			match biome:
+				Biome.FOREST:
+					var region := forest_region(rx, rz)
+					trunk = [Blocks.OAK_TRUNK, Blocks.PINE_TRUNK, Blocks.CRIMSON_TRUNK, Blocks.OAK_TRUNK][region]
+					trunk_h = [4, 6, 4, 6][region]
 				Biome.PEAKS:
 					trunk = Blocks.PINE_TRUNK
 					trunk_h = 5
@@ -701,7 +722,7 @@ func _place_trees(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, det
 			if revision >= 2:
 				if biome == Biome.RYFT:
 					trunk = Blocks.RYFTWOOD_TRUNK
-				elif biome == Biome.FOREST and hsh % 19 == 0:
+				elif biome == Biome.FOREST and hsh % (7 if forest_region(rx, rz) == 3 else 19) == 0:
 					trunk = Blocks.IRONWOOD_TRUNK
 				elif biome == Biome.WASTES and hsh % 3 == 0:
 					trunk = Blocks.EMBERWOOD_TRUNK
