@@ -39,4 +39,16 @@ Creative inspection is a solo testing aid, not evidence that a fight is balanced
 - **The Prism Sentinel** guards the Broken Observatory (Ryft isle 1): crystal lances, shard novas, a sweeping prism beam.
 - **The Void Sovereign** waits on the Crown of the Ryft (isle 2): void lashes, imploding rifts, starfall, eclipse rings.
 
+## Boss models (developers)
+
+The Warden, the Mountain King, Hades and Old Mother Mire are `BossHumanoid` models
+(`models/creatures/boss_humanoid.gd`): the HumanoidModel rig and animator with its own body hidden, and every
+visible part sculpted per bone with `BossKit` (`models/creatures/boss_kit.gd`, shader `boss_surface.gdshader`).
+Parts on one bone are merged per material and cached, so a boss draws in 30-50 calls and a second spawn costs
+about 2 ms. The Ryft bosses are floating `RyftModel` constructs. Bosses report `set_boss_state(engaged, phase)`
+every frame: idle bosses brood (the Warden's vigil over its planted blade, the King asleep on his hammer, Hades
+upright with his bident, the hag muttering over her staff) and each phase raises `power` (runes, soul fire,
+frost, crystal glow); Hades grows and gains a ring of souls in phase 3. Check them with
+`res://tests/gpu/boss_gallery.tscn -- --capture=<dir> [--only=hades] [--perf]` (first-person eye height).
+
 Difficulty labels are design guidance. Human playtesting across equipment tiers remains necessary.
