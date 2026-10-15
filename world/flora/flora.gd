@@ -506,6 +506,9 @@ static func plan_chunk(origin: Vector3i, surface: Dictionary, trees: Array, dime
 		var a := tris[i * 3]
 		var b := tris[i * 3 + 1]
 		var c := tris[i * 3 + 2]
+		# Paved squares, paths and building floors stay clear (ArchClearings).
+		if ArchClearings.is_clear(dimension, seed_value, floori(o.x + a.x), floori(o.z + a.z)):
+			continue
 		# Caves mouths and overhangs get less light: thin the cover with the sky term.
 		var area := (b - a).cross(c - a).length() * 0.5 * minf((sk - 0.3) * 2.0, 1.0)
 		if area <= 0.0001:
