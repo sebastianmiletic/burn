@@ -50,7 +50,7 @@ const P_FLAT := 5     # exactly level (pools)
 
 # Fade classes (instance custom.a = metres / 200).
 const F_SMALL := 0.15
-const F_MED := 0.28
+const F_MED := 0.24
 const F_LARGE := 0.6
 
 ## Ore block id -> [mesh, variants, material, min scale, max scale, extra mesh, extra material]
@@ -84,11 +84,11 @@ static var TABLES := {
 			[M.MOSS, 2, T.MOSS, 0.03, 0.7, 1.3, P_NORMAL, F_SMALL, NONE, 0.0]],
 		[[M.WEB_ORB, 2, T.WEB, 0.035, 0.9, 1.7, P_WEB, F_SMALL, NONE, 0.0],
 			[M.SHELF, 2, T.F_SHELF_PALE, 0.02, 0.7, 1.3, P_SHELF, F_SMALL, NONE, 0.0]],
-		[[M.STALACTITE, 3, T.R_KARST, 0.34, 0.5, 2.6, P_HANG, F_MED, NONE, 0.0],
+		[[M.STALACTITE, 3, T.R_KARST, 0.24, 0.5, 2.6, P_HANG, F_MED, NONE, 0.0],
 			[M.WEB_DRAPE, 1, T.WEB, 0.04, 0.8, 1.5, P_HANG, F_SMALL, NONE, 0.0]],
 	],
 	GEYSER: [
-		[[M.SINTER, 2, T.R_SINTER, 0.2, 0.9, 2.2, P_FLAT, F_MED, NONE, 0.0],
+		[[M.SINTER, 2, T.R_SINTER, 0.08, 0.7, 1.6, P_FLAT, F_MED, NONE, 0.0],
 			[M.RUBBLE, 2, T.R_OCHRE, 0.07, 0.6, 1.4, P_NORMAL, F_SMALL, NONE, 0.0],
 			[M.PUDDLE, 2, T.PUDDLE_WARM, 0.06, 0.6, 1.4, P_FLAT, F_SMALL, NONE, 0.0]],
 		[[M.NODULES, 2, T.O_COPPER, 0.03, 0.6, 1.0, P_NORMAL, F_SMALL, NONE, 0.0]],
@@ -156,6 +156,8 @@ static var _mats: Array[ShaderMaterial] = []
 static var _quality := -1
 static var _ore_lut := PackedInt32Array()
 static var warmup_ms := 0.0
+## Profiling switch: `--no-cave-decor` on the command line disables all decor.
+static var enabled := not ("--no-cave-decor" in OS.get_cmdline_user_args())
 
 
 # =========================================================================== worker side
@@ -173,7 +175,7 @@ static func plan_chunk(origin: Vector3i, terrain: Array, dimension: int, world_s
 	var custom: PackedFloat32Array = terrain[Mesh.ARRAY_CUSTOM0]
 	var uv2: PackedVector2Array = terrain[Mesh.ARRAY_TEX_UV2]
 	var ntri := mini(verts.size(), uv2.size()) / 3
-	if ntri == 0 or custom.size() < ntri * 12:
+	if not enabled or ntri == 0 or custom.size() < ntri * 12:
 		return {}
 	var o := Vector3(origin)
 	var ore_seen := PackedByteArray()
@@ -186,6 +188,7 @@ static func plan_chunk(origin: Vector3i, terrain: Array, dimension: int, world_s
 	var batches := {}
 	var glow: Array = []   # [strength, Vector3 world, Color]
 	var hell := dimension == 1
+	var chunk_hash := WorldGen._hash3(origin.x, origin.y, origin.z, world_seed + 77)
 	var seed_ore := world_seed + 5501
 	var seed_dec := world_seed + 6607
 	for t in ntri:
@@ -215,12 +218,14 @@ static func plan_chunk(origin: Vector3i, terrain: Array, dimension: int, world_s
 			var wx := origin.x + cx
 			var wy := origin.y + cy
 			var wz := origin.z + cz
-			if _h01(wx, wy, wz, seed_ore) > 0.78:
+			if _h01(wx, wy, wz, seed_ore) > 0.5:
 				continue
 			var e: Array = ore
 			var r2 := _h01(wx, wy, wz, seed_ore + 1)
 			var s := lerpf(float(e[3]), float(e[4]), r2)
-			var mesh_id: int = int(e[0]) + (WorldGen._hash3(wx, wy, wz, seed_ore + 2) % int(e[1]))
+			# One template variant per chunk and kind keeps the batch (draw call) count low;
+			# instances still differ in scale, spin and tint.
+			var mesh_id: int = int(e[0]) + ((chunk_hash + code) % int(e[1]))
 			var xf := _basis(n, P_NORMAL, _h01(wx, wy, wz, seed_ore + 3) * TAU)
 			_add(batches, mesh_id, int(e[2]), xf.scaled(Vector3.ONE * s), p - n * 0.04 * s,
 				Color(r2, _h01(wx, wy, wz, seed_ore + 4), 0.6 + r2 * 0.6, F_SMALL))
@@ -282,7 +287,7 @@ static func plan_chunk(origin: Vector3i, terrain: Array, dimension: int, world_s
 				break
 			var r2 := _h01(wx, wy, wz, seed_dec + 1)
 			var s := lerpf(float(entry[4]), float(entry[5]), r2 * r2)
-			var variant := WorldGen._hash3(wx, wy, wz, seed_dec + 2) % int(entry[1])
+			var variant := (chunk_hash + int(entry[0])) % int(entry[1])
 			var spin := _h01(wx, wy, wz, seed_dec + 4) * TAU
 			var b := _basis(n, placement, spin)
 			var sc := Vector3.ONE * s
@@ -431,9 +436,20 @@ static func warmup() -> void:
 	m[M.EMBER_CRACKS] = CaveShapes.ember_cracks()
 	m[M.PUFFBALLS] = CaveShapes.puffballs()
 	m[M.WEB_DRAPE] = CaveShapes.web_drape()
+	for i in m.size():
+		m[i] = _with_lods(m[i])
 	_mats = _make_materials()
 	_meshes = m
 	warmup_ms = (Time.get_ticks_usec() - t0) / 1000.0
+
+
+## Automatic level-of-detail chain (meshoptimizer): distant chunks draw simplified decor.
+static func _with_lods(src: Mesh) -> Mesh:
+	var im := ImporterMesh.new()
+	im.add_surface(Mesh.PRIMITIVE_TRIANGLES, src.surface_get_arrays(0))
+	im.generate_lods(25.0, 60.0, [])
+	var out := im.get_mesh()
+	return out if out != null else src
 
 
 static func mesh(id: int) -> Mesh:
@@ -520,7 +536,7 @@ static func _make_materials() -> Array[ShaderMaterial]:
 	mats[T.R_KARST] = _rock(Color(0.56, 0.49, 0.4), Color(0.72, 0.64, 0.52), {"band_amount": 0.16, "translucency": 0.15, "tex_mix": 0.85})
 	mats[T.R_WET] = _rock(Color(0.4, 0.37, 0.32), Color(0.55, 0.5, 0.42), {"band_amount": 0.14, "wet_tip": 0.8, "base_rough": 0.55, "tex_mix": 0.85})
 	mats[T.R_BASALT] = _rock(Color(0.17, 0.16, 0.16), Color(0.26, 0.22, 0.2), {"band_amount": 0.15, "tex_mix": 0.8, "wet_tip": 0.0, "base_rough": 0.75})
-	mats[T.R_SINTER] = _rock(Color(0.86, 0.8, 0.68), Color(0.78, 0.48, 0.2), {"band_amount": 0.6, "band_freq": 60.0, "tex_mix": 0.35, "wet_tip": 0.3,
+	mats[T.R_SINTER] = _rock(Color(0.86, 0.8, 0.68), Color(0.78, 0.48, 0.2), {"band_amount": 0.22, "band_freq": 24.0, "tex_mix": 0.5, "wet_tip": 0.3,
 		"pool_color": Color(0.05, 0.22, 0.22), "pool_glow": Color(0.04, 0.2, 0.17)})
 	mats[T.R_FROST] = _rock(Color(0.72, 0.8, 0.88), Color(0.9, 0.95, 1.0), {"band_amount": 0.3, "wet_tip": 0.9, "base_rough": 0.4, "translucency": 0.4})
 	mats[T.R_OCHRE] = _rock(Color(0.62, 0.42, 0.24), Color(0.78, 0.6, 0.38), {"band_amount": 0.2})

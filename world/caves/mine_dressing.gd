@@ -47,6 +47,8 @@ static func warmup() -> void:
 	m[MM.SHOVEL] = MineMeshes.shovel_blade()
 	m[MM.BUCKET] = MineMeshes.bucket()
 	m[MM.SPOIL] = MineMeshes.spoil()
+	for i in m.size():
+		m[i] = CaveDecor._with_lods(m[i])
 	var mats: Array[ShaderMaterial] = []
 	mats.resize(MT.COUNT)
 	mats[MT.WOOD] = _mat("res://world/caves/mine_wood.gdshader", {})
