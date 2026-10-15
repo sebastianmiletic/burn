@@ -2,9 +2,11 @@ class_name DistantLand
 extends MeshInstance3D
 ## A coarse, non-colliding silhouette beyond the streamed terrain. Built once
 ## on the loading worker; underlay is slightly inset so detailed terrain wins.
-const STEP := 16
+const STEP := 8
 var gen: WorldGen
 var _mat: ShaderMaterial
+var _coverage: ImageTexture
+var _coverage_timer := 0.0
 
 static func arrays_for(world_gen: WorldGen) -> Array:
 	var n := world_gen.size / STEP + 1
@@ -53,13 +55,23 @@ func setup(world_gen: WorldGen, arrays: Array) -> void:
 	material_override = _mat
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	var w := GameWorld.instance
 	if w == null or w.local_player == null:
 		return
 	visible = w.local_dimension == gen.dimension
 	if not visible:
 		return
+	_coverage_timer -= delta
+	if _coverage_timer <= 0.0:
+		_coverage_timer = 0.25
+		var image := w.world_for(gen.dimension).horizon_coverage()
+		if _coverage == null:
+			_coverage = ImageTexture.create_from_image(image)
+			_mat.set_shader_parameter(&"coverage", _coverage)
+			_mat.set_shader_parameter(&"world_size", float(image.get_width() * Chunk.SIZE))
+		else:
+			_coverage.update(image)
 	var pos := w.local_player.global_position
 	_mat.set_shader_parameter(&"focus", pos)
 	# Closer coarse terrain bridges streaming gaps during fast traversal.

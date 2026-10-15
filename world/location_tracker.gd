@@ -72,7 +72,7 @@ func _process(delta: float) -> void:
 				if not _known_biomes.has(biome):
 					_known_biomes[biome] = true
 					first = true
-				title = WorldGen.BIOME_NAMES[biome]
+				title = WorldGen.FOREST_NAMES[g.forest_region(int(pos.x), int(pos.z))] if biome == WorldGen.Biome.FOREST else WorldGen.BIOME_NAMES[biome]
 				subtitle = "Underworld" if dim == 1 else "Wilds"
 			else:
 				title = "Unknown Biome"

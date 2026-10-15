@@ -42,6 +42,7 @@ var _attack_data := {}
 var _next_attack := 2.5
 var _target: Entity
 var _reset_t := 0.0
+var _encounter_scaled := false
 var _pending: Array = []
 var _rng := RandomNumberGenerator.new()
 var _dead_t := 0.0
@@ -272,9 +273,13 @@ func _engage() -> void:
 	var party := 1
 	if w != null:
 		party = maxi(1, _players().size())
-	max_health = Damage.boss_health(base_health, party)
-	health = max_health
-	phase = 1
+	# Scale once, before the opening hit. Leaving the arena must not heal
+	# the boss or scale its remaining health when another player arrives.
+	if not _encounter_scaled:
+		max_health = Damage.boss_health(base_health, party)
+		health = max_health
+		_encounter_scaled = true
+	phase = BossLogic.phase_for(health / max_health)
 	_next_attack = 2.0
 	_play("roar")
 	Audio.play("roar_big", center(), 2.0)
@@ -289,8 +294,8 @@ func _reset() -> void:
 	_attack = ""
 	_pending.clear()
 	threat.clear()
-	health = max_health
-	phase = 1
+	# Disengage and clear attacks, but preserve earned damage and phase.
+	phase = BossLogic.phase_for(health / max_health)
 	flying = false
 	body.fly = false
 	_reset_t = 0.0

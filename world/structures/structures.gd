@@ -29,12 +29,7 @@ static func village(loc: Location, rng: RandomNumberGenerator, is_start: bool) -
 	var cz := 32
 	var fy := 6  # local y of the ground surface
 
-	# Plaza and well.
-	for dz in range(-8, 9):
-		for dx in range(-8, 9):
-			var d := Vector2(dx, dz).length()
-			if d <= 8.2:
-				bp.set_local(cx + dx, fy, cz + dz, Blocks.GRAVEL)  # Continuous plaza, not alternating cube-shaped depressions.
+	# Grass commons and well. No stamped plaza or village paths.
 	bp.cylinder(Vector3i(cx, fy + 1, cz), 2.3, 2, Blocks.MOSSY_COBBLE, true)
 	bp.cylinder(Vector3i(cx, fy - 4, cz), 1.3, 5, Blocks.WATER)
 	for corner: Vector2i in [Vector2i(-2, -2), Vector2i(2, -2), Vector2i(-2, 2), Vector2i(2, 2)]:

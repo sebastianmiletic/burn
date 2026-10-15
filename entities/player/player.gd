@@ -24,6 +24,8 @@ var camera: PlayerCamera
 var model: Node3D
 
 var _input_enabled := true
+## Session-only inspection mode. Never inherited by a saved character.
+var creative := false
 var _move_speed := 0.0
 var _visual_offset := 0.0
 var _action := ""
@@ -198,6 +200,8 @@ func _process(delta: float) -> void:
 
 
 func _move(delta: float, vw: VoxelWorld) -> void:
+	var boots: Dictionary = inventory.equipment.get("feet", {})
+	body.climb_step = 1.15 if boots.get("id", "") == "hiking_boots" or creative else VoxelBody.MAX_STEP
 	var input := Vector2.ZERO
 	if _input_enabled:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -779,7 +783,7 @@ func _on_inventory_changed() -> void:
 # --- Health, XP, death ----------------------------------------------------------------------------
 
 func receive_damage(amount: float, from: Vector3, kind: String, source_name: String) -> void:
-	if dead:
+	if creative or dead:
 		return
 	var now := Time.get_ticks_msec() / 1000.0
 	if now < invulnerable_until:

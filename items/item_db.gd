@@ -111,6 +111,7 @@ const STATIONS := {
 }
 
 const BASE := {
+	"hiking_boots": {"name": "Ironspike Hiking Boots", "category": "armor", "kind": "boots", "slot": "feet", "glyph": "L", "color": Color(0.48, 0.36, 0.23), "stack": 1, "value": 35, "defense": 3.0, "rarity": 1, "desc": "Equip to climb steep mountain steps. Iron crampons improve footing; sheer cliffs still require another route."},
 	"ironwood": {"name": "Ironwood", "category": "material", "glyph": "=", "color": Color(0.35, 0.3, 0.22), "stack": 99, "value": 4, "rarity": 2, "desc": "Dense old-growth timber. Requires an iron axe or better."},
 	"emberwood": {"name": "Emberwood", "category": "material", "glyph": "=", "color": Color(0.7, 0.28, 0.12), "stack": 99, "value": 6, "rarity": 3, "desc": "Heat-hardened timber. Requires a steel axe or better."},
 	"ryftwood": {"name": "Ryftwood", "category": "material", "glyph": "=", "color": Color(0.55, 0.4, 0.8), "stack": 99, "value": 9, "rarity": 4, "desc": "Timber from the floating isles. Requires a mithril axe or better."},
@@ -251,6 +252,7 @@ const BASE := {
 ##   inputs: {item: count}, count: made per craft, station: "" | workbench | furnace | anvil | alchemy,
 ##   fuel: furnace fuel units per craft, time: seconds per craft (furnace / alchemy), gold: optional fee.
 const BASE_RECIPES := {
+	"hiking_boots": {"inputs": {"iron_ingot": 4, "wood": 2}, "station": "anvil", "group": "armor"},
 	# By hand
 	"planks": {"inputs": {"wood": 1}, "count": 4, "station": "", "group": "basics"},
 	"ironwood_coal": {"result": "charcoal", "inputs": {"ironwood": 1}, "count": 4, "station": "furnace", "group": "smelting"},

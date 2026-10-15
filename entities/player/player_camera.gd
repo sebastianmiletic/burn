@@ -34,7 +34,8 @@ func _ready() -> void:
 	top_level = true
 	fov = float(Settings.get_value("graphics", "fov"))
 	near = 0.08
-	far = 600.0
+	# The overworld horizon mesh spans kilometres, not the near chunk radius.
+	far = 4600.0
 	_noise.frequency = 3.5
 	# Soft fill from the viewer's side so characters never collapse into
 	# glyph-less silhouettes against bright ground.

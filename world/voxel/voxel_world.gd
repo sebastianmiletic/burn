@@ -852,6 +852,20 @@ func loading_progress() -> float:
 	return float(done) / maxf(1.0, total)
 
 
+## Horizon coverage is based on completed meshes, not distance alone.
+func horizon_coverage() -> Image:
+	var size := ceili(float(gen.size) / Chunk.SIZE)
+	var image := Image.create(size, size, false, Image.FORMAT_R8)
+	var columns := {}
+	for key: Vector3i in _wanted_mesh:
+		var column := Vector2i(key.x, key.z)
+		columns[column] = bool(columns.get(column, true)) and _meshes.has(key)
+	for column: Vector2i in columns:
+		if columns[column] and column.x >= 0 and column.y >= 0 and column.x < size and column.y < size:
+			image.set_pixel(column.x, column.y, Color.WHITE)
+	return image
+
+
 func _set_mesh(k: Vector3i, result: Dictionary) -> void:
 	var old: MeshInstance3D = _meshes.get(k)
 	if old != null:
