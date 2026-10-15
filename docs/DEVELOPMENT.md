@@ -23,6 +23,9 @@ python3 tools/check_log.py build/validation/play.log
 godot --headless --path . --log-file "$PWD/build/validation/flow-engine.log" \
   -s res://tests/game/flow_test.gd -- --data-dir="$PWD/build/validation/flow-user" > build/validation/flow.log 2>&1
 python3 tools/check_log.py build/validation/flow.log
+godot --headless --path . --log-file "$PWD/build/validation/act-engine.log" \
+  -s res://tests/game/activity_test.gd -- --data-dir="$PWD/build/validation/act-user" > build/validation/act.log 2>&1
+python3 tools/check_log.py build/validation/act.log   # villagers + every activity (--only=npc,board,treasure,...)
 bash tests/net/run_net_test.sh
 bash tests/net/run_game_mp_test.sh --address --latency 150 --loss 0.02
 ```
@@ -40,6 +43,13 @@ with other network tests to avoid port collisions.
 ```sh
 godot --path . --log-file "$PWD/build/validation/gpu-engine.log" -- \
   --capture-game="$PWD/build/validation/captures" --tour=village,peaks,dragonfight \
+  --style=4 --quality=2 --no-update --data-dir="$PWD/build/validation/gpu-user"
+```
+
+Villagers and activities in first person (JPGs; `--shots=npc,smith,night,board,elite,tracks,treasure,meteor,ring,raid`):
+
+```sh
+godot --path . --resolution 1600x900 -s res://tests/gpu/activity_capture.gd -- --out="$PWD/build/validation/act-shots" \
   --style=4 --quality=2 --no-update --data-dir="$PWD/build/validation/gpu-user"
 ```
 

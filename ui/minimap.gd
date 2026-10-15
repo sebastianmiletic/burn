@@ -135,17 +135,14 @@ func _collect_markers(world: Node, player: Object) -> void:
 	_markers.clear()
 	if world is GameWorld:
 		var gw := world as GameWorld
-		for q: Dictionary in gw.quests.tracked():
-			for objective: Dictionary in q["objectives"]:
-				if objective["done"]:
-					continue
-				var key := String(objective.get("key", ""))
-				if objective.get("type", "") == "interact":
-					key = key.get_slice("@", 1)
-				var target := gw.location_by_id(StringName(key))
-				if target != null and target.dimension == dimension:
-					_markers.append([_to_circle(target.center), "!", UiTheme.FROST, 16, true])
-					break
+		# Quest objectives, hand-ins and activities (QuestLog.markers()).
+		const ICONS := {"treasure": ["✕", Color(1.0, 0.85, 0.4)], "bounty": ["†", Color(1.0, 0.55, 0.3)], "star": ["⊕", Color(0.65, 0.78, 1.0)],
+			"raid": ["▲", Color(0.95, 0.3, 0.25)], "ring": ["◎", Color(1.0, 0.65, 0.35)], "hart": ["◇", Color(1.0, 0.88, 0.45)]}
+		for m: Dictionary in gw.quests.markers():
+			if int(m.get("dim", 0)) != dimension:
+				continue
+			var icon: Array = ICONS.get(String(m.get("icon", "")), ["!" if m.get("kind", "") != "turn_in" else "?", UiTheme.FROST])
+			_markers.append([_to_circle(m["pos"]), icon[0], icon[1], 16 if m.get("kind", "") != "activity" else 14, true])
 	var discovered: Variant = world.get("discovered")
 	var locs: Variant = UiContext.call_on(world, "locations", [dimension], [])
 	if locs is Array:

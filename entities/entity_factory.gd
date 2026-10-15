@@ -33,6 +33,9 @@ static func create(kind: String, _data := {}) -> Entity:
 			return LairDecor.new()
 		"station":
 			return Station.new()
+	if kind.begins_with("act_"):
+		# Activity props and markers (world/activities/*).
+		return ActivityDirector.create_entity(kind)
 	if kind in ENEMY_KINDS:
 		return _from_script("res://entities/enemies/enemy.gd", kind)
 	if kind in BEAST_KINDS:

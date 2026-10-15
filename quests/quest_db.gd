@@ -8,13 +8,13 @@ extends RefCounted
 const MAIN := [
 	{
 		"id": "kindling", "title": "Kindling", "giver": "elder",
-		"description": "Elder Maren asks you to rekindle the Emberfall Shrine, the last warm light of the Ashen Plains. Shrines are where the fallen wake again.",
+		"description": "Rekindle the Emberfall Shrine, the last warm light on the plains. Fall in battle and you wake beside a lit shrine.",
 		"objectives": [{"type": "interact", "key": "shrine@emberfall_shrine", "count": 1, "text": "Rekindle the Emberfall Shrine"}],
 		"rewards": {"xp": 60, "gold": 10, "items": {"potion_health": 2}}, "next": "iron_in_the_deep",
 	},
 	{
 		"id": "iron_in_the_deep", "title": "Iron in the Deep", "giver": "blacksmith",
-		"description": "Brannoc the smith can't forge with ash. Dig beneath the plains and bring iron ore and coal.",
+		"description": "Brannoc can't forge with ash. Dig under the plains for iron ore and coal and he'll make you a real blade.",
 		"objectives": [
 			{"type": "collect", "key": "iron_ore", "count": 5, "text": "Mine iron ore"},
 			{"type": "collect", "key": "coal", "count": 3, "text": "Mine coal"},
@@ -23,7 +23,7 @@ const MAIN := [
 	},
 	{
 		"id": "silent_crypt", "title": "The Silent Crypt", "giver": "elder",
-		"description": "Something old wakes beneath the Blackmarsh to the west. The Warden of the Silent Crypt holds the first of the three seals.",
+		"description": "Something woke beneath the Blackmarsh to the west. The Warden of the Silent Crypt holds the first of three seals. Take it.",
 		"objectives": [
 			{"type": "reach", "key": "silent_crypt", "count": 1, "text": "Find the Silent Crypt in the Blackmarsh"},
 			{"type": "boss", "key": "warden", "count": 1, "text": "Defeat the Warden"},
@@ -32,7 +32,7 @@ const MAIN := [
 	},
 	{
 		"id": "mountain_king", "title": "Hall of the Mountain King", "giver": "elder",
-		"description": "North, beyond Frosthold, a king of trolls sits on a stolen throne inside the mountain. His crown is the second seal.",
+		"description": "Beyond Frosthold a troll king sits on a stolen throne inside the mountain. His crown is the second seal.",
 		"objectives": [
 			{"type": "reach", "key": "mountain_hall", "count": 1, "text": "Enter the Hall of the Mountain King"},
 			{"type": "boss", "key": "mountain_king", "count": 1, "text": "Defeat the Mountain King"},
@@ -41,7 +41,7 @@ const MAIN := [
 	},
 	{
 		"id": "ashvane", "title": "Ashvane", "giver": "elder",
-		"description": "The dragon Ashvane nests in the Dragon's Keep across the Cinder Wastes. Its heart, still burning, is the last seal.",
+		"description": "Ashvane nests in the Dragon's Keep across the Cinder Wastes. Its still-burning heart is the last seal.",
 		"objectives": [
 			{"type": "reach", "key": "dragons_keep", "count": 1, "text": "Reach the Dragon's Keep"},
 			{"type": "boss", "key": "dragon", "count": 1, "text": "Slay Ashvane"},
@@ -50,7 +50,7 @@ const MAIN := [
 	},
 	{
 		"id": "into_the_deep", "title": "Into the Deep", "giver": "elder",
-		"description": "With the three seals, the Gates of Hades will open. They lie far below the Cinder Crater. Take a pickaxe and dig — deeper than anyone has dared.",
+		"description": "Three seals open the Gates of Hades, far below the Cinder Crater. Take a pickaxe and dig deeper than anyone has dared.",
 		"objectives": [
 			{"type": "have", "key": "warden_sigil", "count": 1, "text": "Carry the Warden's Sigil"},
 			{"type": "have", "key": "frost_crown", "count": 1, "text": "Carry the Frost Crown"},
@@ -62,7 +62,7 @@ const MAIN := [
 	},
 	{
 		"id": "hound", "title": "Hound of the Underworld", "giver": "",
-		"description": "Cerberus guards the road to the throne from Tartarus. Its fang will open the way.",
+		"description": "Cerberus guards the road from Tartarus to the throne. Its fang opens the way.",
 		"objectives": [
 			{"type": "reach", "key": "tartarus", "count": 1, "text": "Find Tartarus"},
 			{"type": "boss", "key": "cerberus", "count": 1, "text": "Defeat Cerberus"},
@@ -71,7 +71,7 @@ const MAIN := [
 	},
 	{
 		"id": "throne", "title": "The Throne of Hades", "giver": "",
-		"description": "The final battle beyond the Gates of Hades. Break his rule to awaken the sealed Ryft gateway in Emberfall. Your reward is unique, not an endless source of gold.",
+		"description": "Hades waits on his throne. Break him and the sealed Ryft gateway in Emberfall wakes. His hoard holds one-of-a-kind weapons.",
 		"objectives": [
 			{"type": "reach", "key": "throne_of_hades", "count": 1, "text": "Approach the Throne of Hades"},
 			{"type": "boss", "key": "hades", "count": 1, "text": "Defeat Hades"},
@@ -80,7 +80,7 @@ const MAIN := [
 	},
 	{
 		"id": "ryft", "title": "Beyond the Broken Sky", "giver": "",
-		"description": "Return to Emberfall and enter the violet gateway. Follow the narrow stone arches across Ryft Island, rest at the landing shrine, and explore the floating observatory and crown isle. Your mithril axe can harvest Ryftwood.",
+		"description": "The violet gateway in Emberfall is open. Cross the stone arches of Ryft Island, rest at the landing shrine and climb to the Crown. A mithril axe fells Ryftwood.",
 		"objectives": [
 			{"type": "dimension", "key": "2", "count": 1, "text": "Enter the Ryft gateway in Emberfall"},
 			{"type": "reach", "key": "ryft_isle_1", "count": 1, "text": "Explore the Broken Observatory"},
@@ -91,7 +91,9 @@ const MAIN := [
 	},
 ]
 
-## Village side quests: picked deterministically per village.
+## Legacy village side quests (no longer offered: villages now post bounty
+## contracts and run activities, see world/activities). Kept so saves that
+## have them active can still finish and hand them in.
 const SIDE_TEMPLATES := [
 	{"title": "Bones in the Fields", "description": "Skeletons have been seen near %s. Put them back in the ground.",
 		"objectives": [{"type": "kill", "key": "skeleton", "count": 6, "text": "Destroy skeletons"}], "rewards": {"xp": 90, "gold": 25}},

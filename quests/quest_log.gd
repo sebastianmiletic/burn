@@ -9,6 +9,12 @@ signal completed_quest(quest: Dictionary)
 var _active := {}       # id -> {"progress": PackedInt32Array, "tracked": bool}
 var _completed := {}    # id -> true
 var inventory: Inventory
+## Per-player activity progress (treasure hunts, bounty renown, personal
+## bests). Owned by the ActivityDirector; saved with the quests so it travels
+## with the character into other players' worlds.
+var activity := {}
+## Extra guidance sources (the ActivityDirector): Callable() -> Array of markers.
+var marker_providers: Array[Callable] = []
 
 
 func accept(id: String) -> bool:
@@ -201,7 +207,7 @@ func to_dict() -> Dictionary:
 	var a := {}
 	for id: String in _active:
 		a[id] = {"progress": Array(_active[id]["progress"]), "tracked": _active[id]["tracked"]}
-	return {"active": a, "completed": _completed.keys()}
+	return {"active": a, "completed": _completed.keys(), "activity": activity.duplicate(true)}
 
 
 func from_dict(d: Dictionary) -> void:
@@ -209,6 +215,131 @@ func from_dict(d: Dictionary) -> void:
 	_completed.clear()
 	var a: Dictionary = d.get("active", {})
 	for id: String in a:
+		if QuestDB.any(id).is_empty():
+			continue  # a quest that no longer exists in this version
 		_active[id] = {"progress": PackedInt32Array(a[id]["progress"]), "tracked": a[id]["tracked"]}
 	for id: String in d.get("completed", []):
 		_completed[id] = true
+	var act: Variant = d.get("activity", {})
+	activity = (act as Dictionary).duplicate(true) if act is Dictionary else {}
+
+
+# --- Guidance ------------------------------------------------------------------
+
+## Where to go next, for the compass, the on-screen objective marker, the
+## minimap and the map: [{pos: Vector3, dim: int, label: String,
+## kind: "main"|"side"|"turn_in"|"activity", id: String, radius: float (optional search circle)}].
+## Tracked quests contribute their next objective that has a place (or their
+## giver once ready to hand in); activity providers add theirs.
+func markers() -> Array:
+	# Several widgets ask every frame; recompute a few times a second.
+	var now := Time.get_ticks_msec()
+	if now - _markers_at < 200 and _markers_at >= 0:
+		return _markers_cache
+	_markers_at = now
+	_markers_cache = _compute_markers()
+	return _markers_cache
+
+
+var _markers_cache: Array = []
+var _markers_at := -1
+
+
+func _compute_markers() -> Array:
+	var out: Array = []
+	var gw := GameWorld.instance
+	if gw != null:
+		for id: String in _active:
+			if not _active[id]["tracked"]:
+				continue
+			var q := QuestDB.any(id)
+			if q.is_empty():
+				continue
+			var kind := "main" if not id.begins_with("side_") else "side"
+			if _objectives_done(id):
+				if String(q["giver"]) != "":
+					var giver := _giver_marker(gw, String(q["giver"]))
+					if not giver.is_empty():
+						giver["label"] = "Hand in: " + String(q["title"])
+						giver["kind"] = "turn_in"
+						giver["id"] = id
+						out.append(giver)
+				continue
+			var objs: Array = q["objectives"]
+			var progress: PackedInt32Array = _active[id]["progress"]
+			for i in objs.size():
+				var o: Dictionary = objs[i]
+				if progress[i] >= int(o["count"]):
+					continue
+				var m := _objective_marker(gw, o)
+				if m.is_empty():
+					continue
+				m["label"] = String(o["text"])
+				m["kind"] = kind
+				m["id"] = id
+				out.append(m)
+				break
+	for provider in marker_providers:
+		if provider.is_valid():
+			var extra: Variant = provider.call()
+			if extra is Array:
+				out.append_array(extra)
+	return out
+
+
+static func _objective_marker(gw: GameWorld, o: Dictionary) -> Dictionary:
+	var key := String(o.get("key", ""))
+	match String(o.get("type", "")):
+		"reach":
+			var loc := gw.location_by_id(StringName(key))
+			if loc != null:
+				return {"pos": loc.center, "dim": loc.dimension}
+		"interact":
+			var loc2 := gw.location_by_id(StringName(key.get_slice("@", 1)))
+			if loc2 != null:
+				var p := loc2.center
+				for s in loc2.spawns_of("shrine"):
+					p = s["pos"]
+				return {"pos": p, "dim": loc2.dimension}
+		"boss":
+			for d: int in gw.gens:
+				for loc3 in gw.locations(d):
+					for s in loc3.spawns_of("boss"):
+						if String(s.get("kind", "")) == key:
+							return {"pos": s["pos"], "dim": d}
+		"dimension":
+			if key == "1":
+				var gate := gw.location_by_id(&"gates_of_hades")
+				if gate != null:
+					for s in gate.spawns_of("portal"):
+						return {"pos": s["pos"], "dim": gate.dimension}
+			elif key == "2":
+				var home := gw.location_by_id(&"emberfall")
+				if home != null:
+					for s in home.spawns_of("portal"):
+						if int(s.get("to", 0)) == 2:
+							return {"pos": s["pos"], "dim": home.dimension}
+					return {"pos": home.center, "dim": home.dimension}
+	return {}
+
+
+## The giver's actual position when they are about, else their village.
+static func _giver_marker(gw: GameWorld, giver: String) -> Dictionary:
+	var village := "emberfall"
+	var role := ""
+	match giver:
+		"elder":
+			role = "elder"
+		"blacksmith":
+			role = "blacksmith"
+		_:
+			if giver.begins_with("villager@"):
+				village = giver.trim_prefix("villager@")
+				role = "chief"
+	for e in gw.all_entities():
+		if e is Npc and (e as Npc).village == village and ((e as Npc).role == role or (role == "chief" and (e as Npc).role == "elder")):
+			return {"pos": (e as Npc).global_position, "dim": (e as Npc).dimension}
+	var loc := gw.location_by_id(StringName(village))
+	if loc != null:
+		return {"pos": loc.center, "dim": loc.dimension}
+	return {}

@@ -111,6 +111,8 @@ func setup(info: Dictionary) -> void:
 	add_child(spawner)
 	tracker = LocationTracker.new()
 	add_child(tracker)
+	# Activities (treasure, bounties, world events, the Proving Ring): same node path on every peer.
+	add_child(ActivityDirector.new())
 
 	var save: Dictionary = info.get("save", {})
 	_load_world_state(save)
@@ -828,6 +830,7 @@ func save_data() -> Dictionary:
 		"lit_shrines": lit_shrines.keys(),
 		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits(), 2: world_for(2).get_edits()},
 		"stations": placed_stations,
+		"activities": ActivityDirector.of(self).save_state() if ActivityDirector.of(self) != null else {},
 		"ryft_unlocked": ryft_unlocked,
 		"time_of_day": sky.time_of_day,
 		"day": sky.day,
