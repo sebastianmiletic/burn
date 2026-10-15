@@ -260,8 +260,10 @@ func _draw_overlay() -> void:
 	for e: Array in _quests:
 		var pt: Dictionary = e[1]
 		var rad := float(pt.get("radius", 0.0))
-		if rad > 0.0 and (e[0] as Vector2).length() < 1.2:
-			MapIcons.draw_area(ci, pt, c + (e[0] as Vector2) * r, rad / m_per_unit * r)
+		var area_px := rad / m_per_unit * r
+		# Only areas that fit inside the glass (no clipping on canvas items).
+		if rad > 0.0 and (e[0] as Vector2).length() * r + area_px <= r - 2.0:
+			MapIcons.draw_area(ci, pt, c + (e[0] as Vector2) * r, area_px)
 	var order := _quests.duplicate()
 	order.sort_custom(func(x: Array, y: Array) -> bool: return float(x[1].get("priority", 1.0)) < float(y[1].get("priority", 1.0)))
 	for e: Array in order:
