@@ -182,7 +182,7 @@ func start_campaign() -> void:
 	}
 	Net.late_join_info = func() -> Dictionary:
 		var live := join_state()
-		return {"seed": seed_value, "join_state": live if not live.is_empty() else initial_state}
+		return {"seed": seed_value, "join_state": live if not live.is_empty() else initial_state, "options": Net.lobby_options.duplicate()}
 	Net.start_campaign({"seed": seed_value, "host_save": save.has("seed"), "join_state": initial_state})
 
 

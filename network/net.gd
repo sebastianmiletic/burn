@@ -47,6 +47,9 @@ var players := {}
 var runes := PackedInt32Array()
 ## The info the campaign was started with (host and clients), {} before.
 var session_info := {}
+## Host-chosen party rules, sent with the session. shrine_respawn: downed players
+## rise at their shrine on their own (off: teammates must revive them).
+var lobby_options := {"shrine_respawn": false}
 ## Host: optional builder for the info sent to players who join mid-game
 ## (e.g. the current world edits). Default: the original session_info.
 var late_join_info := Callable()
@@ -277,9 +280,24 @@ func kick(peer_id: int, reason := "You were removed from the party.") -> void:
 
 
 ## Host: start (or restart) the campaign for everyone.
+func set_lobby_option(key: String, value: Variant) -> void:
+	if not is_server():
+		return
+	lobby_options[key] = value
+	lobby_changed.emit()
+
+
+## A party rule for this session (falls back to the lobby's choice, then default).
+func option(key: String, default: Variant = null) -> Variant:
+	var opts: Dictionary = session_info.get("options", lobby_options)
+	return opts.get(key, lobby_options.get(key, default))
+
+
 func start_campaign(info: Dictionary) -> void:
 	if not is_server():
 		return
+	if not info.has("options"):
+		info["options"] = lobby_options.duplicate()
 	session_info = info
 	_campaign_started = true
 	if is_online():
