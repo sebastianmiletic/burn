@@ -60,7 +60,7 @@ func _ready() -> void:
 	banner.anchor_right = 0.5
 	banner.offset_left = -420
 	banner.offset_right = 420
-	banner.offset_top = 150
+	banner.offset_top = 96  # clear of the location banner below it
 	banner.alignment = BoxContainer.ALIGNMENT_CENTER
 	_banner_title = UiTheme.title("", 34, UiTheme.ACCENT_HOT, 700)
 	_banner_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
