@@ -167,6 +167,8 @@ static func _house(b: ArchBuild, spec: Dictionary, rng: RandomNumberGenerator) -
 			if two_storey and h.position.y > 2.0:
 				shutter_z = 0.07
 			ArchKit.window(b, h, t, frame_tint, L.ASHLAR if (stone or two_storey) else L.TIMBER, stone_tint if (stone or two_storey) else timber, lit and rng.randf() < 0.85, enterable, with_shutters, shutter_z)
+			if side < 2 and h.position.y < 2.0 and rng.randf() < float(_style(spec, "flowers", 0.35)):
+				_window_box(b, h, rng, timber)
 		b.pop()
 	# Corner quoins on stone houses.
 	if stone or two_storey:
@@ -682,3 +684,23 @@ static func _dormer(b: ArchBuild, cx: float, d: float, wall_h: float, pitch: flo
 	m.mat(L.BOARDS, timber, 0.3)
 	for s: float in [-1.0, 1.0]:
 		m.beam(Vector3(cx + s * (hw + 0.14), ye - 0.14, zf + 0.15), Vector3(cx, yr + 0.02, zf + 0.15), 0.2, 0.04, Vector3.BACK)
+
+
+## A planted window box under a casement (wall frame).
+static func _window_box(b: ArchBuild, r: Rect2, rng: RandomNumberGenerator, timber: Color) -> void:
+	var m := b.detail
+	var c := Vector3(r.get_center().x, r.position.y - 0.22, 0.2)
+	m.mat(L.BOARDS, timber * Color(1.2, 1.1, 1.0), 0.4)
+	m.box(c, Vector3(r.size.x + 0.12, 0.2, 0.24), 0)
+	m.mat(L.IRON, Color(0.6, 0.6, 0.6), 0.0)
+	for s: float in [-1.0, 1.0]:
+		m.beam(c + Vector3(s * r.size.x * 0.35, -0.1, -0.1), c + Vector3(s * r.size.x * 0.35, -0.3, -0.19), 0.025, 0.025)
+	var bloom: Color = [Color(0.85, 0.15, 0.12), Color(0.95, 0.75, 0.2), Color(0.75, 0.3, 0.6), Color(0.95, 0.9, 0.85)][rng.randi() % 4]
+	var n := int(r.size.x / 0.13)
+	for i in n:
+		var q := c + Vector3(-r.size.x * 0.5 + 0.08 + i * 0.13 + rng.randf_range(-0.03, 0.03), 0.1, rng.randf_range(-0.06, 0.06))
+		m.mat(L.FLAT, Color(0.2, 0.36, 0.14) * rng.randf_range(0.8, 1.2), 0.0)
+		m.lathe(q, PackedVector2Array([Vector2(0.0, 0.0), Vector2(0.07, 0.06), Vector2(0.05, 0.14), Vector2(0.0, 0.16)]), 6, false, false, rng.randf())
+		if rng.randf() < 0.7:
+			m.mat(L.FLAT, bloom * rng.randf_range(0.85, 1.1), 0.0)
+			m.lathe(q + Vector3(rng.randf_range(-0.03, 0.03), 0.13, 0), PackedVector2Array([Vector2(0.0, 0.0), Vector2(0.045, 0.03), Vector2(0.0, 0.06)]), 5, false, false)

@@ -156,6 +156,13 @@ func test_mesher_produces_faces_and_timing() -> void:
 			for dx in range(-1, 2):
 				neighbours[(dx + 1) + (dy + 1) * 3 + (dz + 1) * 9] = g.generate_chunk(k + Vector3i(dx, dy, dz))
 	var gen_ms := (Time.get_ticks_usec() - t0) / 27000.0
+	# Villages are modelled now (no crisp cubes): set a few legacy cubes, as an old save could hold.
+	var centre: PackedByteArray = neighbours[13]
+	if centre.is_empty():
+		centre = Chunk.empty()
+	for i in 16:
+		centre[i + 8 * Chunk.SIZE + 8 * Chunk.AREA] = Blocks.PLANKS
+	neighbours[13] = centre
 	var surface := PackedInt32Array()
 	surface.resize(256)
 	surface.fill(1000)

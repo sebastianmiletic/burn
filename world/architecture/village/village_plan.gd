@@ -46,7 +46,7 @@ const STYLES := {
 		"shutters": [Color(0.22, 0.3, 0.4), Color(0.45, 0.2, 0.15)],
 		"door": Color(0.45, 0.34, 0.26), "banner": Color(0.2, 0.32, 0.5), "sign": Color(0.6, 0.75, 0.9),
 		"wear": 0.2, "snow": 0.85, "stone_ratio": 0.85, "tavern": "The Hearthstone", "chapel": false, "fence": "rail",
-		"hall": "longhouse", "palisade": "timber", "gable": "stone",
+		"hall": "longhouse", "palisade": "timber", "gable": "stone", "flowers": 0.05,
 	},
 	&"mirewatch": {
 		"name": "marsh", "walls": "boards", "roofs": ["thatch", "thatch", "thatch"],
@@ -55,7 +55,7 @@ const STYLES := {
 		"shutters": [Color(0.32, 0.38, 0.3)],
 		"door": Color(0.45, 0.4, 0.33), "banner": Color(0.3, 0.38, 0.3), "sign": Color(0.5, 0.6, 0.45),
 		"wear": 0.85, "snow": 0.0, "stone_ratio": 0.0, "tavern": "The Drowned Lantern", "chapel": false, "fence": "wattle",
-		"stilts": true,
+		"stilts": true, "flowers": 0.15,
 	},
 	&"cinderreach": {
 		"name": "ash", "walls": "stone", "roofs": ["slate", "slate", "slate"],
@@ -64,7 +64,7 @@ const STYLES := {
 		"shutters": [Color(0.4, 0.18, 0.12), Color(0.3, 0.26, 0.22)],
 		"door": Color(0.38, 0.3, 0.24), "banner": Color(0.6, 0.18, 0.08), "sign": Color(0.85, 0.35, 0.1),
 		"wear": 0.15, "snow": 0.0, "stone_ratio": 1.0, "tavern": "The Cinder Cup", "chapel": true, "fence": "rail",
-		"palisade": "stone",
+		"palisade": "stone", "flowers": 0.0,
 	},
 }
 
@@ -262,7 +262,7 @@ static func _commit(ctx: Dictionary, item: Dictionary, rect: Rect2, rot: int) ->
 		"plaster": plaster_list[rng.randi() % plaster_list.size()], "timber": st["timber"], "stone": st["stone"],
 		"roof_tint": st["roof_tint"], "shutters": shutter_list[rng.randi() % shutter_list.size()], "door": st["door"],
 		"wear": st["wear"], "snow": st["snow"], "walls": st["walls"], "banner": st["banner"], "sign": st["sign"],
-		"gable": st.get("gable", ""),
+		"gable": st.get("gable", ""), "flowers": st.get("flowers", 0.35),
 	}
 	var spec := {
 		"type": "building", "material": "roof", "role": role, "kind": kind,
