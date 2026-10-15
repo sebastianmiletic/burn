@@ -6,14 +6,14 @@ extends RefCounted
 ## seed, identically on every machine.
 
 const PLAYER_COLOURS := [
-	[Color(0.2, 0.17, 0.15), Color(0.55, 0.22, 0.1)],   # ash and ember
-	[Color(0.14, 0.18, 0.22), Color(0.3, 0.45, 0.6)],   # river
-	[Color(0.22, 0.2, 0.12), Color(0.6, 0.5, 0.2)],     # gold
-	[Color(0.2, 0.12, 0.18), Color(0.55, 0.25, 0.45)],  # plum
-	[Color(0.12, 0.18, 0.13), Color(0.35, 0.55, 0.3)],  # moss
-	[Color(0.24, 0.22, 0.22), Color(0.8, 0.78, 0.75)],  # bone
-	[Color(0.25, 0.1, 0.08), Color(0.85, 0.4, 0.2)],    # flame
-	[Color(0.1, 0.1, 0.14), Color(0.5, 0.5, 0.7)],      # dusk
+	[Color(0.36, 0.3, 0.25), Color(0.62, 0.27, 0.12)],  # ash and ember
+	[Color(0.26, 0.31, 0.37), Color(0.34, 0.5, 0.66)],  # river
+	[Color(0.38, 0.34, 0.22), Color(0.66, 0.55, 0.24)], # gold
+	[Color(0.34, 0.22, 0.31), Color(0.6, 0.3, 0.5)],    # plum
+	[Color(0.24, 0.32, 0.24), Color(0.4, 0.6, 0.34)],   # moss
+	[Color(0.4, 0.38, 0.37), Color(0.82, 0.8, 0.77)],   # bone
+	[Color(0.42, 0.18, 0.13), Color(0.88, 0.44, 0.22)], # flame
+	[Color(0.2, 0.2, 0.27), Color(0.55, 0.55, 0.74)],   # dusk
 ]
 
 
@@ -153,7 +153,7 @@ static func player(colour_index: int, torch_shadows := true) -> HumanoidModel:
 static func player_style(colour_index: int, torch_shadows := true) -> Dictionary:
 	var c: Array = PLAYER_COLOURS[posmod(colour_index, PLAYER_COLOURS.size())]
 	return {"skin": Color(0.74, 0.58, 0.46), "cloth": c[0], "cloth2": c[1], "hood": true, "cloak": true,
-		"cloak_color": (c[0] as Color).darkened(0.15), "boots": Color(0.14, 0.1, 0.07), "torch_shadows": torch_shadows}
+		"cloak_color": (c[0] as Color).darkened(0.08), "boots": Color(0.14, 0.1, 0.07), "torch_shadows": torch_shadows}
 
 
 static func villager(role: String, seed_value: int) -> HumanoidModel:

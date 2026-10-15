@@ -232,7 +232,7 @@ void fragment() {
 	// Soft rim and a touch of self-illumination keep characters readable as
 	// glyphs against bright ground (they would otherwise become blank holes).
 	float r = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	emit += col * (0.09 + r * 0.22);
+	emit += col * (0.1 + r * 0.25) + vec3(0.85, 0.78, 0.7) * r * 0.035;
 
 	ALBEDO = mix(col, flash_color, hit_flash);
 	METALLIC = metal;

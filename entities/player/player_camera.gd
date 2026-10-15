@@ -30,7 +30,7 @@ func _ready() -> void:
 	# glyph-less silhouettes against bright ground.
 	var fill := OmniLight3D.new()
 	fill.light_color = Color(1.0, 0.82, 0.62)
-	fill.light_energy = 0.55
+	fill.light_energy = 0.85
 	fill.omni_range = 9.0
 	fill.omni_attenuation = 1.6
 	fill.light_specular = 0.1
