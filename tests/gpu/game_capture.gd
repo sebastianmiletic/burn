@@ -78,7 +78,9 @@ func _run() -> void:
 			Settings.STYLE_NAMES[int(Settings.get_value("graphics", "style"))], Settings.render_scale()])
 	await _frames(60)
 	for stop: String in tour:
-		var spec: Array = STOPS[stop]
+		# "arena_<location id>": stand 18 m in front of that location's boss spawn.
+		var arena := stop.begins_with("arena_")
+		var spec: Array = [StringName(stop.trim_prefix("arena_")), 13.0, 0.0, Vector3(0, 2.5, 18), -0.12] if arena else STOPS[stop]
 		var loc := w.location_by_id(spec[0])
 		if loc == null:
 			report.append("%s: location missing" % stop)
@@ -96,7 +98,16 @@ func _run() -> void:
 		var offset: Vector3 = spec[3] if spec.size() > 3 else Vector3(0, 2, 4)
 		if spec.size() > 3:
 			target = loc.center
+		if arena:
+			for s in loc.spawns_of("boss"):
+				target = s["pos"]
 		p.global_position = target + offset
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--hold="):
+				p.give_item(a.trim_prefix("--hold="), 1)
+				for i in Inventory.HOTBAR:
+					if p.inventory.get_slot(i).get("id", "") == a.trim_prefix("--hold="):
+						p.inventory.selected = i
 		if stop in ["geyser", "sanctuary"]:
 			var wanted := CaveBiomes.Kind.GEYSER if stop == "geyser" else CaveBiomes.Kind.CRYSTAL_REFUGE
 			var found := false
