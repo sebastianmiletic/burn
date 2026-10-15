@@ -25,8 +25,12 @@ signal peer_left(id: int, player_name: String)
 signal hosting_started(runes: PackedInt32Array)
 ## Joiner progress for the lobby UI: "searching", "connecting", "joined".
 signal join_status(state: String)
+## Host: the internet address friends outside the LAN can join with (after UPnP).
+signal public_address_changed(address: String)
 
-const PROTOCOL_VERSION := 1
+const PROTOCOL_VERSION := 2
+## Hello code for players who joined by address instead of runes.
+const ADDRESS_JOIN := -1
 const MAX_PLAYERS := 8
 const ENET_PORTS: Array[int] = [47211, 47212, 47213, 47214, 47215, 47216, 47217, 47218, 47219, 47220]
 const CHUNK_BYTES := 32 * 1024
@@ -47,6 +51,11 @@ var session_info := {}
 ## (e.g. the current world edits). Default: the original session_info.
 var late_join_info := Callable()
 var enet_port := 0
+## Host's public "ip:port" once the router opened the port via UPnP ("" otherwise).
+var public_address := ""
+var _upnp_thread: Thread
+var _upnp_port := 0
+var _join_by_address := false
 
 var sim_latency_ms := 0.0:
 	set(v):
@@ -90,6 +99,7 @@ func _ready() -> void:
 func _handle_command_line() -> void:
 	var name_arg := ""
 	var join_arg := ""
+	var addr_arg := ""
 	var host := false
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--sim-latency="):
@@ -102,10 +112,18 @@ func _handle_command_line() -> void:
 			host = true
 		elif arg.begins_with("--join="):
 			join_arg = arg.trim_prefix("--join=")
+		elif arg.begins_with("--join-address="):
+			addr_arg = arg.trim_prefix("--join-address=")
 	var who := name_arg if name_arg != "" else _default_name()
 	if host:
 		var code := host_party(who)
 		print("BURN_RUNES %s" % RuneCode.to_text(code))
+	elif addr_arg != "":
+		join_status.connect(func(state: String) -> void:
+			if state == "joined":
+				print("BURN_JOINED %s as %s" % [addr_arg, _my_name()]))
+		join_failed.connect(func(reason: String) -> void: print("BURN_JOIN_FAILED %s" % reason))
+		join_address(addr_arg, who)
 	elif join_arg != "":
 		var code := RuneCode.from_text(join_arg)
 		if code.is_empty():
@@ -149,6 +167,7 @@ func host_party(player_name: String, forced_runes := PackedInt32Array()) -> Pack
 		push_warning("LAN discovery port busy: friends on other machines may not find this party.")
 	_campaign_started = false
 	session_info = {}
+	_open_router_port(enet_port)
 	hosting_started.emit(runes)
 	lobby_changed.emit()
 	return runes
@@ -167,8 +186,75 @@ func join_party(code: PackedInt32Array, player_name: String) -> void:
 	_discovery.search(RuneCode.encode(code), PROTOCOL_VERSION)
 
 
+## Join a party over the internet (or a LAN without broadcast) by address,
+## "host:port" or a bare host (default port). Runes are optional here: an
+## address is already private enough to share between friends.
+func join_address(address: String, player_name: String, code := PackedInt32Array()) -> void:
+	leave()
+	var host := address.strip_edges()
+	var port := ENET_PORTS[0]
+	var colon := host.rfind(":")
+	if colon > 0 and host.count(":") == 1:
+		port = int(host.substr(colon + 1))
+		host = host.substr(0, colon)
+	if host == "" or port <= 0:
+		join_failed.emit("That isn't a valid address.")
+		return
+	_joining_runes = code
+	_joining_name = _clean_name(player_name)
+	_join_by_address = true
+	join_status.emit("connecting")
+	_on_found(host, port, host)
+
+
+## Ask the router (UPnP) to forward the game port so friends can join over the
+## internet. Runs on a thread: discovery can take a few seconds.
+func _open_router_port(port: int) -> void:
+	if DisplayServer.get_name() == "headless" or OS.has_feature("web"):
+		return
+	_close_router_port()
+	_upnp_port = port
+	_upnp_thread = Thread.new()
+	_upnp_thread.start(func() -> void:
+		var upnp := UPNP.new()
+		if upnp.discover(2500, 2, "InternetGatewayDevice") != UPNP.UPNP_RESULT_SUCCESS:
+			return
+		var gw := upnp.get_gateway()
+		if gw == null or not gw.is_valid_gateway():
+			return
+		if upnp.add_port_mapping(port, port, "Burn party", "UDP", 0) != UPNP.UPNP_RESULT_SUCCESS:
+			return
+		var ip := upnp.query_external_address()
+		if ip != "":
+			_set_public_address.call_deferred("%s:%d" % [ip, port]))
+
+
+func _set_public_address(address: String) -> void:
+	public_address = address
+	public_address_changed.emit(address)
+
+
+func _close_router_port() -> void:
+	if _upnp_thread != null:
+		_upnp_thread.wait_to_finish()
+		_upnp_thread = null
+	if _upnp_port != 0 and public_address != "":
+		var port := _upnp_port
+		var t := Thread.new()
+		t.start(func() -> void:
+			var upnp := UPNP.new()
+			if upnp.discover(1500, 2, "InternetGatewayDevice") == UPNP.UPNP_RESULT_SUCCESS:
+				upnp.delete_port_mapping(port, "UDP"))
+		t.wait_to_finish()
+	_upnp_port = 0
+	if public_address != "":
+		_set_public_address("")
+
+
 ## Leave the party (or stop hosting) and return to solo.
 func leave() -> void:
+	_close_router_port()
+	_join_by_address = false
 	_discovery.stop_responder()
 	_discovery.stop_search()
 	if multiplayer.multiplayer_peer != null and not multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
@@ -304,7 +390,8 @@ func _on_discovery_failed(reason: String) -> void:
 
 
 func _on_connected_to_server() -> void:
-	_rpc_hello.rpc_id(1, _joining_name, PROTOCOL_VERSION, RuneCode.encode(_joining_runes))
+	var code := RuneCode.encode(_joining_runes) if RuneCode.is_valid(_joining_runes) else ADDRESS_JOIN
+	_rpc_hello.rpc_id(1, _joining_name, PROTOCOL_VERSION, code)
 
 
 func _on_connection_failed() -> void:
@@ -381,7 +468,7 @@ func _rpc_hello(requested_name: String, version: int, code: int) -> void:
 	if version != PROTOCOL_VERSION:
 		_reject(id, "That party is running a different version of Burn.")
 		return
-	if code != RuneCode.encode(runes):
+	if code != RuneCode.encode(runes) and code != ADDRESS_JOIN:
 		_reject(id, "No party with those runes was found on your network.")
 		return
 	if players.size() >= MAX_PLAYERS:
