@@ -27,6 +27,7 @@ func test_request_applies_and_holds() -> void:
 
 func test_events_drive_their_channels() -> void:
 	var w := Weather.new()
+	check(w.request("snow", 60.0), "snow can be summoned (frost charm)")
 	w.force("ember_storm")
 	check(w.ember_amount() > 0.4, "ember storm shows embers")
 	w.force("aurora")

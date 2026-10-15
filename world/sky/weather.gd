@@ -23,7 +23,7 @@ extends Node3D
 ## wind_dir, wind_strength (gusty), wetness, snow_cover, rain_amount.
 
 ## Every state. The first five are the everyday ones.
-const STATES := ["clear", "overcast", "rain", "storm", "fog", "blizzard", "heatwave", "dust_storm",
+const STATES := ["clear", "overcast", "rain", "storm", "fog", "snow", "blizzard", "heatwave", "dust_storm",
 		"ember_storm", "aurora", "meteor_shower"]
 ## Channels: overcast, precipitation, storm, fog, wind, snow (forces snow),
 ## dust (forces dust), heat, aurora, embers, meteors.
@@ -34,6 +34,7 @@ const LEVELS := {
 	"rain":          [0.88, 0.62, 0.0, 0.18, 0.6,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
 	"storm":         [1.0,  1.0,  1.0, 0.22, 1.0,  0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
 	"fog":           [0.45, 0.0,  0.0, 1.0,  0.08, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+	"snow":          [0.85, 0.6,  0.0, 0.25, 0.45, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
 	"blizzard":      [0.95, 0.95, 0.0, 0.7,  1.0,  1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
 	"heatwave":      [0.0,  0.0,  0.0, 0.0,  0.12, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
 	"dust_storm":    [0.35, 0.35, 0.0, 0.45, 1.0,  0.0, 1.0, 0.5, 0.0, 0.0, 0.0],
@@ -51,7 +52,8 @@ const SNOW_LINE := 62.0
 ## filtered by the clock when picked.
 const CHAIN := {
 	"clear": [["overcast", 4], ["fog", 1], ["heatwave", 1.2], ["dust_storm", 0.6], ["aurora", 1.4], ["meteor_shower", 1.0], ["clear", 1]],
-	"overcast": [["rain", 4], ["clear", 2], ["fog", 1], ["blizzard", 0.8], ["ember_storm", 0.7]],
+	"overcast": [["rain", 4], ["clear", 2], ["fog", 1], ["snow", 0.8], ["blizzard", 0.4], ["ember_storm", 0.7]],
+	"snow": [["overcast", 2], ["blizzard", 0.6], ["clear", 1]],
 	"rain": [["storm", 2.5], ["overcast", 2], ["clear", 1.5], ["rain", 1]],
 	"storm": [["rain", 3], ["overcast", 1]],
 	"fog": [["clear", 2], ["overcast", 1.5]],
@@ -67,11 +69,12 @@ const DAY_ONLY := ["heatwave"]
 ## Seconds a state lasts (min, max) before the host picks the next one.
 const DURATION := {
 	"clear": [150.0, 330.0], "overcast": [120.0, 260.0], "rain": [120.0, 280.0], "storm": [90.0, 200.0],
-	"fog": [90.0, 200.0], "blizzard": [90.0, 200.0], "heatwave": [150.0, 300.0], "dust_storm": [80.0, 160.0],
+	"fog": [90.0, 200.0], "snow": [120.0, 260.0], "blizzard": [90.0, 200.0], "heatwave": [150.0, 300.0], "dust_storm": [80.0, 160.0],
 	"ember_storm": [90.0, 180.0], "aurora": [120.0, 260.0], "meteor_shower": [90.0, 180.0],
 }
 const ANNOUNCE := {
 	"storm": "Thunder rolls in: a storm is breaking. Lightning seeks the high ground.",
+	"snow": "Snow begins to fall.",
 	"blizzard": "A blizzard sweeps down from the peaks.",
 	"heatwave": "A heatwave settles over the island.",
 	"dust_storm": "A dust storm rises out of the wastes.",
@@ -186,9 +189,7 @@ func hold_left() -> float:
 ## Development aid (captures): jump straight to a state. "snow" = rain that
 ## falls as snow wherever the player is.
 func force(s: String) -> void:
-	_forced_snow = s == "snow"
-	if _forced_snow:
-		s = "rain"
+	_forced_snow = false
 	if not LEVELS.has(s):
 		return
 	state = s
@@ -196,11 +197,11 @@ func force(s: String) -> void:
 	for i in CHANNELS:
 		_current[i] = target[i]
 	_next_change = 1e9
-	_snow_mix = 1.0 if _forced_snow or s == "blizzard" else 0.0
+	_snow_mix = 1.0 if s == "snow" or s == "blizzard" else 0.0
 	_dust_mix = 1.0 if s == "dust_storm" else 0.0
-	if s in ["rain", "storm", "blizzard"]:
+	if s in ["rain", "storm", "snow", "blizzard"]:
 		_wet = 0.8
-		_snow_cover = 0.7 if _forced_snow or s == "blizzard" else 0.0
+		_snow_cover = 0.7 if s == "snow" or s == "blizzard" else 0.0
 	else:
 		_wet = 0.0
 		_snow_cover = 0.0
