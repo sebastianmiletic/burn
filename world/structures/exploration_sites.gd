@@ -63,5 +63,7 @@ static func ryft(gen: WorldGen) -> Array[Location]:
 			loc.add_spawn("enemy", loc.center + Vector3(10, 1, 3), {"kind": "rock_golem" if i == 2 else "shade"})
 		for side in [-1, 1]:
 			Architecture.box(loc, loc.center + Vector3(side * 5, 3, -8), Vector3(1.2, 7, 1.4), "stone", Vector3(0, 0, side * 0.12))
+		if i == 1 or i == 2:
+			Battlegrounds.ryft_lair(loc, i)  # crystal boss arenas (Prism Sentinel, Void Sovereign)
 		out.append(loc)
 	return out

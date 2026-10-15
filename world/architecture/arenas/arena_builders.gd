@@ -16,4 +16,12 @@ static func run(b: ArenaBuild) -> void:
 			MountainArena.build(b)
 		"crypt":
 			CryptArena.build(b)
+		"drowned_spire":
+			LairArenas.spire(b)
+		"broodmother":
+			LairArenas.brood(b)
+		"hagsfen":
+			LairArenas.hagsfen(b)
+		"ryft_lair":
+			RyftArena.build(b)
 	b.finish()

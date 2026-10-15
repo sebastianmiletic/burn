@@ -648,7 +648,7 @@ func _set_arena_gates(boss: Node, closed: bool) -> void:
 				var p := base + across * w + Vector3i(0, h, 0)
 				var vw := world_for(dim)
 				if vw.get_block(p) == Blocks.AIR:
-					request_set_block_server(p, Blocks.IRON_BARS, dim)
+					request_set_block_server(p, Blocks.STRUCTURE, dim)  # invisible: ArenaGate draws the gate
 					_arena_gate_blocks.append([dim, p])
 
 

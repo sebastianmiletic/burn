@@ -102,7 +102,7 @@ func _run() -> void:
 		if loc == null:
 			report.append("%s: location missing" % stop)
 			continue
-		if stop == "ryft":
+		if stop == "ryft" or loc.dimension == 2:
 			w.ryft_unlocked = true  # Capture-only fixture, never normal gameplay.
 		if loc.dimension != w.local_dimension:
 			w.travel(loc.dimension)
@@ -204,6 +204,19 @@ func _run() -> void:
 				p.call("_start_action", arg.trim_prefix("--action="), 0.6)
 				await get_tree().create_timer(0.2).timeout
 		await _shot(stop)
+		if "--arena-cost" in OS.get_cmdline_user_args():
+			# GPU time with the modelled arenas hidden (needs --rendering-driver vulkan on macOS).
+			var arenas := w.find_children("ArenaDirector", "", true, false)
+			for a: Node3D in arenas:
+				a.visible = false
+			await _frames(20)
+			var gpu_off := 0.0
+			for i in 30:
+				await get_tree().process_frame
+				gpu_off += RenderingServer.viewport_get_measured_render_time_gpu(vp_rid) / 30.0
+			for a: Node3D in arenas:
+				a.visible = true
+			report.append("   arena gpu cost %.2f ms (%.2f with, %.2f without)" % [gpu - gpu_off, gpu, gpu_off])
 		if "--gpu-breakdown" in OS.get_cmdline_user_args():
 			await _gpu_breakdown(w, report, gpu if gpu > 0.0 else (await _measure(2.0)).x)
 		if "--raw" in OS.get_cmdline_user_args():

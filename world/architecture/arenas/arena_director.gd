@@ -19,6 +19,10 @@ var _poll := 0.0
 var _dim := -1
 
 
+func _init() -> void:
+	name = "ArenaDirector"
+
+
 static func arena_props(loc: Location) -> Array:
 	var out := []
 	for p: Dictionary in loc.props:

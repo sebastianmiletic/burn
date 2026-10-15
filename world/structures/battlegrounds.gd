@@ -337,6 +337,44 @@ static func mountain_hall(loc: Location, exit_dir: Vector2i, exit_y: int, rng: R
 	loc.center = _w(bp, Vector3(lc) + Vector3(0, 1, 0))
 
 
+# --- Ryft boss lairs --------------------------------------------------------------------
+
+## Crystal arenas on the Ryft's floating isles: index 1 the Broken Observatory
+## (Prism Sentinel), index 2 the Crown of the Ryft (Void Sovereign). A circular
+## dais of ryft stone ringed by crystal pillars (collision) around the boss pad
+## at loc.center + (0, 1.5, -6). Replaces the isle's placeholder box props.
+static func ryft_lair(loc: Location, index: int) -> void:
+	var keep: Array = []
+	for p: Dictionary in loc.props:
+		if String(p.get("type", "")) != "box":
+			keep.append(p)
+	loc.props = keep
+	loc.pad_radius = 16.0
+	loc.pad_falloff = 10.0
+	var g := int(loc.center.y)
+	var c0 := Vector3i(roundi(loc.center.x), g, roundi(loc.center.z) - 6)
+	var bp := Blueprint.new(c0 - Vector3i(20, 6, 20), Vector3i(41, 30, 41))
+	loc.blueprints.append(bp)
+	var c := Vector3i(20, 6, 20)
+	var r := 15.0
+	for z in range(-20, 21):
+		for x in range(-20, 21):
+			var d := Vector2(x, z).length()
+			if d <= r:
+				bp.set_local(c.x + x, c.y, c.z + z, S)
+				for y in range(1, 22):
+					bp.set_local(c.x + x, c.y + y, c.z + z, CARVE)
+	var pillars: Array = []
+	var n := 8 if index == 1 else 10
+	for i in n:
+		var a := TAU * i / n + 0.2
+		var at := Vector3i(roundi(cos(a) * 13.0), 0, roundi(sin(a) * 13.0))
+		_disc(bp, c, at, 1.1, 1, 6)
+		pillars.append(Vector3(at))
+	loc.props.append({"type": "arena", "material": "arena", "arena": "ryft_lair", "center": _center(bp, c), "radius": 30.0,
+			"seed": index * 911, "variant": index, "pillars": pillars, "r": r})
+
+
 # --- Gates of Hades ---------------------------------------------------------------------
 
 ## A vast cavern beneath the Cinder Crater. At its north end stands the Gate:
