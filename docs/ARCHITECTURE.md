@@ -161,6 +161,8 @@ signal join_failed(reason: String)
 signal peer_left(id: int, name: String)
 var players: Dictionary                  # peer_id -> {name, color: Color, ready: bool}
 var runes: PackedInt32Array              # 4 rune indices 0..15 of the current party
+var lobby_options: Dictionary           # host-authoritative, mirrored before play (protocol 4)
+func set_lobby_option(key: String, value: Variant) -> void # host only, validates known bool rules
 func host_party(player_name: String) -> PackedInt32Array
 func join_party(runes: PackedInt32Array, player_name: String) -> void   # LAN discovery then ENet connect
 func leave() -> void

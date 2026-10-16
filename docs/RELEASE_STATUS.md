@@ -2,7 +2,8 @@
 
 This is a playable development preview, **not a finished, hyperrealistic or universally 60-fps game**.
 Do not promote it to stable until the native-platform and updater release gates below are verified.
-The previous published preview was [v0.4.1](https://github.com/sebastianmiletic/burn/releases/tag/v0.4.1).
+Published: [v0.5.0 downloads](https://github.com/sebastianmiletic/burn/releases/tag/v0.5.0).
+Source `main` has since advanced to **0.5.1 development (protocol 4)**; v0.5.0 downloads use protocol 3.
 
 ## What changed
 
@@ -72,7 +73,32 @@ First tagged run [38858855851](https://github.com/sebastianmiletic/burn/actions/
 passed Linux unit/gameplay/flow but failed activity checks before export; no download was published.
 The follow-up fixes query candidate ground near its actual surface (not unloaded high air), hold test
 teleports during streaming and check ring-owned enemies rather than unrelated wildlife. The full local
-suite passed again (`ci-fixes/`). Retagged build/publication and exported-download smoke testing pending.
+suite passed again (`ci-fixes/`). The retagged run
+[38860699636](https://github.com/sebastianmiletic/burn/actions/runs/38860699636) then passed all Linux
+checks (151 unit tests, gameplay, flow, activities, both network scripts and engine log scanning),
+exported all three platforms and published **v0.5.0 as a prerelease** at commit `9b3ae03`.
+
+Downloaded Windows, Linux and macOS archives all match `SHA256SUMS.txt`. The actual macOS app passes
+`codesign --verify --deep --strict`, isolated headless menu startup and a 60-second isolated solo run
+that completed world loading, all log-checked (`export-menu.log`, `export-solo-confirm.log`). This is
+not native graphical Windows/Linux or Intel macOS certification.
+
+## Post-release main (unreleased 0.5.1)
+
+- `092554f`: host rules mirror to guests before play, update live, are read-only for guests, reset on
+  leave and match the campaign payload. Network protocol bumped to 4 for the changed lobby RPC;
+  do not mix source main with v0.5.0 downloads. Both guest-rule states were captured and inspected
+  (`lobby-ui-fixed/`, log checker passed).
+- `131fdd9`: delayed dead-entity cleanup binds an ID, not a freed Node. Weather integration fixtures
+  remain outside lightning's 2 m exclusion and expire the storm before testing unrelated charms.
+- `b050442`: generator sampling for the distant horizon stays on the existing preparation worker.
+  A previous two-process test crashed natively in parallel `_surface_v3` sampling
+  (`mp.LFUpmR/client.txt`). This is a mitigation, **not proof the sporadic crash is eliminated**.
+- Full suite passed afterwards in `build/validation/horizon-safety/`: **152 unit tests**, gameplay,
+  flow, activities and both network scripts, all log-checked. Two additional simulated-lag multiplayer
+  runs passed (`mp-repeat-1.log`, `mp-repeat-2.log`, with engine logs checked).
+- Earlier post-release rounds failed weather fixture/lifetime checks and one native multiplayer load;
+  those failures are retained in their logs and are not represented as passes.
 
 ## Remaining release gates and content work
 
@@ -84,8 +110,9 @@ suite passed again (`ci-fixes/`). Retagged build/publication and exported-downlo
    Intel macOS runtime checks. Exports/headless Linux CI are not graphical certification.
 4. **Updater:** exported two-version tests for digest validation, interruption, offline use, restart,
    failure rollback and updates completing during play. Prereleases intentionally do not auto-install.
-5. **Networking:** host party rules are not yet mirrored in the guest lobby; real internet UPnP/routing
-   and prolonged co-op need testing. Movement/inventories trust clients; no anti-cheat or relay service.
+5. **Networking:** guest party-rule mirroring is fixed on unreleased main, not in v0.5.0 downloads.
+   Real internet UPnP/routing and prolonged co-op still need testing. Movement/inventories trust clients;
+   no anti-cheat or relay service. Stress the sporadic native loading crash mitigation before another release.
 6. **World/content:** true redwood/birch/cactus/lichen models, missing ground flora, surface rivers,
    mine mini-boss guardians, boss warmup, bespoke humanoid attack animation and longer human playtesting.
 7. **Save compatibility:** revisions remain versioned and automated save/continue passes, but exhaustive

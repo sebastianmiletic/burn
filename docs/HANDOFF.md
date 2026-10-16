@@ -7,9 +7,10 @@ Written for whoever continues this project (human or another AI). It covers what
 **Read this first: sections 1–8 below are the previous handoff and some branch/release statements are historical.**
 
 - Both WIP branches are now merged into `main`: rendering `831cf10`, creatures `b2c154c`. No conflicts.
-- Full isolated validation passed after rendering (149 unit tests), after creatures (149), and after fixes
-  (151). Latest all-green logs: `build/validation/release-candidate/`; its `results.txt` records engine
-  and log-check exit codes. Both network scripts also checked their child logs, including engine logs.
+- Full isolated validation passed after rendering (149 unit tests), after creatures (149), for release
+  (151), and on post-release main (**152**). Latest all-green logs: `build/validation/horizon-safety/`;
+  `results.txt` records engine and log-check exit codes. Both network scripts checked child/engine logs.
+  Two additional simulated-lag gameplay runs passed (`mp-repeat-1.log`, `mp-repeat-2.log`).
 - A transport-only test sampled 94 ms localhost RTT immediately after bulk transfer. `911538a` allows
   bounded settling without widening latency limits or accepting a missing/zero ping.
 - Follow-up visual work: `6bddd85` reduces excessive organic bump relief, filters fur aliasing, adds
@@ -33,16 +34,25 @@ Written for whoever continues this project (human or another AI). It covers what
   work was not controlled. Draw calls/streaming/CPU load need profiling.
 - Native Windows/Linux graphics and mixed-OS play remain unverified. Only macOS runs here; Linux
   headless CI is automated coverage, not graphical/laptop certification.
-- README and architecture/development/release docs updated. Version prepared as **0.5.0**;
-  tagged prerelease publication/exported-download smoke testing is the next step. First GitHub run
-  `38858855851` failed activity checks before exports (151 Linux units/gameplay/flow passed). Fixes
-  query ground near the actual surface instead of unloaded high air, freeze test teleports during
-  streaming, and distinguish ring monsters from wildlife. Full local suite passed again in
-  `build/validation/ci-fixes/`; retag/build still pending.
-- Pending section-3 backlog remains: guest lobby party-rule sync, true species flora/missing ground
-  cover, surface rivers, mini-boss mine guardians, boss warmup and bespoke humanoid attack animation.
-- Disk: obsolete **worktree `build/` outputs only** were removed (~1.5 GB). Worktrees/branches and all
-  real player saves remain intact. Recheck `df -h .` before exports/downloads.
+- **v0.5.0 is published as a prerelease**, tag at `9b3ae03`. First GitHub run `38858855851` failed
+  activities before export. Fixed vertical event queries/test teleports/ring ownership; retagged run
+  **38860699636 passed** all Linux checks, exports and publication. Windows/Linux/macOS downloaded
+  archives match checksums. Actual macOS app: ad-hoc signature verification, isolated headless menu
+  and solo/world-load smoke tests passed (`export-menu.log`, `export-solo-confirm.log`). Not graphical
+  Windows/Linux certification. Do NOT promote to stable yet.
+- **Source main is now unreleased 0.5.1 / protocol 4**, not the downloadable protocol-3 v0.5.0.
+  `092554f` implements guest-lobby party-rule mirroring, live changes, read-only summaries and reset
+  on leave; transport tests cover those cases and session consistency. Both UI states captured and
+  opened in `lobby-ui-fixed/`; its log passes. Use matching source builds in co-op.
+- `131fdd9` avoids captured freed Nodes in death-cleanup timers and isolates weather-charm test
+  effects/targets. `b050442` keeps horizon generator sampling on the preparation worker after a
+  native MP-loading crash in `_surface_v3` (`mp.LFUpmR/client.txt`). Full suite + two repeat MP runs
+  then passed. **Sporadic native crash elimination is not proven; stress loading/teardown further.**
+- Pending section-3 backlog: true species flora/missing ground cover, surface rivers, mini-boss mine
+  guardians, boss warmup, bespoke humanoid attack animation, art/performance/native-platform gates.
+- Disk: removed obsolete worktree `build/` outputs (~1.5 GB) and redundant generated **test audio
+  caches under `build/validation/` only** (~5.8 GB). Logs, test saves, worktrees/branches and all real
+  player data remain intact. About 11 GiB free at last check; recheck before exports/downloads.
 
 See `docs/RELEASE_STATUS.md` for the current verification record and limitations.
 
@@ -53,8 +63,8 @@ See `docs/RELEASE_STATUS.md` for the current verification record and limitations
 **BURN** is a first-person, open-world, dark-fantasy action RPG made in **Godot 4.7.2** (GDScript, Forward+ renderer).
 
 - **Project:** `/Users/sebastianmiletic/Coding/Burn`. Git `main` is the source of truth.
-- **GitHub:** https://github.com/sebastianmiletic/burn. The last published release is the **v0.4.1 preview**. `main` is far ahead of it and has not been released yet.
-- **Version:** `config/version` in `project.godot` (currently `0.4.1`).
+- **GitHub:** https://github.com/sebastianmiletic/burn. Latest published preview: **v0.5.0**. Source main contains post-release work (see section 0).
+- **Version:** `config/version` in `project.godot` (currently unreleased `0.5.1`).
 - **Running it:**
   - Install Godot 4.7.2.
   - On first run, import assets: `godot --headless --path . --import`
@@ -172,10 +182,10 @@ The user wants a complete, professional, hyperrealistic, first-person game with 
 
 **Not done or not verified:**
 
-- [ ] **Publish a new release** for friends to download (section 5).
+- [x] **Publish a new release**: v0.5.0 prerelease, all three platforms; see section 0 for verification limits.
 - [ ] **60 fps minimum at High on all hardware**: not verified. On the user's Apple M4 at 2940×1846 most scenes ran around 45–60 fps, but always under heavy load from other processes. Measure on a quiet machine with `F3` and the capture tool's report.
 - [ ] **Native testing on Windows and Linux laptops**: never done. Only macOS has been run, and the Linux CI runner runs the headless tests.
-- [ ] The guest lobby doesn't show the host's party rules before the session starts (`lobby_options` is not broadcast in the lobby).
+- [x] Guest lobby party rules: fixed and tested on **unreleased 0.5.1 main**, not the v0.5.0 downloads.
 - [ ] Flora gaps:
   - no true redwood or birch models (redwoods are scaled pines, and Flora caps trees at 20 m);
   - no cacti or tundra lichen;
