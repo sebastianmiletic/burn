@@ -10,7 +10,9 @@ Written for whoever continues this project (human or another AI). It covers what
 - Full isolated validation passed after rendering (149 unit tests), after creatures (149), for release
   (151), and on post-release main (**152**). Latest all-green logs: `build/validation/horizon-safety/`;
   `results.txt` records engine and log-check exit codes. Both network scripts checked child/engine logs.
-  Two additional simulated-lag gameplay runs passed (`mp-repeat-1.log`, `mp-repeat-2.log`).
+  Two additional simulated-lag gameplay runs passed (`mp-repeat-1.log`, `mp-repeat-2.log`). Linux
+  **main CI run 38900890509 passed** the full process (152 units), all log checks and all three exports;
+  workflow-dispatch artifacts only, not a new release. Log: `build/validation/main-ci-success.log`.
 - A transport-only test sampled 94 ms localhost RTT immediately after bulk transfer. `911538a` allows
   bounded settling without widening latency limits or accepting a missing/zero ping.
 - Follow-up visual work: `6bddd85` reduces excessive organic bump relief, filters fur aliasing, adds
@@ -53,6 +55,17 @@ Written for whoever continues this project (human or another AI). It covers what
 - Disk: removed obsolete worktree `build/` outputs (~1.5 GB) and redundant generated **test audio
   caches under `build/validation/` only** (~5.8 GB). Logs, test saves, worktrees/branches and all real
   player data remain intact. About 11 GiB free at last check; recheck before exports/downloads.
+
+### Where to continue next
+
+1. Profile High on a quiet machine, starting with village draw calls/vegetation and streaming; the
+   measured 26–44 fps is a real blocker, not something to hide by lowering internal resolution.
+2. Stress repeated host/client loading and shutdown on both macOS and Linux after the horizon-worker
+   mitigation. Keep the failed `mp.LFUpmR` log for comparison. Do not call it conclusively fixed yet.
+3. Continue section 3's remaining world/art work: species-specific flora and missing ground cover,
+   surface rivers, scaled mine guardians, loading-time boss warmup and boss attack animations.
+4. Obtain actual Windows/Linux laptop and mixed-OS playtests, plus exported updater/migration tests.
+5. If releasing the post-release lobby fix, use a **new** tag (e.g. v0.5.1), do not move v0.5.0 again.
 
 See `docs/RELEASE_STATUS.md` for the current verification record and limitations.
 

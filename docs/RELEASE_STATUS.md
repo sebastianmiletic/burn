@@ -97,6 +97,9 @@ not native graphical Windows/Linux or Intel macOS certification.
 - Full suite passed afterwards in `build/validation/horizon-safety/`: **152 unit tests**, gameplay,
   flow, activities and both network scripts, all log-checked. Two additional simulated-lag multiplayer
   runs passed (`mp-repeat-1.log`, `mp-repeat-2.log`, with engine logs checked).
+- Linux main run [38900890509](https://github.com/sebastianmiletic/burn/actions/runs/38900890509)
+  passed the same full test process (152 units), log checks and Windows/macOS/Linux exports. It was a
+  workflow-dispatch build, so it uploaded development artifacts without publishing another release.
 - Earlier post-release rounds failed weather fixture/lifetime checks and one native multiplayer load;
   those failures are retained in their logs and are not represented as passes.
 
