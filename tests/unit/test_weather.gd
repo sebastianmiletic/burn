@@ -43,6 +43,18 @@ func test_events_drive_their_channels() -> void:
 	w.free()
 
 
+func test_underworld_smoke_preserves_material_colours() -> void:
+	var sky := SkyController.new()
+	(Engine.get_main_loop() as SceneTree).root.add_child(sky)
+	sky.set_dimension(1)
+	sky._update_lights(0.0, true)
+	var env := sky.environment
+	check(env.fog_light_color.r < env.fog_light_color.g * 1.5, "smoke is warm grey, not saturated red")
+	check(env.volumetric_fog_density <= 0.006, "open arenas have thin local haze")
+	check(env.volumetric_fog_emission.r <= 0.01, "fog does not flood the arena with emitted red light")
+	sky.free()
+
+
 func test_cave_palettes_are_dark_and_tinted() -> void:
 	for kind: int in CaveBiomes.PALETTES:
 		var p: Dictionary = CaveBiomes.PALETTES[kind]

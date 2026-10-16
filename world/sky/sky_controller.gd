@@ -527,25 +527,27 @@ func _hell_environment() -> void:
 	sun.shadow_enabled = not has_meta("no_shadow") and sun.light_energy > 0.02
 	moon.visible = false
 	_hell_glow.visible = true
-	_hell_glow.light_energy = 0.45 * lerpf(1.0, 0.25, u)
+	_hell_glow.light_energy = 0.28 * lerpf(1.0, 0.25, u)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.55, 0.16, 0.07).lerp(Color(_cave_bounce.x, _cave_bounce.y, _cave_bounce.z), u)
-	environment.ambient_light_energy = lerpf(0.38, 0.45, u)
-	environment.fog_light_color = Color(0.32, 0.07, 0.025).lerp(Color(_cave_fog.x, _cave_fog.y, _cave_fog.z), u)
+	# Charcoal smoke and warm stone bounce, not a red filter. Lava and
+	# braziers carry the saturated accents so arena materials stay readable.
+	environment.ambient_light_color = Color(0.32, 0.25, 0.21).lerp(Color(_cave_bounce.x, _cave_bounce.y, _cave_bounce.z), u)
+	environment.ambient_light_energy = lerpf(0.5, 0.45, u)
+	environment.fog_light_color = Color(0.13, 0.10, 0.085).lerp(Color(_cave_fog.x, _cave_fog.y, _cave_fog.z), u)
 	environment.fog_light_energy = 1.0
 	environment.fog_sun_scatter = 0.0
-	environment.fog_density = lerpf(0.011, 0.024, u) * _fog_mult
+	environment.fog_density = lerpf(0.006, 0.018, u) * _fog_mult
 	environment.fog_aerial_perspective = 0.3 * open
 	environment.fog_sky_affect = lerpf(0.5, 1.0, u)
 	environment.fog_height = 20.0
 	environment.fog_height_density = 0.03 * _fog_mult * open
-	environment.volumetric_fog_albedo = Color(0.9, 0.45, 0.28)
-	environment.volumetric_fog_emission = Color(0.05, 0.008, 0.0) * open
+	environment.volumetric_fog_albedo = Color(0.48, 0.43, 0.39)
+	environment.volumetric_fog_emission = Color(0.008, 0.003, 0.001) * open
 	environment.volumetric_fog_emission_energy = 1.0
 	environment.volumetric_fog_anisotropy = 0.4
 	environment.volumetric_fog_ambient_inject = lerpf(0.06, 0.25, u)
 	environment.volumetric_fog_gi_inject = 1.0
-	environment.volumetric_fog_density = lerpf(0.02, 0.012, u) * _fog_mult
+	environment.volumetric_fog_density = lerpf(0.005, 0.009, u) * _fog_mult
 	environment.glow_hdr_threshold = lerpf(1.0, 1.25, u)
 	if _raw:
 		environment.tonemap_exposure = 1.35 * lerpf(1.0, 1.2, u)

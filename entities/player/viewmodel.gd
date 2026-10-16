@@ -56,7 +56,7 @@ func _build_arms() -> void:
 	_len_u = (_rest[CharRig.FARM_R] - _rest[CharRig.UARM_R]).length()
 	_len_f = (_rest[CharRig.HAND_R] - _rest[CharRig.FARM_R]).length()
 	var g := CharGeo.new()
-	CharBody._arms(g, st, pr, _rest)
+	CharBody._arms(g, st, pr, _rest, true)
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, g.to_arrays(), [], {}, CharGeo.FORMAT_FLAGS)
 	mesh.surface_set_material(0, CharBody.material())

@@ -339,7 +339,7 @@ static func _torso(g: CharGeo, st: Dictionary, pr: Dictionary, rest: PackedVecto
 	var _u := rest
 
 
-static func _arms(g: CharGeo, st: Dictionary, pr: Dictionary, rest: PackedVector3Array) -> void:
+static func _arms(g: CharGeo, st: Dictionary, pr: Dictionary, rest: PackedVector3Array, closeup := false) -> void:
 	var b: float = pr["bulk"]
 	var lm: float = pr["limb"]
 	var m: float = pr["muscle"]
@@ -388,11 +388,11 @@ static func _arms(g: CharGeo, st: Dictionary, pr: Dictionary, rest: PackedVector
 				rings[5] = Vector4(0.06, 0.055, 0.065, 2.0) * k
 				rings[6] = Vector4(0.072, 0.07, 0.075, 2.0) * k
 		g.mat(CharGeo.SKIN, skin_t)
-		g.tube(pts, rings, 14, ws, 1, 0, Vector3.FORWARD, Vector3.FORWARD, 0.0, 1.0, mats)
-		_hand(g, st, pr, rest, side, skin_t)
+		g.tube(pts, rings, 20 if closeup else 14, ws, 1, 0, Vector3.FORWARD, Vector3.FORWARD, 0.0, 1.0, mats)
+		_hand(g, st, pr, rest, side, skin_t, closeup)
 
 
-static func _hand(g: CharGeo, st: Dictionary, pr: Dictionary, rest: PackedVector3Array, side: int, skin_t: int) -> void:
+static func _hand(g: CharGeo, st: Dictionary, pr: Dictionary, rest: PackedVector3Array, side: int, skin_t: int, closeup := false) -> void:
 	var sg := -1.0 if side == 0 else 1.0
 	var o := 0 if side == 0 else 5
 	var w := rest[R.HAND_L + o]
@@ -404,7 +404,8 @@ static func _hand(g: CharGeo, st: Dictionary, pr: Dictionary, rest: PackedVector
 	# Palm (faces the thigh), slightly cupped.
 	var v0 := g.vertex_count()
 	g.bone(R.HAND_L + o)
-	g.ellipsoid(w + Vector3(-sg * 0.002, -0.048 * hs, -0.003), Vector3(0.017, 0.048, 0.04) * hs, 10, 14, Basis.IDENTITY, 2.4)
+	g.ellipsoid(w + Vector3(-sg * 0.002, -0.048 * hs, -0.003), Vector3(0.017, 0.048, 0.04) * hs,
+		14 if closeup else 10, 20 if closeup else 14, Basis.IDENTITY, 2.0 if closeup else 2.4)
 	g.reweight(v0, g.vertex_count(), func(p: Vector3) -> Variant:
 		var f := smoothstep(w.y - 0.06 * hs, w.y - 0.095 * hs, p.y)
 		return [[R.HAND_L + o, R.FING_L + o], [1.0 - f * 0.5, f * 0.5]])
@@ -417,13 +418,13 @@ static func _hand(g: CharGeo, st: Dictionary, pr: Dictionary, rest: PackedVector
 		var rad := (0.0092 - f * 0.0006) * hs
 		var pts := PackedVector3Array([base + Vector3(0, 0.012, 0), base, base + Vector3(-sg * 0.004, -l * 0.45, 0), base + Vector3(-sg * 0.011, -l * 0.8, 0), base + Vector3(-sg * 0.016, -l, 0)])
 		g.tube(pts, [Vector4(rad, rad, rad, 2.0), Vector4(rad, rad * 0.9, rad, 2.0), Vector4(rad * 0.92, rad * 0.85, rad * 0.9, 2.0), Vector4(rad * 0.85, rad * 0.8, rad * 0.8, 2.0), Vector4(rad * 0.75, rad * 0.7, rad * 0.7, 2.0)],
-			7, [Vector3(R.HAND_L + o, R.FING_L + o, 0.3), Vector3(R.FING_L + o, R.HAND_L + o, 0.25), Vector3(R.FING_L + o, R.HAND_L + o, 0.0),
+			12 if closeup else 7, [Vector3(R.HAND_L + o, R.FING_L + o, 0.3), Vector3(R.FING_L + o, R.HAND_L + o, 0.25), Vector3(R.FING_L + o, R.HAND_L + o, 0.0),
 				Vector3(R.FING_L + o, R.HAND_L + o, 0.0), Vector3(R.FING_L + o, R.HAND_L + o, 0.0)], 0, 2)
 	# Thumb.
 	g.bone(R.HAND_L + o)
 	var tb := w + Vector3(-sg * 0.008, -0.03 * hs, -0.03 * hs)
 	g.tube(PackedVector3Array([tb, tb + Vector3(-sg * 0.012, -0.028, -0.014) * hs, tb + Vector3(-sg * 0.022, -0.052, -0.02) * hs, tb + Vector3(-sg * 0.026, -0.07, -0.02) * hs]),
-		[Vector4(0.014, 0.013, 0.013, 2.0) * hs, Vector4(0.011, 0.011, 0.011, 2.0) * hs, Vector4(0.0095, 0.009, 0.009, 2.0) * hs, Vector4(0.008, 0.0075, 0.0075, 2.0) * hs], 7, [], 1, 2)
+		[Vector4(0.014, 0.013, 0.013, 2.0) * hs, Vector4(0.011, 0.011, 0.011, 2.0) * hs, Vector4(0.0095, 0.009, 0.009, 2.0) * hs, Vector4(0.008, 0.0075, 0.0075, 2.0) * hs], 12 if closeup else 7, [], 1, 2)
 
 
 static func _legs(g: CharGeo, st: Dictionary, pr: Dictionary, rest: PackedVector3Array) -> void:

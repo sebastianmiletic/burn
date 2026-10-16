@@ -207,7 +207,17 @@ void fragment() {
 
 	// Bump from the height field (Mikkelsen surface gradient).
 	float fade = 1.0 - smoothstep(bump_distance * 0.15, bump_distance, -VERTEX.z);
-	float bh = h * bump * 0.035 * fade;
+	// Height is in metres. Centimetres of relief made skin and fur look
+	// like rubble; reserve that depth for rock, not pores or hair roots.
+	float relief = 0.0015;
+	if (pattern == 4) {
+		relief = 0.025;
+	} else if (pattern == 1) {
+		relief = 0.008;
+	} else if (pattern == 3 || pattern == 5 || pattern == 6) {
+		relief = 0.003;
+	}
+	float bh = h * bump * relief * fade;
 	vec3 dpdx = dFdx(VERTEX);
 	vec3 dpdy = dFdy(VERTEX);
 	float dhx = dFdx(bh);
@@ -276,8 +286,8 @@ void fragment() {
 	r = mix(r, 0.18, wet_total * 0.8);
 	col *= 1.0 - wet_total * 0.25;
 
-	// A little self-illumination keeps creatures readable as glyphs when back-lit.
-	emit += col * 0.12;
+	// A restrained bounce floor keeps silhouettes readable in deep caves.
+	emit += col * 0.035;
 	ALBEDO = mix(col, flash_color, hit_flash);
 	EMISSION = emit + flash_color * hit_flash * 1.6;
 	ROUGHNESS = ascii_roughness(r, ascii_id);

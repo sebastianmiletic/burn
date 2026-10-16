@@ -63,6 +63,9 @@ void fragment() {
 	// outer shells, so they taper.
 	vec3 q = v_local * density * 2.0;
 	float strand = n_value3(q) * 0.55 + n_value3(q * 2.37 + vec3(7.1, 3.3, 1.7)) * 0.45;
+	// Average subpixel strands rather than aliasing them into crawling
+	// high-contrast flecks. Outer shells naturally thin out with distance.
+	strand = mix(strand, 0.5, smoothstep(0.6, 2.0, length(fwidth(q))));
 	float clump = n_value3(v_local * clump_scale);
 	float h = strand * 0.9 + clump * 0.22;
 	if (h < layer * 0.5 + 0.28) {

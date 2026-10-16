@@ -975,6 +975,9 @@ func _update_light(delta: float) -> void:
 	if is_local:
 		offhand_light = not holds_light and dark and (inventory.has("torch") or inventory.has("lantern"))
 	var lit := holds_light or offhand_light
+	# The offhand torch is on the left. Lighting from the right placed its
+	# source against the weapon hand and bleached that hand in first person.
+	_light.position.x = -0.35 if offhand_light else 0.35
 	var target_energy := 1.7 if lit else 0.25
 	var target_range := 12.0 if lit else 4.5
 	_light.light_energy = lerpf(_light.light_energy, target_energy * (0.92 + randf() * 0.16 if lit else 1.0), 1.0 - exp(-delta * 8.0))
