@@ -17,14 +17,15 @@ Godot 4.7, GDScript, Forward+. Everything is built in code; scenes are thin.
 `WorldView` (rendering/world_view.gd) renders the world straight to the window through the gameplay camera; the
 3D resolution follows the quality preset and adaptive resolution, and MetalFX spatial (Metal) or AMD FSR (Vulkan /
 D3D12) upscales it to the window (`--upscaler=metalfx_temporal|fsr2|fsr|bilinear` to compare). UI is ordinary Control nodes in CanvasLayers above it.
-Legacy: many materials still call `ascii_roughness(r, ASCII_<CLASS>)` (rendering/materials/ascii_material.gdshaderinc); it now returns `r` unchanged
-or use `MaterialLibrary` / `ModelKit` helpers. FX (fire, magic, telegraphs) use transparent additive materials
-(`MaterialLibrary.fx(...)`), so they are drawn over the glyphs and bloom.
+The old glyph renderer is removed. Legacy material helpers (`ascii_roughness`, `AsciiMaterialId`) now preserve
+ordinary roughness; their names remain for source compatibility, not a rendering mode. FX (fire, magic,
+telegraphs) use transparent additive materials (`MaterialLibrary.fx(...)`) and bloom.
 `WorldView.flash` (0..1) and `WorldView.tint` are the screen-flash / grade hooks.
 
 ## World
 
-* `WorldGen` (world/voxel/world_gen.gd): deterministic terrain per dimension (0 overworld 2048², 1 hell 640²), `locations`.
+* `WorldGen` (world/voxel/world_gen.gd): deterministic terrain per dimension (0 overworld, 1 hell, 2 Ryft), `locations`.
+  New worlds use revision 3 (4608 m overworld); old saves keep their recorded revision and terrain layout.
 * `VoxelWorld` (world/voxel/voxel_world.gd): streaming, `get_block`, `set_block`, `is_solid`, `raycast`, `surface_y`.
 * `Location` (world/structures/location.gd): named place, `contains(pos)`, `spawns` = [{type, pos, ...}].
   Spawn types: `npc{role}`, `enemy{kind}`, `boss{kind}`, `chest{tier}`, `shrine`, `portal{to, size}`, `arena_gate{along, across, width, height}`, `lore{text}`, `guard_post`.
@@ -127,12 +128,15 @@ func set_offhand_light(on: bool)              # torch in left hand
 func flash(color := Color(1,1,1))             # hit flash
 func set_dead(dead: bool)
 ```
-Other creature models are built with `ModelKit` helpers (models/model_kit.gd): material helpers that set ASCII classes.
+Ordinary creatures use `MobRig` / `MobModel` skinned meshes; humanoid monsters use `MobHumanoid`,
+`UndeadModel` and `FleshMobModel`. `Models.warmup_mobs` fills their mesh caches during loading.
+Bosses have bespoke models using `ModelKit`, `BossKit`, `OrganicMesh` and `CreatureSkin`.
+The loading-film Leviathan omits gameplay particles in its private viewport; the in-game boss keeps them.
 
 ## Items, quests
 
 * `ItemDB` (items/item_db.gd): ITEMS, RECIPES, SHOP, rank tables.
-* `Inventory` (items/inventory.gd): 3 hotbar + 24 bag slots, gold.
+* `Inventory` (items/inventory.gd): 3 hotbar + 30 bag slots, armour slots and gold.
 * `QuestLog` (quests/quest_log.gd), `QuestDB` (quests/quest_db.gd).
 
 ## Audio contract (`Audio` autoload)

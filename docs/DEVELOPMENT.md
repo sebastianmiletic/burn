@@ -13,7 +13,9 @@ Do not use your real save folder for scripted playtests.
 
 ```sh
 mkdir -p build/validation
-godot --headless --path . --import --log-file "$PWD/build/validation/import-engine.log"
+godot --headless --path . --import --log-file "$PWD/build/validation/import-engine.log" \
+  -- --data-dir="$PWD/build/validation/import-user" > build/validation/import.log 2>&1
+python3 tools/check_log.py build/validation/import.log
 godot --headless --path . --log-file "$PWD/build/validation/unit-engine.log" \
   -s res://tests/run_tests.gd -- --data-dir="$PWD/build/validation/user" > build/validation/unit.log 2>&1
 python3 tools/check_log.py build/validation/unit.log
@@ -24,7 +26,7 @@ godot --headless --path . --log-file "$PWD/build/validation/flow-engine.log" \
   -s res://tests/game/flow_test.gd -- --data-dir="$PWD/build/validation/flow-user" > build/validation/flow.log 2>&1
 python3 tools/check_log.py build/validation/flow.log
 godot --headless --path . --log-file "$PWD/build/validation/act-engine.log" \
-  -s res://tests/game/activity_test.gd -- --data-dir="$PWD/build/validation/act-user" > build/validation/act.log 2>&1
+  -s res://tests/game/activity_test.gd -- --seed=1717 --data-dir="$PWD/build/validation/act-user" > build/validation/act.log 2>&1
 python3 tools/check_log.py build/validation/act.log   # villagers + every activity (--only=npc,board,treasure,...)
 bash tests/net/run_net_test.sh
 bash tests/net/run_game_mp_test.sh --address --latency 150 --loss 0.02
@@ -76,7 +78,7 @@ Keep test recordings, private credentials, export signing keys, caches and saves
 
 ## GitHub release workflow
 
-`.github/workflows/release.yml` imports assets, runs unit/gameplay/multiplayer checks, exports the three
+`.github/workflows/release.yml` imports assets, runs unit/gameplay/flow/activity/multiplayer checks, exports the three
 platforms, produces update packs/checksums and attaches artifacts. It requires repository Actions to be
 enabled, permission to write releases, and the referenced official Godot release/templates to be available.
 

@@ -2,6 +2,46 @@
 
 Written for whoever continues this project (human or another AI). It covers what the game is, what state it is in, what was being worked on, what is left, how to test, and the gotchas that cost time.
 
+## 0. Continuation update (16 Oct 2026)
+
+**Read this first: sections 1–8 below are the previous handoff and some branch/release statements are historical.**
+
+- Both WIP branches are now merged into `main`: rendering `831cf10`, creatures `b2c154c`. No conflicts.
+- Full isolated validation passed after rendering (149 unit tests), after creatures (149), and after fixes
+  (151). Latest all-green logs: `build/validation/release-candidate/`; its `results.txt` records engine
+  and log-check exit codes. Both network scripts also checked their child logs, including engine logs.
+- A transport-only test sampled 94 ms localhost RTT immediately after bulk transfer. `911538a` allows
+  bounded settling without widening latency limits or accepting a missing/zero ping.
+- Follow-up visual work: `6bddd85` reduces excessive organic bump relief, filters fur aliasing, adds
+  finer first-person hands and reduces red underworld fog; moves offhand light to the correct side.
+- `27d4e08` fixes held-item/elevated-view capture fixtures and removes unused gameplay particles from
+  the loading film's private viewport. This clears the reproduced Metal particle-shader/RID errors.
+  In-game Leviathan effects are unchanged. A no-particles animation regression test was added.
+- `77dac51` adds a bounded ring fallback when random event placement probes miss open ground. Activity
+  integration now tests three Golden Hart placement streams and reports its world seed. The reproducible
+  full activity command includes `--seed=1717`; CI now runs it (`c2f6c5b`).
+- GPU captures were actually opened: caves/mines, mountain/shore views, weather, boss arenas,
+  first-person tools/actions, and the 45-shot creature gallery/contact sheets. Latest world tour:
+  `build/validation/visual/final/`, log `build/validation/visual-final.log` (exit 0, checker 0).
+  Earlier failed probe/capture logs are retained, not counted as passes.
+- **Visual acceptance is NOT complete.** Models remain stylized; faces/anatomy/fur, first-person
+  torch highlights, overly busy ore patches, terrain seams and flora need substantial work.
+  No honest claim can be made that the game is hyperrealistic or fully professional yet.
+- **60 fps is NOT met.** Latest M4 High/adaptive/MetalFX tour at 2940×1846: 26–44 fps averages,
+  worst sampled frames ~75 ms, internal resolution 809×508–1169×734. GPU timestamps are zero on
+  Metal. The extra game process from the initial runs was gone for the final run, but other desktop
+  work was not controlled. Draw calls/streaming/CPU load need profiling.
+- Native Windows/Linux graphics and mixed-OS play remain unverified. Only macOS runs here; Linux
+  headless CI is automated coverage, not graphical/laptop certification.
+- README and architecture/development/release docs updated. Version prepared as **0.5.0**;
+  tagged prerelease publication/exported-download smoke testing is the next step.
+- Pending section-3 backlog remains: guest lobby party-rule sync, true species flora/missing ground
+  cover, surface rivers, mini-boss mine guardians, boss warmup and bespoke humanoid attack animation.
+- Disk: obsolete **worktree `build/` outputs only** were removed (~1.5 GB). Worktrees/branches and all
+  real player saves remain intact. Recheck `df -h .` before exports/downloads.
+
+See `docs/RELEASE_STATUS.md` for the current verification record and limitations.
+
 ---
 
 ## 1. What this is
@@ -156,7 +196,7 @@ godot --headless --path . --import > build/validation/import.log 2>&1
 godot --headless --path . -s res://tests/run_tests.gd -- --data-dir="$PWD/build/validation/user" > build/validation/unit.log 2>&1
 godot --headless --path . -- --playtest --no-update --data-dir="$PWD/build/validation/play-user" > build/validation/play.log 2>&1
 godot --headless --path . -s res://tests/game/flow_test.gd -- --data-dir="$PWD/build/validation/flow-user" > build/validation/flow.log 2>&1
-godot --headless --path . -s res://tests/game/activity_test.gd -- --data-dir="$PWD/build/validation/act-user" > build/validation/act.log 2>&1
+godot --headless --path . -s res://tests/game/activity_test.gd -- --seed=1717 --data-dir="$PWD/build/validation/act-user" > build/validation/act.log 2>&1
 bash tests/net/run_net_test.sh            # LAN discovery/lobby scenarios
 bash tests/net/run_game_mp_test.sh --address --latency 150 --loss 0.02   # host+client play, revive
 for f in import unit play flow act; do python3 tools/check_log.py build/validation/$f.log; done
