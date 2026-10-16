@@ -23,6 +23,9 @@ uniform int pattern = 0;
 uniform float pattern_scale = 6.0;
 // Skinned meshes carry their rest-pose surface coordinates (metres) in UV.
 uniform bool use_uv = false;
+// Skinned MobRig bodies carry their rest-pose position in CUSTOM0.xyz (w is
+// the fur mask, see fur_shell.gdshader): 3D patterns stay glued to moving limbs.
+uniform bool use_rest = false;
 uniform float bump : hint_range(0.0, 2.0) = 0.6;
 // Bump detail fades out by this distance (metres); big creatures keep it further.
 uniform float bump_distance = 45.0;
@@ -63,7 +66,7 @@ varying vec3 v_world;
 varying vec3 v_wnormal;
 
 void vertex() {
-	v_local = VERTEX;
+	v_local = use_rest ? CUSTOM0.xyz : VERTEX;
 	v_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	v_wnormal = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }

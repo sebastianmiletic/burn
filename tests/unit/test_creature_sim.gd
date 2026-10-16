@@ -98,6 +98,19 @@ func _count_geometry(n: Node) -> int:
 	return c
 
 
+func _triangles(n: Node) -> int:
+	var c := 0
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+		var mesh := (n as MeshInstance3D).mesh
+		for s in mesh.get_surface_count():
+			var arr := mesh.surface_get_arrays(s)
+			var idx: Variant = arr[Mesh.ARRAY_INDEX]
+			c += ((idx as PackedInt32Array).size() if idx != null else (arr[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()) / 3
+	for ch in n.get_children():
+		c += _triangles(ch)
+	return c
+
+
 func test_models_build_and_animate() -> void:
 	var tree := _ready_tree()
 	if tree == null:
@@ -120,9 +133,15 @@ func test_models_build_and_animate() -> void:
 			m.play(action)
 			for i in 6:
 				m._process(1.0 / 30.0)
-		# Humanoids are one smooth skinned body (plus gear); other creatures are built from parts.
-		var need := 1 if (m is FlockModel or m is HumanoidModel) else 6
-		check(_count_geometry(m) >= need, "%s has a detailed model (%d parts)" % [kind, _count_geometry(m)])
+		# Humanoids and MobModel creatures are one smooth skinned body (plus
+		# gear) and must carry real geometry; older creatures are built from parts.
+		if m is MobModel:
+			var tris := _triangles(m)
+			check(tris >= 1200, "%s has a detailed skinned body (%d triangles)" % [kind, tris])
+			check(tris <= 24000, "%s keeps a modest triangle count (%d)" % [kind, tris])
+		else:
+			var need := 1 if (m is FlockModel or m is HumanoidModel) else 6
+			check(_count_geometry(m) >= need, "%s has a detailed model (%d parts)" % [kind, _count_geometry(m)])
 		m.set_dead(true)
 		for i in 10:
 			m._process(0.1)

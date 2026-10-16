@@ -92,6 +92,8 @@ func setup(info: Dictionary) -> void:
 	add_child(EnvironmentDetails.new())
 	if DisplayServer.get_name() != "headless":
 		CharBody.warmup([Models.player_style(0), Models.player_style(1)])
+		await Models.warmup_mobs(self)
+		_log_time("creatures warmed up", t0)
 	if ResourceLoader.exists(VoxelWorld.FLORA_PATH):
 		(load(VoxelWorld.FLORA_PATH) as Script).call("warmup")
 		_log_time("flora warmed up", t0)

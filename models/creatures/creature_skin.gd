@@ -5,6 +5,7 @@ extends RefCounted
 ## shader uniform (belly_mix, accent, glow_mode, wet, use_uv...).
 
 const SHADER := preload("res://models/creatures/creature_skin.gdshader")
+const FUR_SHELL := preload("res://models/creatures/fur_shell.gdshader")
 
 enum Pattern { SMOOTH, SCALES, FUR, CHITIN, ROCK, HIDE, FEATHERS, MEMBRANE }
 
@@ -83,6 +84,33 @@ static func keratin(color := Color(0.86, 0.82, 0.7), extra := {}) -> ShaderMater
 static func mouth(color := Color(0.32, 0.08, 0.08)) -> ShaderMaterial:
 	return make({"albedo": color, "pattern": Pattern.HIDE, "pattern_scale": 6.0, "roughness": 0.3, "wet": 0.8,
 		"bump": 0.5, "specular_amount": 0.6})
+
+
+## A copy of `base` (a fur material on a MobRig body, use_rest) with
+## `layers` fur shells (fur_shell.gdshader) chained as next passes: a soft,
+## strand-broken coat `length` metres deep. `extra` overrides shell uniforms
+## (density, clump_scale, droop, tip_color, tip_mix, fur_distance...).
+static func with_fur(base: ShaderMaterial, length: float, layers := 3, extra := {}) -> ShaderMaterial:
+	var key := "fur|%d|%s|%.4f|%d|%s" % [base.get_instance_id(), str(base.get_shader_parameter(&"albedo")), length, layers, str(extra)]
+	if _cache.has(key):
+		return _cache[key]
+	var m := base.duplicate() as ShaderMaterial
+	var prev: ShaderMaterial = m
+	for i in layers:
+		var s := ShaderMaterial.new()
+		s.shader = FUR_SHELL
+		for pname: StringName in [&"albedo", &"belly", &"belly_mix", &"accent", &"accent_mode", &"accent_amount", &"accent_scale", &"rim", &"ascii_id"]:
+			var v: Variant = base.get_shader_parameter(pname)
+			if v != null:
+				s.set_shader_parameter(pname, v)
+		s.set_shader_parameter(&"fur_length", length)
+		s.set_shader_parameter(&"layer", float(i + 1) / layers)
+		for k: String in extra:
+			s.set_shader_parameter(StringName(k), extra[k])
+		prev.next_pass = s
+		prev = s
+	_cache[key] = m
+	return m
 
 
 ## Glossy eye with a glowing iris (glow material so it passes through the ASCII grid).

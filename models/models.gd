@@ -17,6 +17,32 @@ const PLAYER_COLOURS := [
 ]
 
 
+## Ordinary creatures whose meshes are built (and cached) while the world loads,
+## so the first wolf or troll of a session does not hitch the frame it spawns.
+const WARM_KINDS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "deer", "stag", "rabbit", "goat", "boar", "bog_lurker",
+	"giant_spider", "spiderling", "scorpion", "cave_bat", "cave_crawler", "shark", "rock_golem", "fire_elemental", "imp", "shade",
+	"skeleton", "archer", "ghoul", "troll", "drowned", "bird_flock", "crow_flock", "gull_flock", "fish_school", "bat_swarm"]
+
+
+## Build every ordinary creature once (a few per frame) under a hidden node,
+## filling the mesh caches; humanoid kinds build several variants.
+static func warmup_mobs(parent: Node, budget_ms := 250.0) -> void:
+	var holder := Node3D.new()
+	holder.name = "MobWarmup"
+	holder.visible = false
+	parent.add_child(holder)
+	var t := Time.get_ticks_msec()
+	for kind: String in WARM_KINDS:
+		for s in (6 if kind in ["troll", "skeleton", "ghoul", "drowned", "archer"] else 1):
+			var m := create_mob(kind, s)
+			m.lod_enabled = false
+			holder.add_child(m)
+			if Time.get_ticks_msec() - t > budget_ms:
+				await parent.get_tree().process_frame
+				t = Time.get_ticks_msec()
+	holder.queue_free()
+
+
 static func create(kind: String) -> CreatureModel:
 	return create_mob(kind, 0)
 
@@ -73,9 +99,11 @@ static func create_mob(kind: String, seed_value: int) -> CreatureModel:
 	return HumanoidModel.new({})
 
 
-## Humanoid monsters: one HumanoidModel style per kind plus per-individual
-## variation, and gear / growths attached by HumanoidDressing so each kind has
-## its own silhouette.
+## Humanoid monsters: sculpted bodies on the humanoid rig and animator
+## (MobHumanoid) - anatomical skeletons and archers (UndeadModel), trolls,
+## ghouls and the drowned (FleshMobModel) - with per-individual variation
+## (size, colours, gear variant, tribe) picked from the seed. The leftover boss
+## styles below still dress a plain HumanoidModel (HumanoidDressing).
 static func _humanoid_mob(kind: String, rng: RandomNumberGenerator) -> CreatureModel:
 	var style := {}
 	var gear: Array = []
@@ -89,48 +117,42 @@ static func _humanoid_mob(kind: String, rng: RandomNumberGenerator) -> CreatureM
 				"cloth": rags[rng.randi() % rags.size()], "held": "sword_rusty", "height": rng.randf_range(1.78, 1.95)}
 			match rng.randi() % 3:
 				0:
-					style["helmet"] = true
-					style["helmet_color"] = Color(0.36, 0.32, 0.28)
-					gear = ["shield"]
+					gear = ["helmet", "shield", "rags"]
 				1:
-					gear = ["pauldrons"]
+					gear = ["pauldrons", "rags"]
 				_:
-					style["helmet"] = true
-					style["helmet_color"] = Color(0.3, 0.27, 0.24)
 					style["height"] = 2.05
 					style["bulk"] = 1.15
-					gear = ["breastplate", "pauldrons", "shield"]
-			opts = {"rust": Color(0.42, 0.28, 0.18)}
+					gear = ["great_helm", "breastplate", "pauldrons", "shield", "rags"]
+			opts = {"metal": Color(0.42, 0.36, 0.3)}
+			return UndeadModel.new(style, gear, opts)
 		"archer":
 			var hoods := [Color(0.16, 0.18, 0.14), Color(0.22, 0.17, 0.12), Color(0.17, 0.17, 0.19)]
-			style = {"skeleton": true, "eyes": Color(1.0, 0.6, 0.15), "cloth": hoods[rng.randi() % hoods.size()],
-				"hood": true, "cloak": rng.randf() < 0.5, "tattered": true, "held": "bow", "height": rng.randf_range(1.75, 1.9)}
-			gear = ["quiver"]
+			style = {"skeleton": true, "bone": Color(0.76, 0.72, 0.62), "eyes": Color(1.0, 0.6, 0.15), "cloth": hoods[rng.randi() % hoods.size()],
+				"cloak": rng.randf() < 0.5, "tattered": true, "held": "bow", "height": rng.randf_range(1.75, 1.9)}
+			return UndeadModel.new(style, UndeadModel.ARCHER_GEAR, {})
 		"ghoul":
 			var skins := [Color(0.42, 0.45, 0.36), Color(0.45, 0.38, 0.44), Color(0.6, 0.6, 0.55), Color(0.35, 0.4, 0.42)]
 			style = {"skin": skins[rng.randi() % skins.size()], "cloth": Color(0.16, 0.13, 0.11), "cloth2": Color(0.24, 0.2, 0.16),
-				"gaunt": true, "hunch": rng.randf_range(-0.55, -0.35), "arm_length": rng.randf_range(1.25, 1.4),
+				"gaunt": true, "hunch": rng.randf_range(-0.55, -0.35), "arm_length": snappedf(rng.randf_range(1.25, 1.4), 0.1),
 				"eyes": Color(0.9, 1.0, 0.3) if rng.randf() < 0.6 else Color(1.0, 0.4, 0.2), "hair": Color(0.1, 0.1, 0.1),
 				"height": rng.randf_range(1.6, 1.8)}
-			gear = ["claws"]
-			if rng.randf() < 0.5:
-				gear.append("wild_hair")
-				opts["hair"] = Color(0.2, 0.2, 0.18)
+			var hair := rng.randf() < 0.5
+			return FleshMobModel.new("ghoul", style, {"wild_hair": hair, "hair": Color(0.2, 0.2, 0.18)})
 		"troll":
 			var tribe := rng.randi() % 3
 			var skins := [Color(0.36, 0.42, 0.3), Color(0.45, 0.45, 0.47), Color(0.4, 0.33, 0.28)]
 			style = {"skin": skins[tribe], "cloth": Color(0.3, 0.22, 0.15), "cloth2": Color(0.22, 0.16, 0.1),
-				"height": rng.randf_range(2.9, 3.6), "bulk": rng.randf_range(1.55, 1.85), "hunch": -0.3, "arm_length": 1.25,
-				"tusks": true, "eyes": Color(1.0, 0.75, 0.2), "held": "club" if tribe != 1 else "giant_club"}
-			var tribe_gear := [["moss"], ["back_spikes", "pauldrons"], ["tusks_big", "charms"]]
-			gear = tribe_gear[tribe]
+				"height": rng.randf_range(2.9, 3.6), "bulk": snappedf(rng.randf_range(1.55, 1.85), 0.3), "hunch": -0.45, "arm_length": 1.25,
+				"eyes": Color(1.0, 0.75, 0.2), "held": "club" if tribe != 1 else "giant_club"}
+			return FleshMobModel.new("troll", style, {"tribe": tribe, "hair": Color(0.18, 0.14, 0.1)})
 		"drowned":
 			var skins := [Color(0.42, 0.52, 0.5), Color(0.35, 0.45, 0.48), Color(0.5, 0.55, 0.48)]
 			style = {"skin": skins[rng.randi() % skins.size()], "cloth": Color(0.12, 0.16, 0.16), "cloth2": Color(0.2, 0.24, 0.2),
 				"gaunt": true, "hunch": -0.25, "eyes": Color(0.35, 1.0, 0.9), "hair": Color(0.08, 0.12, 0.1),
 				"tattered": true, "cloak": rng.randf() < 0.4, "cloak_color": Color(0.1, 0.14, 0.13),
 				"held": "sword_rusty" if rng.randf() < 0.5 else "", "height": rng.randf_range(1.75, 1.95)}
-			gear = ["seaweed", "barnacles", "claws"]
+			return FleshMobModel.new("drowned", style, {"hair": Color(0.08, 0.12, 0.1)})
 		"warden":
 			style = {"skeleton": true, "height": 4.4, "bulk": 1.35, "eyes": Color(0.4, 1.0, 0.55),
 				"helmet": true, "helmet_color": Color(0.28, 0.3, 0.26), "cloak": true, "tattered": true,

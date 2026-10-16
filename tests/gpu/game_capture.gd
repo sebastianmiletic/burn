@@ -226,6 +226,21 @@ func _run() -> void:
 		if cam:
 			p.global_position = target + offset
 		p.body.velocity = Vector3.ZERO
+		# --mobs=wolf,deer,...: spawn those creatures in a fan 5-9 m ahead (player invulnerable).
+		var mob_kinds := _arg_list("--mobs=")
+		if not mob_kinds.is_empty():
+			var mfwd := -p.camera.global_basis.z
+			mfwd.y = 0.0
+			mfwd = mfwd.normalized()
+			p.invulnerable_until = Time.get_ticks_msec() / 1000.0 + 600.0
+			for mi in mob_kinds.size():
+				var ang := (float(mi) - (mob_kinds.size() - 1) * 0.5) * 0.35
+				var mp := p.global_position + mfwd.rotated(Vector3.UP, ang) * (5.0 + 2.0 * (mi % 3))
+				var mg := vw.ground_below(mp.x, mp.y + 10.0, mp.z, 30.0)
+				if absf(mg) < 1e6:
+					mp.y = mg + 0.3
+				w.spawn_entity(String(mob_kinds[mi]), mp, loc.dimension, {})
+			await _frames(30)
 		if stop.ends_with("fight"):
 			var kind := "dragon" if stop == "dragonfight" else "mountain_king"
 			var fwd := -p.camera.global_basis.z
@@ -637,6 +652,13 @@ func _world_stop(w: GameWorld, stop: String) -> Array:
 	if pos.y < g.ground_level(pos.x, pos.z) - 4.0 and "--torch" in OS.get_cmdline_user_args():
 		w.local_player.offhand_light = true
 	return [hub.id, 11.0, yaw, pos - hub.center, pitch]
+
+
+func _arg_list(prefix: String) -> PackedStringArray:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with(prefix):
+			return a.trim_prefix(prefix).split(",", false)
+	return PackedStringArray()
 
 
 func _frames(n: int) -> void:
