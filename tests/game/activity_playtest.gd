@@ -108,6 +108,7 @@ func _dig(point: Vector3, done: Callable, tries := 40) -> bool:
 func _run() -> void:
 	_w = GameWorld.instance
 	_p = _w.local_player
+	print("      activity world seed: ", _w.gen_for(0).world_seed)
 	_acts = ActivityDirector.of(_w)
 	_check(_acts != null, "activity director is running at /root/GameWorld/Activities")
 	await _wait_for(func() -> bool: return _p.body.on_floor, 15.0)
@@ -526,8 +527,17 @@ func _hart() -> void:
 	var home := _w.location_by_id(&"emberfall")
 	await _goto(home.center + Vector3(-60, 0, 40))
 	_w.sky.time_of_day = 10.0
-	var started := _acts.events.start_hart(_p.global_position)
-	_check(started, "a golden hart is sighted")
+	# Exercise several placement streams before keeping the last hart for
+	# the reward check. Failed searches must not depend on lucky angles.
+	var started := false
+	for seed_value in [7, 99, 4242]:
+		_acts.events.rng.seed = seed_value
+		started = _acts.events.start_hart(_p.global_position)
+		_check(started, "a golden hart is sighted (placement seed %d)" % seed_value)
+		if started and seed_value != 4242:
+			_w.despawn_entity(_w.entity(_acts.events._hart_id))
+			_acts.events._hart_id = 0
+			_acts.set_shared("event", {})
 	if not started:
 		return
 	_check(_acts.events.markers().size() == 1, "the hart is on the compass")

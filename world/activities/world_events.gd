@@ -176,9 +176,18 @@ func _meteor_site(near: Vector3) -> Vector3:
 	var w := d.gw()
 	var vw := w.world_for(0)
 	var gen := w.gen_for(0)
-	for attempt in 24:
-		var a := rng.randf() * TAU
-		var r := rng.randf_range(35.0, 75.0) if attempt < 16 else rng.randf_range(18.0, 40.0)
+	# Random probes preserve varied sightings. If they all hit the same
+	# excluded village/lake sector, cover the nearby rings before giving up.
+	# Both stages still require loaded, dry, smooth, unobstructed ground.
+	for attempt in 72:
+		var a: float
+		var r: float
+		if attempt < 24:
+			a = rng.randf() * TAU
+			r = rng.randf_range(35.0, 75.0) if attempt < 16 else rng.randf_range(18.0, 40.0)
+		else:
+			a = TAU * float((attempt - 24) % 16) / 16.0
+			r = [24.0, 45.0, 65.0][(attempt - 24) / 16]
 		var x := near.x + cos(a) * r
 		var z := near.z + sin(a) * r
 		if not TreasureHunt.spot_ok(gen, w.locations(0), x, z):
