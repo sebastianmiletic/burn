@@ -60,7 +60,7 @@ jobs:
       - name: Import assets
         run: |
           mkdir -p build/validation
-          ~/godot/godot --headless --path . --import --log-file "$PWD/build/validation/import-engine.log" 2>&1 | tee build/validation/import.log
+          ~/godot/godot --headless --path . --import --log-file "$PWD/build/validation/import-engine.log" -- --data-dir="$PWD/build/validation/import-user" 2>&1 | tee build/validation/import.log
           python3 tools/check_log.py build/validation/import.log
 
       - name: Unit tests
@@ -74,6 +74,8 @@ jobs:
           python3 tools/check_log.py build/validation/play.log
           ~/godot/godot --headless --path . --log-file "$PWD/build/validation/flow-engine.log" -s res://tests/game/flow_test.gd -- --data-dir="$PWD/build/validation/flow-user" 2>&1 | tee build/validation/flow.log
           python3 tools/check_log.py build/validation/flow.log
+          ~/godot/godot --headless --path . --log-file "$PWD/build/validation/act-engine.log" -s res://tests/game/activity_test.gd -- --seed=1717 --data-dir="$PWD/build/validation/act-user" 2>&1 | tee build/validation/act.log
+          python3 tools/check_log.py build/validation/act.log
           GODOT=~/godot/godot bash tests/net/run_net_test.sh
           GODOT=~/godot/godot bash tests/net/run_game_mp_test.sh --address --latency 150 --loss 0.02
 
