@@ -32,6 +32,8 @@ var _glow_intensity := 1.0
 var _built := false
 ## Animation level of detail: far-away models pose themselves less often.
 var lod_enabled := true
+## Presentation-only scenes can omit burn/dissolve emitters they never use.
+var particles_enabled := true
 var _lod_step := 0.0
 var _lod_acc := 0.0
 var _lod_check := 0.0
@@ -56,7 +58,8 @@ func _ready() -> void:
 		_built = true
 		_build()
 		_collect(self)
-		_embers = ModelKit.embers(self, 24, _ember_extents(), 1.2, 0.09)
+		if particles_enabled:
+			_embers = ModelKit.embers(self, 24, _ember_extents(), 1.2, 0.09)
 
 
 ## Override: create the model's parts.

@@ -93,6 +93,27 @@ func test_models_play_every_action() -> void:
 	arena.queue_free()
 
 
+func test_loading_leviathan_animates_without_gameplay_particles() -> void:
+	var tree := _tree()
+	if tree == null:
+		return
+	var scene := Node3D.new()
+	tree.root.add_child(scene)
+	var m := Models.create("leviathan") as LeviathanModel
+	m.particles_enabled = false
+	m.lod_enabled = false
+	m.water_y = 0.0
+	scene.add_child(m)
+	for action: String in ["roar", "bite", "dive", "slam"]:
+		m.play(action)
+		for i in 60:
+			m.position.x += 0.1
+			m._process(1.0 / 30.0)
+	check(m.find_children("*", "GPUParticles3D", true, false).is_empty(), "film model creates no gameplay emitters")
+	check(m.head != null and m.chain != null, "the real animated model is preserved")
+	scene.free()
+
+
 ## The wings are skinned to a skeleton: folded on the ground, spread in the air.
 func test_dragon_wings_fold_and_spread() -> void:
 	var tree := _tree()

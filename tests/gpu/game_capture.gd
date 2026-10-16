@@ -163,13 +163,23 @@ func _run() -> void:
 			for s in loc.spawns_of("boss"):
 				target = s["pos"]
 		p.global_position = target + offset
-		p.body.fly = cam
+		# _world_stop sets fly for elevated vistas and cave-mouth fixtures.
+		# Do not cancel it here or the camera falls before the screenshot.
+		p.body.fly = cam or (stop.begins_with("w_") and p.body.fly)
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--hold="):
-				p.give_item(a.trim_prefix("--hold="), 1)
-				for i in Inventory.HOTBAR:
-					if p.inventory.get_slot(i).get("id", "") == a.trim_prefix("--hold="):
-						p.inventory.selected = i
+				var item_id := a.trim_prefix("--hold=")
+				if not p.inventory.has(item_id):
+					p.give_item(item_id, 1)
+				# A newly granted weapon goes into the bag when the starting
+				# hotbar is full. Move it to the active slot before filming it.
+				for i in p.inventory.size():
+					if p.inventory.get_slot(i).get("id", "") == item_id:
+						if i >= Inventory.HOTBAR:
+							p.inventory.swap(i, p.inventory.selected)
+						else:
+							p.inventory.select(i)
+						break
 		if stop in ["geyser", "sanctuary", "fungal", "frost"]:
 			var wanted: int = {"geyser": CaveBiomes.Kind.GEYSER, "sanctuary": CaveBiomes.Kind.CRYSTAL_REFUGE,
 					"fungal": CaveBiomes.Kind.FUNGAL, "frost": CaveBiomes.Kind.FROST}[stop]
@@ -355,7 +365,14 @@ func _run() -> void:
 	var f := FileAccess.open(out_dir.path_join("report.txt"), FileAccess.WRITE)
 	f.store_string("\n".join(report) + "\n")
 	f.close()
-	get_tree().quit()
+	# Release particle materials while the render server is still drawing.
+	# Quitting with the whole world alive can leave a queued particle shader
+	# compilation behind during renderer teardown (especially after snow).
+	var tree := get_tree()
+	tree.create_timer(1.0).timeout.connect(tree.quit)
+	Game.world = null
+	Game.state = Game.State.MENU
+	w.queue_free()
 
 
 ## GPU cost of the 3D view with one feature off at a time (needs a driver

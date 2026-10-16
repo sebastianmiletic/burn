@@ -66,6 +66,10 @@ func _ready() -> void:
 	add_child(_holder)
 	_lev = Models.create("leviathan") as LeviathanModel
 	_lev.lod_enabled = false
+	# The sea shader already supplies foam. Omit gameplay particle systems
+	# in this short-lived private viewport (also avoids a Metal particle
+	# shader leak when its World3D is destroyed after loading).
+	_lev.particles_enabled = false
 	_lev.water_y = 0.0
 	_holder.add_child(_lev)
 	_phi = _cam_theta + 2.4

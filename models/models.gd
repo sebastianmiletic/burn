@@ -27,6 +27,8 @@ const WARM_KINDS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "de
 ## Build every ordinary creature once (a few per frame) under a hidden node,
 ## filling the mesh caches; humanoid kinds build several variants.
 static func warmup_mobs(parent: Node, budget_ms := 250.0) -> void:
+	if "--no-mob-warmup" in OS.get_cmdline_user_args():
+		return  # development aid: isolate loading/model-cache costs
 	var holder := Node3D.new()
 	holder.name = "MobWarmup"
 	holder.visible = false
@@ -40,6 +42,10 @@ static func warmup_mobs(parent: Node, budget_ms := 250.0) -> void:
 			if Time.get_ticks_msec() - t > budget_ms:
 				await parent.get_tree().process_frame
 				t = Time.get_ticks_msec()
+	# Let the last batch's queued particle-material updates reach the render
+	# server before freeing the temporary rigs. Freeing that batch in its
+	# creation frame can strand a generated particle shader on Metal.
+	await parent.get_tree().process_frame
 	holder.queue_free()
 
 

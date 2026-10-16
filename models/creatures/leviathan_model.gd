@@ -237,8 +237,9 @@ func _build() -> void:
 			var sp := ModelKit.part(frill, sm, horn, Vector3.ZERO)
 			sp.rotation_degrees = Vector3(0, side * -70, 0)
 		frills.append(frill)
-	_wake = CreatureFx.emitter(self, "foam", 36, Vector3(1.5, 0.2, 1.5) * k)
-	_wake.emitting = false
+	if particles_enabled:
+		_wake = CreatureFx.emitter(self, "foam", 36, Vector3(1.5, 0.2, 1.5) * k)
+		_wake.emitting = false
 
 
 ## Two rows of curved teeth along a jaw edge (y), from z0 to z1. dir -1 = hanging, +1 = upward.
@@ -410,13 +411,14 @@ func _animate(delta: float) -> void:
 
 	# Splashes where the head breaks the surface, foam wake while cruising.
 	var under := _head_pos.y < water_y - 0.3 * k
-	if under != _was_under and absf(_vel.y) + speed > 1.0 and not _dead:
+	if particles_enabled and under != _was_under and absf(_vel.y) + speed > 1.0 and not _dead:
 		CreatureFx.play(_fx_parent(), "splash", Vector3(_head_pos.x, water_y, _head_pos.z), 1.6 * k + 0.4)
 	_was_under = under
 	var near_surface := absf(chain.joint(2).y - water_y) < 3.0 * k
-	_wake.emitting = near_surface and speed > 1.5 and not _dead
-	if _wake.emitting:
-		_wake.global_position = Vector3(chain.joint(2).x, water_y + 0.2, chain.joint(2).z)
+	if _wake != null:
+		_wake.emitting = near_surface and speed > 1.5 and not _dead
+		if _wake.emitting:
+			_wake.global_position = Vector3(chain.joint(2).x, water_y + 0.2, chain.joint(2).z)
 
 
 ## Tail slam: the last third of the body lifts out of the water in an arc and
@@ -441,5 +443,6 @@ func _tail_override(p: float, w: float) -> void:
 		chain.display[i] = chain.display[i].lerp(target, w * smoothstep(0.0, 0.5, t + 0.2))
 	if p > 0.7 and not _slammed:
 		_slammed = true
-		CreatureFx.play(_fx_parent(), "splash", _tail_target, 2.2 * k)
-		CreatureFx.play(_fx_parent(), "dust", _tail_target, 2.0 * k)
+		if particles_enabled:
+			CreatureFx.play(_fx_parent(), "splash", _tail_target, 2.2 * k)
+			CreatureFx.play(_fx_parent(), "dust", _tail_target, 2.0 * k)
