@@ -34,7 +34,11 @@ Written for whoever continues this project (human or another AI). It covers what
 - Native Windows/Linux graphics and mixed-OS play remain unverified. Only macOS runs here; Linux
   headless CI is automated coverage, not graphical/laptop certification.
 - README and architecture/development/release docs updated. Version prepared as **0.5.0**;
-  tagged prerelease publication/exported-download smoke testing is the next step.
+  tagged prerelease publication/exported-download smoke testing is the next step. First GitHub run
+  `38858855851` failed activity checks before exports (151 Linux units/gameplay/flow passed). Fixes
+  query ground near the actual surface instead of unloaded high air, freeze test teleports during
+  streaming, and distinguish ring monsters from wildlife. Full local suite passed again in
+  `build/validation/ci-fixes/`; retag/build still pending.
 - Pending section-3 backlog remains: guest lobby party-rule sync, true species flora/missing ground
   cover, surface rivers, mini-boss mine guardians, boss warmup and bespoke humanoid attack animation.
 - Disk: obsolete **worktree `build/` outputs only** were removed (~1.5 GB). Worktrees/branches and all

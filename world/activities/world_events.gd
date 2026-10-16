@@ -192,9 +192,13 @@ func _meteor_site(near: Vector3) -> Vector3:
 		var z := near.z + sin(a) * r
 		if not TreasureHunt.spot_ok(gen, w.locations(0), x, z):
 			continue
-		if vw == null or not vw.is_area_loaded(Vector3(x, near.y, z)):
+		# Query just above the candidate's surface, not 60 m above the
+		# player. Unloaded upper chunks read as solid; a high ray origin
+		# incorrectly rejects every candidate on a freshly streamed column.
+		var top := float(gen.surface_height(int(x), int(z))) + 5.0
+		if vw == null or not vw.is_area_loaded(Vector3(x, top, z)):
 			continue
-		var g := vw.ground_below(x, near.y + 60.0, z, 140.0)
+		var g := vw.ground_below(x, top, z, 40.0)
 		if absf(g) > 1e6:
 			continue
 		var b := vw.get_block(Vector3i(floori(x), floori(g - 0.5), floori(z)))

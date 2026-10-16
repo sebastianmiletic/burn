@@ -50,15 +50,21 @@ func _shielded() -> void:
 func _goto(pos: Vector3) -> bool:
 	_shielded()
 	var vw := _w.world_for(0)
-	_p.global_position = pos + Vector3(0, 30, 0)
+	var top := float(_w.gen_for(0).surface_height(int(pos.x), int(pos.z))) + 5.0
+	# Hold a known open point until its local surface is ready. A falling
+	# teleport and a query 60 m above it both race vertical chunk streaming.
+	_p.body.fly = true
+	_p.global_position = Vector3(pos.x, top, pos.z)
 	_p.body.velocity = Vector3.ZERO
-	vw.focus = pos
-	await _wait_for(func() -> bool: return vw.is_area_loaded(pos) and vw.loading_progress() > 0.9, 40.0)
-	var g := vw.ground_below(pos.x, pos.y + 60.0, pos.z, 140.0)
-	if absf(g) < 1e6:
+	vw.focus = _p.global_position
+	var loaded := await _wait_for(func() -> bool: return vw.is_area_loaded(_p.global_position) and vw.loading_progress() > 0.9, 40.0)
+	var g := vw.ground_below(pos.x, top, pos.z, 40.0)
+	_check(loaded and is_finite(g), "teleport ground is streamed at %s" % str(pos.round()))
+	if is_finite(g):
 		_p.global_position = Vector3(pos.x, g + 0.05, pos.z)
+	_p.body.fly = false
 	_p.body.velocity = Vector3.ZERO
-	return await _wait_for(func() -> bool: return _p.body.on_floor, 10.0)
+	return loaded and await _wait_for(func() -> bool: return _p.body.on_floor, 10.0)
 
 
 func _entities(kind: String) -> Array:
@@ -475,7 +481,7 @@ func _ring() -> void:
 	_check(ended, "leaving the ring ends the Proving")
 	var board: Array = _acts.shared.get("leaderboard", [])
 	_check(not board.is_empty() and int(board[0]["waves"]) >= 2, "the run is on the honours (%s)" % str(board))
-	_check(_entities("skeleton").filter(func(e: Entity) -> bool: return e.global_position.distance_to(site) < 25.0).is_empty(), "leftover ring monsters are cleared")
+	_check(_w.all_entities().filter(func(e: Entity) -> bool: return e.has_meta("proving_ring") and not e.dead).is_empty(), "leftover live ring monsters are cleared (all species, excluding wildlife)")
 
 
 # --- Weather charms ------------------------------------------------------------------------------

@@ -79,6 +79,22 @@ jobs:
           GODOT=~/godot/godot bash tests/net/run_net_test.sh
           GODOT=~/godot/godot bash tests/net/run_game_mp_test.sh --address --latency 150 --loss 0.02
 
+      - name: Check all validation engine logs
+        if: always()
+        run: |
+          find build/validation -type f \( -name '*.log' -o -name '*.engine' \) -print0 | xargs -0 -r python3 tools/check_log.py
+
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-${{ steps.ver.outputs.version }}
+          path: |
+            build/validation/**/*.log
+            build/validation/**/*.engine
+            build/validation/**/host.txt
+            build/validation/**/client.txt
+
       - name: Export
         run: |
           set -e

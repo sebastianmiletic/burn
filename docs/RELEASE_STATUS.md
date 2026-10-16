@@ -32,7 +32,7 @@ All test data was isolated under `build/`; the player's actual saves/settings we
 | --- | --- |
 | Rendering-only merge | Full suite passed; 149 unit tests, zero failures (`build/validation/rendering/`) |
 | Combined merge | Full suite passed after RTT harness correction; 149 unit tests (`combined-fixed/`) |
-| Final release candidate | Import, 151 unit tests, playtest, flow, activities, both network scripts passed (`release-candidate/`) |
+| Final release candidate | Import, 151 unit tests, playtest, flow, activities, both network scripts passed (`release-candidate/`, repeated after CI fixes in `ci-fixes/`) |
 | Log checks | Every suite log and network child/engine log scanned with `tools/check_log.py` |
 | Network | Six lobby scenarios; two-process combat, smooth mining, terrain validation and teammate revive at 150 ms one-way simulated latency / 2% loss |
 | GPU tour | Villages, mountain views, sanctuary/geyser caves, mine workings, rain/storm/snow, Dragon's Keep and Hades arena captured and inspected |
@@ -68,8 +68,11 @@ washouts; that is a sampled check, not an all-world/all-weather guarantee.
 
 ## Publication record
 
-Release candidate prepared locally; GitHub build/publication and exported-download smoke testing pending.
-Update this section after watching the tagged Actions run and testing the actual macOS download.
+First tagged run [38858855851](https://github.com/sebastianmiletic/burn/actions/runs/38858855851)
+passed Linux unit/gameplay/flow but failed activity checks before export; no download was published.
+The follow-up fixes query candidate ground near its actual surface (not unloaded high air), hold test
+teleports during streaming and check ring-owned enemies rather than unrelated wildlife. The full local
+suite passed again (`ci-fixes/`). Retagged build/publication and exported-download smoke testing pending.
 
 ## Remaining release gates and content work
 

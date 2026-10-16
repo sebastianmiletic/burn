@@ -212,6 +212,7 @@ func _spawn_wave(wave: int, fighters: int) -> void:
 				var e := w.spawn_entity(String(entry[0]), Vector3(x, g + 0.3, z), 0, {})
 				if e == null:
 					break
+				e.set_meta("proving_ring", true)
 				e.max_health *= hp
 				e.health = e.max_health
 				if "spawn_point" in e:
