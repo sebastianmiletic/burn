@@ -499,26 +499,55 @@ func _weather() -> void:
 	var home := _w.location_by_id(&"emberfall")
 	await _goto(home.center + Vector3(50, 0, 50))
 	_w.sky.time_of_day = 12.0
-	var skel := _w.spawn_entity("skeleton", _p.global_position + Vector3(9, 0.5, 0), 0, {})
+	var skel := _w.spawn_entity("skeleton", _p.global_position + Vector3(3.5, 0.5, 0), 0, {})
+	skel.max_health = 10000.0
+	skel.health = skel.max_health
+	# This checks the charm, not pursuit AI: keep its target outside the
+	# deliberate 2 m lightning exclusion even on a slow/contended runner.
+	var skel_stats: Dictionary = skel.get("stats").duplicate()
+	skel_stats["speed"] = 0.0
+	skel_stats["chase"] = 0.0
+	skel.set("stats", skel_stats)
+	var skel_id := skel.net_id
+	var struck_health := skel.health
 	_use("storm_horn")
 	_check(_p.inventory.buff_active("storm_call"), "blowing the Storm Horn")
 	var stormy := await _wait_for(func() -> bool: return _w.weather.state_name() == "storm", 4.0)
 	_check(stormy, "the storm answers (weather %s)" % _w.weather.state_name())
-	var struck := await _wait_for(func() -> bool: return not is_instance_valid(skel) or skel.dead or skel.health < skel.max_health, 8.0)
+	var struck := await _wait_for(func() -> bool:
+		var target := _w.entity(skel_id)
+		return target != null and target.health < struck_health, 8.0)
 	_check(struck, "lightning strikes the monster near you")
+	_w.despawn_entity(_w.entity(skel_id))
+	# Expire the strike effect before testing unrelated fog/frost/rain.
+	# Otherwise it can kill their fixtures and falsely satisfy rain damage.
+	for effect: Dictionary in _acts.weather_craft._effects:
+		if effect["kind"] == "storm_call":
+			effect["until"] = 0.0
+	_acts.weather_craft.server_tick(0.0)
 	var ghoul := _w.spawn_entity("ghoul", _p.global_position + Vector3(6, 0.5, 4), 0, {})
+	ghoul.max_health = 10000.0
+	ghoul.health = ghoul.max_health
+	var ghoul_id := ghoul.net_id
 	var speed := float(ghoul.get("stats")["speed"])
 	_use("frost_totem")
-	var slowed := await _wait_for(func() -> bool: return float(ghoul.get("stats")["speed"]) < speed * 0.6, 3.0)
+	var slowed := await _wait_for(func() -> bool:
+		var target := _w.entity(ghoul_id)
+		return target != null and float(target.get("stats")["speed"]) < speed * 0.6, 3.0)
 	_check(slowed, "the Frost Totem slows monsters (%.1f -> %.1f)" % [speed, float(ghoul.get("stats")["speed"])])
 	var aggro := float(ghoul.get("stats")["aggro"])
 	_use("fog_lantern")
-	var hidden := await _wait_for(func() -> bool: return float(ghoul.get("stats")["aggro"]) < aggro * 0.5, 3.0)
+	var hidden := await _wait_for(func() -> bool:
+		var target := _w.entity(ghoul_id)
+		return target != null and float(target.get("stats")["aggro"]) < aggro * 0.5, 3.0)
 	_check(hidden, "the Fog Lantern hides you from monsters")
 	_w.despawn_entity(ghoul)
 	var imp := _w.spawn_entity("imp", _p.global_position + Vector3(5, 3, 0), 0, {})
+	var imp_id := imp.net_id
 	_w.weather.force("rain")
-	var doused := await _wait_for(func() -> bool: return imp.health < imp.max_health - 2.0, 4.0)
+	var doused := await _wait_for(func() -> bool:
+		var target := _w.entity(imp_id)
+		return target != null and target.health < target.max_health - 2.0, 4.0)
 	_check(doused, "rain douses fire creatures (%.0f/%.0f)" % [imp.health, imp.max_health])
 	_w.despawn_entity(imp)
 	_use("sunstone")

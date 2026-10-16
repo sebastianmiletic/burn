@@ -536,9 +536,14 @@ func _on_entity_died(e: Entity) -> void:
 			replicator.give_gold_to(p.peer_id, int(e.get("gold_value")))
 	# Enemies and bosses despawn themselves once their death animation is done.
 	if not (e is Enemy or e is Boss):
-		get_tree().create_timer(4.0).timeout.connect(func() -> void:
-			if is_instance_valid(e):
-				despawn_entity(e))
+		# IDs survive early despawns without a lambda retaining a freed Node.
+		get_tree().create_timer(4.0).timeout.connect(_despawn_dead_entity.bind(e.net_id))
+
+
+func _despawn_dead_entity(id: int) -> void:
+	var e := entity(id)
+	if e != null and e.dead:
+		despawn_entity(e)
 
 
 ## Players who share a kill: everyone in the dimension within 60 m.
