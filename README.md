@@ -95,7 +95,9 @@ Rebind gameplay actions under **Settings → Controls**.
 
 ## Multiplayer
 
-Everyone must use the **same game version** (network protocol 3).
+Everyone must use the **same game version**. The downloadable v0.5.0 preview uses network protocol 3.
+Unreleased source `main` is 0.5.1/protocol 4 and cannot join v0.5.0 parties; it adds live guest-lobby
+party-rule summaries.
 
 - **Same Wi-Fi/LAN:** Host a party, share the four runes, and have friends choose Join. Once they
   are ready, the host begins the campaign. Joining an active campaign is supported.

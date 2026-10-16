@@ -60,6 +60,13 @@ func test_item_stats_cover_weapons_and_potions() -> void:
 	check(InventoryScreen.item_stats("potion_health").contains("restores"), "potion shows heal")
 
 
+func test_guest_rules_explain_both_respawn_modes() -> void:
+	var on := LobbyScreen.party_rules_text(true)
+	var off := LobbyScreen.party_rules_text(false)
+	check(on.contains("ON") and on.contains("shrine"), "automatic shrine returns are explicit")
+	check(off.contains("OFF") and off.contains("Hold E") and off.contains("3 seconds"), "revive controls are explained")
+
+
 func test_map_symbols_cover_every_location_kind() -> void:
 	for k in Location.Kind.size():
 		var loc := Location.new(&"x", "X", k, Vector3.ZERO)

@@ -28,7 +28,7 @@ signal join_status(state: String)
 ## Host: the internet address friends outside the LAN can join with (after UPnP).
 signal public_address_changed(address: String)
 
-const PROTOCOL_VERSION := 3
+const PROTOCOL_VERSION := 4
 ## Hello code for players who joined by address instead of runes.
 const ADDRESS_JOIN := -1
 const MAX_PLAYERS := 8
@@ -47,9 +47,10 @@ var players := {}
 var runes := PackedInt32Array()
 ## The info the campaign was started with (host and clients), {} before.
 var session_info := {}
-## Host-chosen party rules, sent with the session. shrine_respawn: downed players
-## rise at their shrine on their own (off: teammates must revive them).
-var lobby_options := {"shrine_respawn": false}
+## Host-chosen rules, mirrored before the campaign and included in the session.
+## shrine_respawn: automatic shrine returns (off: teammates must revive).
+const DEFAULT_LOBBY_OPTIONS := {"shrine_respawn": false}
+var lobby_options := DEFAULT_LOBBY_OPTIONS.duplicate()
 ## Host: optional builder for the info sent to players who join mid-game
 ## (e.g. the current world edits). Default: the original session_info.
 var late_join_info := Callable()
@@ -281,9 +282,11 @@ func kick(peer_id: int, reason := "You were removed from the party.") -> void:
 
 ## Host: start (or restart) the campaign for everyone.
 func set_lobby_option(key: String, value: Variant) -> void:
-	if not is_server():
+	if not is_server() or not DEFAULT_LOBBY_OPTIONS.has(key) or not value is bool:
 		return
 	lobby_options[key] = value
+	if is_online():
+		_broadcast_lobby()
 	lobby_changed.emit()
 
 
@@ -382,6 +385,7 @@ func _go_offline() -> void:
 	_enet = null
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	players = {}
+	lobby_options = DEFAULT_LOBBY_OPTIONS.duplicate()
 	runes = PackedInt32Array()
 	_pending_hello.clear()
 	_incoming.clear()
@@ -517,13 +521,17 @@ func _rpc_rejected(reason: String) -> void:
 func _broadcast_lobby() -> void:
 	for id: int in players:
 		if id != 1:
-			_rpc_lobby.rpc_id(id, players, RuneCode.encode(runes))
+			_rpc_lobby.rpc_id(id, players, RuneCode.encode(runes), lobby_options)
 
 
 @rpc("authority", "call_remote", "reliable")
-func _rpc_lobby(lobby: Dictionary, code: int) -> void:
+func _rpc_lobby(lobby: Dictionary, code: int, options: Dictionary) -> void:
 	var first := players.is_empty()
 	players = lobby
+	lobby_options = DEFAULT_LOBBY_OPTIONS.duplicate()
+	for key: String in DEFAULT_LOBBY_OPTIONS:
+		if options.get(key) is bool:
+			lobby_options[key] = options[key]
 	runes = RuneCode.decode(code)
 	if first:
 		join_status.emit("joined")

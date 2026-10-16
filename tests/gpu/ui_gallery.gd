@@ -76,6 +76,7 @@ func _run() -> void:
 		await _wait(0.6)
 		await _shot("lobby_host")
 		host.queue_free()
+		Net.leave()  # fake guest IDs below must never enter a live ENet party
 		var join := LobbyScreen.create(LobbyScreen.Mode.JOIN)
 		add_child(join)
 		await _frames(2)
@@ -84,7 +85,19 @@ func _run() -> void:
 		join.call("_type_rune", 0)
 		await _wait(0.6)
 		await _shot("lobby_join")
+		# Joined-guest fixtures for both read-only party-rule summaries.
+		Net.players = {1: {"name": "Ash", "color": Color(0.95, 0.6, 0.25), "ready": true},
+			2: {"name": "Ember", "color": Color(0.4, 0.7, 0.8), "ready": true}}
+		Net.lobby_options["shrine_respawn"] = false
+		join.call("_refresh")
+		await _wait(0.4)
+		await _shot("lobby_guest_revives")
+		Net.lobby_options["shrine_respawn"] = true
+		join.call("_refresh")
+		await _wait(0.4)
+		await _shot("lobby_guest_shrines")
 		join.queue_free()
+		Net.leave()
 
 	if _wants("icons"):
 		var sheet := IconSheet.new()

@@ -21,6 +21,7 @@ var _join_button: Button
 var _keys: Array[RuneGlyph] = []
 var _joining := false
 var _ready_box: CheckBox
+var _rules_summary: Label
 var _frame: Control
 
 
@@ -191,6 +192,11 @@ func _build_join(box: VBoxContainer) -> void:
 	var pc := CenterContainer.new()
 	pc.add_child(_players)
 	box.add_child(pc)
+	_rules_summary = UiTheme.label("", UiTheme.SIZE_BODY, UiTheme.TEXT_DIM, HORIZONTAL_ALIGNMENT_CENTER)
+	_rules_summary.autowrap_mode = TextServer.AUTOWRAP_WORD
+	_rules_summary.custom_minimum_size.x = 640
+	_rules_summary.visible = false
+	box.add_child(_rules_summary)
 
 
 ## A small spaced heading with the panel's ornament under it.
@@ -328,6 +334,9 @@ func _refresh() -> void:
 	var players: Dictionary = net.get("players") if net.get("players") is Dictionary else {}
 	for c in _players.get_children():
 		c.queue_free()
+	if _rules_summary != null:
+		_rules_summary.visible = mode == Mode.JOIN and not players.is_empty()
+		_rules_summary.text = party_rules_text(bool(_lobby_option("shrine_respawn", false)))
 	if mode == Mode.JOIN and players.is_empty():
 		return
 	if mode == Mode.JOIN:
@@ -362,6 +371,11 @@ func _refresh() -> void:
 		var n := players.size()
 		if _status.text == "" or _status.text.begins_with("Waiting") or _status.text.ends_with("ready."):
 			_set_status("Waiting for companions…  (%d in the warband)" % n if n <= 1 else "%d in the warband — ready." % n, UiTheme.TEXT_DIM)
+
+
+static func party_rules_text(shrine_respawns: bool) -> String:
+	return "Host's party rule: Shrine respawns ON. Fallen companions rise at their shrine." if shrine_respawns else \
+		"Host's party rule: Shrine respawns OFF. Hold E for 3 seconds to revive a downed companion."
 
 
 ## A party rule: caption, one line explaining the current choice, and a

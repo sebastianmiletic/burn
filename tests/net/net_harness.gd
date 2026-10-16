@@ -48,8 +48,9 @@ func _main() -> void:
 
 
 func _finish() -> void:
-	print("%s %s: %s" % ["RESULT", args.get("role"), "ok" if failures == 0 else "%d failure(s)" % failures])
 	net.leave()
+	check(not net.lobby_options["shrine_respawn"], "leaving resets party rules to safe defaults")
+	print("%s %s: %s" % ["RESULT", args.get("role"), "ok" if failures == 0 else "%d failure(s)" % failures])
 	await process_frame
 	quit(0 if failures == 0 else 1)
 
@@ -98,6 +99,8 @@ func _host() -> void:
 	var got: PackedInt32Array = net.host_party(args.get("name", "Host"), code)
 	check(got == code, "hosting with runes %s on ENet port %d" % [RuneCode.to_text(got), net.enet_port])
 	check(net.is_online() and net.is_server() and net.is_host(), "host is online and authoritative")
+	if args.has("rules"):
+		net.set_lobby_option("shrine_respawn", true)
 	var mb := float(args.get("payload-mb", "2"))
 	var blob := Crypto.new().generate_random_bytes(int(mb * 1024 * 1024))
 	var info := {"seed": 42, "blob": blob, "sha": digest(blob), "note": "campaign"}
@@ -124,6 +127,15 @@ func _host() -> void:
 			net.send_chat("hi " + String(c[1]).trim_prefix("hello from "))
 		await process_frame
 	check(hellos == expected, "received hello chats from every client")
+	if args.has("rules"):
+		net.set_lobby_option("shrine_respawn", false)
+		var confirmations := 0
+		var rules_end := Time.get_ticks_msec() + 15000
+		while confirmations < expected and Time.get_ticks_msec() < rules_end:
+			if not take_chat(func(_f: String, t: String) -> bool: return t == "rules ok").is_empty():
+				confirmations += 1
+			await process_frame
+		check(confirmations == expected, "all guests received the changed rule before campaign start")
 
 	var t0 := Time.get_ticks_msec()
 	if not args.has("start-early"):
@@ -185,6 +197,7 @@ func _client() -> void:
 	my_name = me
 	args["name"] = me
 	check(net.players.has(1) and not net.is_server(), "lobby mirrors the host (%d players)" % net.players.size())
+	check(bool(net.lobby_options["shrine_respawn"]) == args.has("rules"), "initial party rule mirrors the host before play")
 	if args.has("expect-host-close"):
 		var closed: bool = await wait_until(func() -> bool: return failed_reason[0] != "", 15.0)
 		check(closed and String(failed_reason[0]).contains("closed") and not net.is_online(),
@@ -194,6 +207,12 @@ func _client() -> void:
 	net.send_chat("hello from " + me)
 	var relayed: bool = await wait_until(func() -> bool: return not take_chat(func(_f: String, t: String) -> bool: return t == "hi " + me).is_empty(), 15.0)
 	check(relayed, "chat relayed through the host")
+	if args.has("rules"):
+		var changed: bool = await wait_until(func() -> bool: return not net.lobby_options["shrine_respawn"], 10.0)
+		check(changed, "guest receives a live party-rule change")
+		net.set_lobby_option("shrine_respawn", true)
+		check(not net.lobby_options["shrine_respawn"], "a guest cannot change the host's rule")
+		net.send_chat("rules ok")
 
 	var session := [{}]
 	net.session_started.connect(func(info: Dictionary) -> void: session[0] = info)
@@ -205,6 +224,7 @@ func _client() -> void:
 		var info: Dictionary = session[0]
 		var blob: PackedByteArray = info.get("blob", PackedByteArray())
 		check(info.get("seed") == 42 and digest(blob) == info.get("sha"), "%d byte payload intact (sha256 matches)" % blob.size())
+		check(info.get("options", {}).get("shrine_respawn") == net.lobby_options["shrine_respawn"], "campaign carries the displayed party rule")
 		net.send_chat("session ok")
 
 	await wait_seconds(3.0)

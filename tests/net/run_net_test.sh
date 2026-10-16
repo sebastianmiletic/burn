@@ -26,9 +26,9 @@ report() {
 }
 
 echo "== 1. host + client, 2 MB session, no simulated lag"
-run 90 s1_host.log --role=host --runes=R1-R14-R6-R9 --clients=1 --payload-mb=2 &
+run 90 s1_host.log --role=host --runes=R1-R14-R6-R9 --clients=1 --payload-mb=2 --rules &
 sleep 2
-run 90 s1_client.log --role=client --runes=R1-R14-R6-R9 --name=Ash --probe --rtt=0-60
+run 90 s1_client.log --role=client --runes=R1-R14-R6-R9 --name=Ash --probe --rtt=0-60 --rules
 wait
 report "basic party" s1_host.log s1_client.log
 
