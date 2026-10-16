@@ -17,13 +17,15 @@
 - `Architecture` batches continuous house/prop geometry by material. `Blocks.STRUCTURE` stores invisible,
   unbreakable collision for it. Roofs are pitched meshes. Legacy towers/castles and some village props
   still use voxel-derived geometry, not finished architectural assets.
-- `DistantLand` is a non-colliding height-field horizon. Detailed streaming includes the vertical range
+- `DistantLand` is a non-colliding height-field horizon: 8 m tiles with a 32 m far LOD, geomorphing to a softened
+  massif shape with distance, the terrain's own materials, snowcaps, canopy tint, horizon shadows and its own
+  aerial perspective; the render camera's far plane is 4.2 km. Detailed streaming includes the vertical range
   between each chunk-column's low and high samples, preventing gaps on large slopes. Horizon geometry
   cannot display distant excavation; it is replaced by edited detailed terrain nearby.
 - `MapImage` uses actual column heights, contours, bathymetry, roads and roof footprints. `Minimap` only
   uploads an immutable world image once. Underground slices sample loaded cells once per second.
 - The first-person camera is mandatory for gameplay. Old third-person preferences do not override it.
-  Settings still preserve a player's previously selected render style. Defaults are ASCII and grain off.
+  The ASCII renderer has been removed; the 3D world renders directly with MetalFX / FSR upscaling. Grain is off by default.
 - Hades death synchronizes `ryft_unlocked`; the final quest grants the unique bound sword and mithril axe.
   The next quest directs the player to Emberfall's Ryft gateway. Old completed campaigns gain that quest.
 - `RuntimePaths.file()` routes settings, saves and procedural sound caches through `--data-dir` for tests.
@@ -67,3 +69,15 @@ entity, rendering and audio contracts, but these additions supersede their world
   world/caves/*; `CaveBiomes.decor_kind()` tells CaveDecor where the mine workings are.
 - Weather (world/sky/weather.gd) reads `climate_at()` for revision 3; the horizon (world/distant_land.gd)
   colours its mesh with `horizon_color()`.
+- Weather (world/sky/weather.gd) changes on its own: the host walks a weighted chain of states
+  (clear, overcast, rain, storm, fog, snow, blizzard, heatwave, dust_storm, ember_storm, and on clear
+  nights aurora / meteor_shower), each lasting minutes, synced through `Replicator.broadcast_clock`.
+  Thunderstorms strike near players (a strike within 3.5 m deals 28 damage). Gameplay can summon
+  weather with `world.weather.request(state, seconds, source_peer := 0) -> bool`: server-authoritative,
+  clients forward the request to the host (RPC on the `Weather` node), `seconds` is clamped to 10..900
+  and holds the state before the natural chain resumes; unknown states return false. Read-outs:
+  `state_name()`, `hold_left()`, `visibility()`, `heat_amount()`, `aurora_amount()`, `ember_amount()`,
+  `meteor_amount()` besides the older rain/snow/dust/storm/fog/wind accessors.
+- Underground, SkyController blends to the cave's palette (CaveBiomes.palette_at: dark tinted murk,
+  bounce fill, haze), occludes the sky's radiance (no sky reflections or sky light in caves) and lets
+  terrain ambient back in as the cave fill; the horizon is hidden more than 14 m down.

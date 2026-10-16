@@ -31,6 +31,17 @@ uniform vec3 sky_ambient = vec3(0.2, 0.3, 0.45);  // zenith radiance (cloud ambi
 uniform vec2 wind = vec2(0.9, 0.44);       // cloud drift direction * speed (km/s)
 uniform float sky_energy = 1.0;            // overall dimming
 uniform float underworld = 0.0;
+// Underground the radiance cubemap (ambient light, reflections, SDFGI sky
+// light) is occluded by the rock overhead: it fades to the cave's own dim,
+// tinted bounce colour. The visible sky (cave mouths) is left alone.
+uniform float occlusion : hint_range(0.0, 1.0) = 0.0;
+// Weather events (Weather): aurora curtains and meteors at night, a hot pale
+// haze in a heatwave, a smoky ember-lit sky in an ember storm.
+uniform float aurora : hint_range(0.0, 1.0) = 0.0;
+uniform float meteors : hint_range(0.0, 1.0) = 0.0;
+uniform float heat : hint_range(0.0, 1.0) = 0.0;
+uniform float embers : hint_range(0.0, 1.0) = 0.0;
+uniform vec3 occluded_color = vec3(0.02);
 uniform sampler2D cloud_noise : filter_linear_mipmap, repeat_enable;
 
 const float EARTH_R = 6360.0;
@@ -219,6 +230,26 @@ vec3 stars(vec3 d) {
 	return col * smoothstep(-0.02, 0.15, d.y);
 }
 
+// Aurora: folded curtains of green light with violet hems, high in the sky.
+vec3 aurora_col(vec3 d) {
+	if (d.y < 0.02) {
+		return vec3(0.0);
+	}
+	vec3 col = vec3(0.0);
+	for (int i = 0; i < 3; i++) {
+		float h = 0.7 + float(i) * 0.25;           // curtain layer height (relative)
+		vec2 p = d.xz / (d.y + 0.08) * h;
+		float fold = texture(cloud_noise, vec2(p.x * 0.06 + TIME * 0.004 * (1.0 + float(i)), float(i) * 0.31)).r;
+		float band = p.y * 0.35 + fold * 2.6 + sin(p.x * 0.25 + TIME * 0.05) * 0.6;
+		float curtain = exp(-pow(fract(band) - 0.5, 2.0) * 60.0);
+		float rays = 0.6 + 0.4 * texture(cloud_noise, vec2(p.x * 0.9, TIME * 0.02 + float(i))).r;
+		float alt = smoothstep(0.02, 0.18, d.y) * (1.0 - smoothstep(0.55, 0.95, d.y));
+		vec3 tint = mix(vec3(0.15, 1.0, 0.45), vec3(0.6, 0.25, 1.0), smoothstep(0.25, 0.7, d.y + fold * 0.2));
+		col += tint * curtain * rays * alt * (0.55 - float(i) * 0.12);
+	}
+	return col * 0.09;
+}
+
 // Full sky radiance (no sun disc / stars): atmosphere, night glow, clouds.
 vec4 sky_color(vec3 d, int samples, bool cheap) {
 	vec3 dd = d;
@@ -257,6 +288,20 @@ vec4 sky_color(vec3 d, int samples, bool cheap) {
 	if (d.y < 0.0) {
 		col *= mix(1.0, 0.45, smoothstep(0.0, -0.25, d.y));
 	}
+	if (aurora > 0.001) {
+		col += aurora_col(d) * aurora * night * (1.0 - cov * 0.8);
+	}
+	if (heat > 0.001) {
+		// Bleached, shimmering heat haze towards the horizon.
+		float lum = dot(col, vec3(0.3, 0.5, 0.2));
+		col = mix(col, vec3(lum * 1.15, lum * 1.02, lum * 0.82), heat * 0.45 * (1.0 - smoothstep(0.0, 0.6, dd.y)));
+	}
+	if (embers > 0.001) {
+		// Smoke from the crater, lit from below by fire.
+		float smoke = texture(cloud_noise, d.xz / (abs(d.y) + 0.25) * 0.4 + vec2(TIME * 0.004, 0.0)).r;
+		vec3 ember_sky = mix(vec3(0.05, 0.02, 0.015), vec3(0.45, 0.13, 0.04), smoothstep(0.5, 0.0, dd.y)) * (0.6 + smoke * 0.8);
+		col = mix(col, ember_sky * (0.35 + 0.65 * (1.0 - night)), embers * 0.75);
+	}
 	return vec4(col * sky_energy, cov);
 }
 
@@ -279,13 +324,15 @@ vec3 hell_sky(vec3 d) {
 void sky() {
 	vec3 d = normalize(EYEDIR);
 	if (underworld > 0.5) {
-		if (AT_CUBEMAP_PASS || AT_HALF_RES_PASS) {
+		if (AT_CUBEMAP_PASS) {
+			COLOR = mix(hell_sky(d), occluded_color, occlusion);
+		} else if (AT_HALF_RES_PASS) {
 			COLOR = hell_sky(d);
 		} else {
 			COLOR = HALF_RES_COLOR.rgb;
 		}
 	} else if (AT_CUBEMAP_PASS) {
-		COLOR = sky_color(d, 5, true).rgb;   // lighting only: coarse is fine
+		COLOR = mix(sky_color(d, 5, true).rgb, occluded_color, occlusion);   // lighting only: coarse is fine
 	} else if (AT_HALF_RES_PASS) {
 		vec4 s = sky_color(d, 8, false);
 		COLOR = s.rgb;
@@ -321,6 +368,32 @@ void sky() {
 			vec3 albedo = vec3(0.92, 0.9, 0.86) * mix(0.55, 1.0, smoothstep(0.35, 0.7, maria));
 			float edge = smoothstep(1.0, 0.94, length(q));
 			col += albedo * (lit * 2.2 + 0.015) * edge * clear * night;
+		}
+		if (meteors > 0.001 && night > 0.05 && d.y > 0.0) {
+			// Shooting stars: a few slots, each flaring for a moment on a
+			// random path, mostly radiating from one point of the sky.
+			vec3 radiant = normalize(vec3(0.4, 0.75, -0.5));
+			for (int i = 0; i < 6; i++) {
+				float slot = floor(TIME * 0.35 + float(i) * 0.37);
+				float t = fract(TIME * 0.35 + float(i) * 0.37);
+				vec3 r = vec3(n_hash13(vec3(slot, float(i), 1.0)), n_hash13(vec3(slot, float(i), 2.0)), n_hash13(vec3(slot, float(i), 3.0)));
+				if (r.x > meteors * 0.9) {
+					continue;
+				}
+				vec3 start = normalize(radiant + (r - 0.5) * vec3(1.6, 0.6, 1.6));
+				vec3 dir = normalize(start - radiant + vec3(0.0, -0.15, 0.0));
+				float len = 0.12 + r.y * 0.18;
+				vec3 head = normalize(start + dir * len * t);
+				// Distance from d to the segment start..head on the sphere (small angles).
+				vec3 a = start;
+				vec3 b = head;
+				vec3 ab = b - a;
+				float k = clamp(dot(d - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+				float dist = length(d - (a + ab * k));
+				float trail = smoothstep(0.0025, 0.0, dist) * k * k;
+				float life = smoothstep(0.0, 0.1, t) * (1.0 - smoothstep(0.6, 1.0, t));
+				col += vec3(0.85, 0.92, 1.0) * trail * life * 3.0 * clear;
+			}
 		}
 		if (night > 0.01) {
 			col += stars(d) * night * clear * (1.0 - haze);

@@ -5,7 +5,7 @@ extends Node3D
 ## dark arena lit only by the boss's own lights.
 ##
 ##   godot --path . res://tests/gpu/boss_gallery.tscn -- --capture=/abs/dir [--only=warden,hades]
-##       [--shots=front,close,action,dormant,phase3,dark,side] [--perf] [--style=4]
+##       [--shots=front,close,action,dormant,phase3,dark,side] [--perf]
 ##
 ## --perf prints the CPU cost of animating each boss (µs per frame, averaged).
 
@@ -42,8 +42,6 @@ func _ready() -> void:
 			_shots = arg.trim_prefix("--shots=").split(",")
 		elif arg == "--perf":
 			_perf = true
-		elif arg.begins_with("--style="):
-			Settings.set_value("graphics", "style", int(arg.trim_prefix("--style=")))
 	_environment()
 	_ground()
 	for i in BOSSES.size():
@@ -66,7 +64,7 @@ func _ready() -> void:
 	camera.near = 0.05
 	camera.far = 800.0
 	add_child(camera)
-	var view := AsciiView.new()
+	var view := WorldView.new()
 	view.source_camera = camera
 	add_child(view)
 	camera.global_position = Vector3(0, 1.6, -12)

@@ -99,16 +99,9 @@ func _ready() -> void:
 		sub_emitter = get_path_to(_splash)
 		_pm.sub_emitter_mode = ParticleProcessMaterial.SUB_EMITTER_AT_COLLISION
 		_pm.sub_emitter_amount_at_collision = 1
-	_apply_style()
-	Settings.changed.connect(func(section: String, key: String) -> void:
-		if section == "graphics" and key == "style":
-			_apply_style())
+	_raw = true
+	_quad.material = _soft_mat
 	amount_ratio = intensity
-
-
-func _apply_style() -> void:
-	_raw = int(Settings.get_value("graphics", "style")) == Settings.Style.OFF
-	_quad.material = _soft_mat if _raw else MaterialLibrary.rain()
 
 
 func _process(_delta: float) -> void:

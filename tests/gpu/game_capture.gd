@@ -1,13 +1,13 @@
 extends Node
 ## In-game capture tour (development aid):
 ##   godot --path . --fullscreen -- --capture-game=/abs/dir [--tour=a,b,c] [--seed=N]
-##       [--time=H] [--weather=clear|overcast|rain|storm|fog|snow] [--style=N] [--quality=N] [--raw]
+##       [--time=H] [--weather=clear|overcast|rain|storm|fog|snow] [--quality=N]
 ## Visits places at different times of day, saves screenshots and frame
 ## timings to report.txt, then quits. --time / --weather override every stop;
-## --style / --quality / --scale change the graphics settings for this run only (not saved).
+## --quality / --scale change the graphics settings for this run only (not saved).
 ## "3d gpu" (GPU time of the 3D view) needs timestamp queries: on macOS run with
 ## --rendering-driver vulkan (Metal reports 0). --gpu-breakdown adds the cost of
-## each feature (volumetric fog, sky, SSAO, glow, fog, sun shadow, water, weather, ASCII).
+## each feature (volumetric fog, sky, SSAO, glow, fog, sun shadow, water, weather).
 
 var out_dir := ""
 
@@ -16,6 +16,9 @@ const STOPS := {
 	"ryft": [&"ryft_landing", 12.0, -1.4, Vector3(0, 2, 8), -0.1],
 	"geyser": [&"emberfall", 12.0, 0.0, Vector3.ZERO, -0.1],
 	"sanctuary": [&"emberfall", 12.0, 0.0, Vector3.ZERO, -0.1],
+	"fungal": [&"emberfall", 12.0, 0.0, Vector3.ZERO, -0.05],
+	"frost": [&"emberfall", 12.0, 0.0, Vector3.ZERO, -0.05],
+	"mountains": [&"emberfall", 10.0, 0.25, Vector3(10, 6, -60), 0.02],
 	"mine": [&"old_ember_mine", 12.0, 0.0, Vector3(0, 2, 6), -0.2],
 	"village": [&"emberfall", 10.0, 0.6],
 	"dusk": [&"emberfall", 18.2, 2.4],
@@ -42,10 +45,17 @@ const STOPS := {
 	"lakedusk": [&"emberfall", 18.0, 0.0, Vector3.ZERO, -0.2],
 	"underworld": [&"asphodel", 12.0, 1.0, Vector3(0, 2, 20), -0.1],
 	"fogmorning": [&"thornwick", 7.5, -1.4, Vector3(-40, 2, 30), -0.08],
+	"blizzard": [&"emberfall", 13.0, 0.25, Vector3(10, 6, -60), -0.02],
+	"heatwave": [&"emberfall", 13.0, 0.25, Vector3(10, 6, -60), -0.02],
+	"duststorm": [&"emberfall", 14.0, 1.6, Vector3(0, 6, 46), -0.05],
+	"emberstorm": [&"emberfall", 17.0, 0.25, Vector3(10, 6, -60), 0.05],
+	"aurora": [&"emberfall", 23.5, 0.25, Vector3(10, 6, -60), 0.45],
+	"meteors": [&"emberfall", 1.0, 0.25, Vector3(10, 6, -60), 0.5],
 }
 
 ## Weather forced at a stop (unless --weather overrides it).
-const STOP_WEATHER := {"storm": "storm", "rain": "rain", "snow": "snow", "fogmorning": "fog"}
+const STOP_WEATHER := {"storm": "storm", "rain": "rain", "snow": "snow", "fogmorning": "fog", "blizzard": "blizzard",
+		"heatwave": "heatwave", "duststorm": "dust_storm", "emberstorm": "ember_storm", "aurora": "aurora", "meteors": "meteor_shower"}
 ## Stops that look for open water near their location and stand on its shore.
 const WATER_STOPS := ["lake", "lakedusk"]
 
@@ -68,14 +78,12 @@ func _run() -> void:
 			force_time = float(a.trim_prefix("--time="))
 		elif a.begins_with("--weather="):
 			force_weather = a.trim_prefix("--weather=")
-		elif a.begins_with("--style="):
-			_set_graphics("style", int(a.trim_prefix("--style=")))
 		elif a.begins_with("--quality="):
 			_set_graphics("quality", int(a.trim_prefix("--quality=")))
 		elif a.begins_with("--scale="):
 			_set_graphics("render_scale", float(a.trim_prefix("--scale=")))
-	report.append("quality %s, style %s, preset scale %.2f (actual/adaptive viewport recorded per stop)" % [Settings.QUALITY_NAMES[int(Settings.get_value("graphics", "quality"))],
-			Settings.STYLE_NAMES[int(Settings.get_value("graphics", "style"))], Settings.render_scale()])
+	report.append("quality %s, preset scale %.2f (actual/adaptive render resolution recorded per stop)" % [Settings.QUALITY_NAMES[int(Settings.get_value("graphics", "quality"))],
+			Settings.render_scale()])
 	if "--no-bosses" in OS.get_cmdline_user_args():
 		for k in ["warden", "mountain_king", "dragon", "cerberus", "hades", "leviathan", "broodmother", "bog_hag"]:
 			w.bosses_defeated[k] = true
@@ -87,6 +95,7 @@ func _run() -> void:
 		w.hud.visible = false
 	await _frames(60)
 	for stop: String in tour:
+		_clear_ui()
 		# "arena_<location id>": stand 18 m in front of that location's boss spawn.
 		var arena := stop.begins_with("arena_")
 		var spec: Array = [StringName(stop.trim_prefix("arena_")), 13.0, 0.0, Vector3(0, 2.5, 18), -0.12] if arena else STOPS.get(stop, [])
@@ -161,19 +170,27 @@ func _run() -> void:
 				for i in Inventory.HOTBAR:
 					if p.inventory.get_slot(i).get("id", "") == a.trim_prefix("--hold="):
 						p.inventory.selected = i
-		if stop in ["geyser", "sanctuary"]:
-			var wanted := CaveBiomes.Kind.GEYSER if stop == "geyser" else CaveBiomes.Kind.CRYSTAL_REFUGE
+		if stop in ["geyser", "sanctuary", "fungal", "frost"]:
+			var wanted: int = {"geyser": CaveBiomes.Kind.GEYSER, "sanctuary": CaveBiomes.Kind.CRYSTAL_REFUGE,
+					"fungal": CaveBiomes.Kind.FUNGAL, "frost": CaveBiomes.Kind.FROST}[stop]
 			var found := false
 			for z in range(4, 12):
 				for x in range(4, 12):
 					var r := CaveBiomes.region(Vector3(x * 128 + 64, -32, z * 128 + 64), vw.gen.world_seed)
 					if int(r["kind"]) == wanted:
-						p.global_position = r["center"] + Vector3(0, -16, 8)
+						p.global_position = r["center"] + Vector3(0, -4, 8)
 						found = true
 						break
 				if found:
 					break
 			p.offhand_light = true
+		if stop == "mountains":
+			# Look from the village edge towards the high peaks (Frosthold's range).
+			var peaks := w.location_by_id(&"frosthold")
+			if peaks != null:
+				var to := peaks.center - p.global_position
+				spec = spec.duplicate()
+				spec[2] = atan2(-to.x, -to.z)
 		if stop in WATER_STOPS:
 			var shore := _find_shore(w, loc)
 			p.global_position = Vector3(shore.x, 0, shore.y)
@@ -191,9 +208,19 @@ func _run() -> void:
 			await get_tree().process_frame
 		if not inside and (spec.size() > 3 or vw.is_solid(Vector3i(p.global_position.floor())) or not vw.is_solid(Vector3i((p.global_position - Vector3(0, 3, 0)).floor()))):
 			var gp := p.global_position
-			var g := vw.ground_below(gp.x, gp.y + 30.0, gp.z, 60.0)
-			var y := g if absf(g) < 1e6 else float(vw.surface_y(int(gp.x), int(gp.z)) + 1)
-			if loc.half_height > 0.0:
+			# Underground stops look for the floor just below, never the surface above.
+			var region_cave: bool = stop in ["geyser", "sanctuary", "fungal", "frost"]
+			var buried := region_cave or gp.y < vw.gen.ground_level(gp.x, gp.z) - 8.0
+			var g := vw.ground_below(gp.x, gp.y + (2.0 if buried else 30.0), gp.z, 40.0 if buried else 60.0)
+			if region_cave:
+				# Stand on an open floor in the chamber (searching outwards from its centre).
+				g = 1e9
+				var spot := _open_floor(vw, gp)
+				if spot.y < 1e6:
+					p.global_position = Vector3(spot.x, gp.y, spot.z)
+					g = spot.y
+			var y := g if absf(g) < 1e6 else (gp.y if buried else float(vw.surface_y(int(gp.x), int(gp.z)) + 1))
+			if loc.half_height > 0.0 and not region_cave:
 				y = loc.center.y
 			p.global_position.y = y + 0.05
 		if cam:
@@ -221,6 +248,7 @@ func _run() -> void:
 		p.camera.yaw = float(spec[2])
 		p.camera.pitch = float(spec[4]) if spec.size() > 4 else -0.18
 		await _frames(20)
+		_clear_ui()
 		var vp_rid := w.view.viewport.get_viewport_rid()
 		RenderingServer.viewport_set_measure_render_time(vp_rid, true)
 		var stats := await _measure(1.5)
@@ -228,7 +256,8 @@ func _run() -> void:
 		for i in 30:
 			await get_tree().process_frame
 			gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp_rid) / 30.0
-		report.append("output %s, 3D viewport %s, adaptive %s" % [str(DisplayServer.window_get_size()), str(w.view.viewport.size), str(Settings.get_value("graphics", "adaptive_resolution"))])
+		report.append("output %s, 3D viewport %s, adaptive %s, at %s, underground %s depth %.0f" % [str(DisplayServer.window_get_size()), "%s (%s)" % [str(w.view.internal_size()), str(w.view.viewport.scaling_3d_mode)], str(Settings.get_value("graphics", "adaptive_resolution")),
+				str(p.global_position.round()), str(w.tracker.underground), w.tracker.depth])
 		report.append("%-8s %-28s load %5d ms  avg %.2f ms (%.0f fps) worst %.2f ms  3d gpu %.2f ms  process %.2f ms  draws %d  prims %d" % [stop, loc.name, Time.get_ticks_msec() - t0, stats.x, 1000.0 / stats.x, stats.y, gpu,
 				Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
 				RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME),
@@ -286,11 +315,6 @@ func _run() -> void:
 			report.append("   arena gpu cost %.2f ms (%.2f with, %.2f without)" % [gpu - gpu_off, gpu, gpu_off])
 		if "--gpu-breakdown" in OS.get_cmdline_user_args():
 			await _gpu_breakdown(w, report, gpu if gpu > 0.0 else (await _measure(2.0)).x)
-		if "--raw" in OS.get_cmdline_user_args():
-			Ascii.effect.enabled = false
-			await _frames(3)
-			await _shot(stop + "_raw")
-			Ascii.effect.enabled = true
 		var meshes := p.model.find_children("*", "GeometryInstance3D", true, false)
 		var first: Node3D = null
 		var nvis := 0
@@ -337,7 +361,6 @@ func _gpu_breakdown(w: GameWorld, report: PackedStringArray, all_on: float) -> v
 		"sun shadow": [func() -> void: w.sky.set_meta("no_shadow", true), func() -> void: w.sky.remove_meta("no_shadow")],
 		"water shader": [func() -> void: if liquid != null: liquid.shader = flat, func() -> void: if liquid != null: liquid.shader = liquid_shader],
 		"weather": [func() -> void: w.weather.visible = false, func() -> void: w.weather.visible = true],
-		"ascii": [func() -> void: Ascii.effect.enabled = false, func() -> void: Ascii.effect.enabled = true],
 	}
 	var line := "   gpu %.2f ms;" % all_on
 	for label: String in toggles:
@@ -637,7 +660,39 @@ func _measure(seconds: float) -> Vector2:
 	return Vector2(total / n, worst)
 
 
+func _clear_ui() -> void:
+	var w := GameWorld.instance
+	var hud: Node = w.hud if w != null else null
+	if hud == null:
+		return
+	var pause: Variant = hud.get("pause_menu")
+	if pause != null and pause.is_open:
+		pause.close()
+	if hud.has_method("_close_screens"):
+		hud.call("_close_screens")
+	get_tree().paused = false
+
+
+## Nearest cell (x, floor y, z) around `around` with solid ground and three
+## open cells above it; y >= 1e6 when there is none (area not streamed).
+func _open_floor(vw: VoxelWorld, around: Vector3) -> Vector3:
+	for radius in range(0, 24, 3):
+		for k in maxi(1, radius * 2):
+			var a := TAU * float(k) / float(maxi(1, radius * 2))
+			var x := int(around.x + cos(a) * radius)
+			var z := int(around.z + sin(a) * radius)
+			for dy in range(0, 30):
+				var cell := Vector3i(x, int(around.y) - dy, z)
+				if vw.is_solid(cell) and not vw.is_solid(cell + Vector3i.UP) and not vw.is_solid(cell + Vector3i(0, 2, 0)) and not vw.is_solid(cell + Vector3i(0, 3, 0)):
+					return Vector3(x + 0.5, cell.y + 1, z + 0.5)
+	return Vector3(0, 1e9, 0)
+
+
 func _shot(shot_name: String) -> void:
+	# The desktop may be in use while capturing: stray keys can open the map or
+	# the pause menu. Close them so every shot shows the world.
+	_clear_ui()
+	await RenderingServer.frame_post_draw
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out_dir.path_join(shot_name + ".png"))
@@ -656,9 +711,8 @@ func _profile(w: GameWorld, report: PackedStringArray) -> void:
 		"replicator": [w.replicator],
 		"Audio": [Audio],
 		"Net": [Net],
-		"Ascii": [Ascii],
 		"local player": [w.local_player],
-		"EVERYTHING": [w, Audio, Net, Ascii, Settings, Events],
+		"EVERYTHING": [w, Audio, Net, Settings, Events],
 	}
 	for label: String in groups:
 		var nodes: Array = groups[label]

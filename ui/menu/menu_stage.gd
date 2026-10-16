@@ -1,7 +1,7 @@
 class_name MenuStage
 extends Control
 ## Everything behind the title-screen UI: the live world (MenuBackdrop, drawn
-## by its AsciiView far below), a veil that keeps text readable over it, and
+## by its WorldView far below), a veil that keeps text readable over it, and
 ## the ember field shown until the world has streamed in (and for good where
 ## there is no backdrop, e.g. headless or --no-menu-world).
 ## Also shows the cinematic location card for the current shot.

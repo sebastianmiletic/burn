@@ -5,7 +5,7 @@ extends Node3D
 ## The terrain and decor go through the same SmoothMesher -> CaveDecor.plan_chunk ->
 ## build_chunk path as the game.
 ##
-##   godot --path . res://tests/gpu/cave_gallery.tscn -- --capture=/abs/dir [--style=4] [--quality=2] [--only=name]
+##   godot --path . res://tests/gpu/cave_gallery.tscn -- --capture=/abs/dir [--quality=2] [--only=name]
 ##
 ## Prints planning cost per chunk and the GPU frame time with decor shown and hidden.
 
@@ -27,15 +27,13 @@ var _plan_us := 0
 var _plan_chunks := 0
 var _instances := 0
 var _lights := 0
-var _view: AsciiView
+var _view: WorldView
 
 
 func _ready() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture="):
 			_capture_dir = arg.trim_prefix("--capture=")
-		elif arg.begins_with("--style="):
-			Settings.set_value("graphics", "style", int(arg.trim_prefix("--style=")))
 		elif arg.begins_with("--quality="):
 			_quality = int(arg.trim_prefix("--quality="))
 		elif arg.begins_with("--only="):
@@ -62,7 +60,7 @@ func _ready() -> void:
 	torch.omni_attenuation = 1.3
 	torch.position = Vector3(0.35, -0.1, 0.2)
 	camera.add_child(torch)
-	_view = AsciiView.new()
+	_view = WorldView.new()
 	_view.source_camera = camera
 	add_child(_view)
 	print("[cave_gallery] plan %.2f ms/chunk over %d chunks, %d instances, %d lights, warmup %.0f ms" % [

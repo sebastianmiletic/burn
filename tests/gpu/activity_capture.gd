@@ -1,7 +1,7 @@
 extends SceneTree
 ## GPU captures of villagers and activities in first person (development aid):
 ##   godot --path . --resolution 1600x900 -s res://tests/gpu/activity_capture.gd -- \
-##       --out=/abs/dir --no-update --data-dir=<dir> [--shots=npc,smith,board,...] [--style=4] [--quality=2]
+##       --out=/abs/dir --no-update --data-dir=<dir> [--shots=npc,smith,board,...] [--quality=2]
 ## Boots a new solo game and runs tests/gpu/activity_capture_run.gd inside it.
 
 var _t := 0.0

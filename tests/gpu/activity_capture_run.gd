@@ -14,8 +14,6 @@ func _ready() -> void:
 			_out = a.trim_prefix("--out=")
 		elif a.begins_with("--shots="):
 			_shots = a.trim_prefix("--shots=").split(",")
-		elif a.begins_with("--style="):
-			_set_graphics("style", int(a.trim_prefix("--style=")))
 		elif a.begins_with("--quality="):
 			_set_graphics("quality", int(a.trim_prefix("--quality=")))
 	DirAccess.make_dir_recursive_absolute(_out)

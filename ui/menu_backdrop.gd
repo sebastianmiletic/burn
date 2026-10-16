@@ -1,15 +1,15 @@
 class_name MenuBackdrop
 extends Node3D
 ## The live world behind the title screens: a real piece of the game world
-## (WorldGen + VoxelWorld with a fixed seed) drawn through AsciiView in the
-## player's render style, lit by SkyController, filmed by a slow cinematic
+## (WorldGen + VoxelWorld with a fixed seed) drawn through WorldView, lit by
+## SkyController, filmed by a slow cinematic
 ## camera that cuts between a few shots of notable places.
 ##
 ## Lifecycle (one instance at most, at /root/MenuBackdrop):
 ##   MenuBackdrop.ensure()   intro / main menu / lobby call this; it starts
 ##                           loading in the background and never blocks UI.
 ##   MenuBackdrop.release()  Game calls this before it builds a GameWorld, so
-##                           there is never more than one world or AsciiView.
+##                           there is never more than one world or WorldView.
 ## Headless runs (tests) never create it.
 ##
 ## Streaming uses two VoxelWorlds sharing one WorldGen: one is on screen, the
@@ -25,7 +25,6 @@ const FADE_OUT := 1.2
 const FIRST_FADE_IN := 2.6
 const LOAD_TIMEOUT_MS := 20000
 ## Under the glyphs a lower 3D resolution is invisible; the menu stays light.
-const ASCII_RENDER_SCALE := 0.6
 
 ## Shots, relative to the named location's centre (ground level). Kinds:
 ##   orbit: radius, height, a0..a1 (radians), look (offset of the target)
@@ -73,7 +72,7 @@ var _phase := Phase.WAITING
 var _gen: WorldGen
 var _worlds: Array[VoxelWorld] = []
 var _sky: SkyController
-var _view: AsciiView
+var _view: WorldView
 var _cam: Camera3D
 var _shots: Array[Dictionary] = []
 var _active := 0             # index in _worlds on screen
@@ -164,7 +163,7 @@ func _start() -> void:
 	_sky.process_priority = -10   # runs before us, so our overrides win
 	add_child(_sky)
 	_sky.time_of_day = float(SHOTS[0]["hour"])
-	_view = AsciiView.new()
+	_view = WorldView.new()
 	_view.name = "View"
 	_view.source_camera = _cam
 	_view.tint = Color.BLACK
@@ -213,7 +212,7 @@ func _process(delta: float) -> void:
 		_orphan_t = 0.0
 	match _phase:
 		Phase.WAITING:
-			# Coming back from a game: let the old GameWorld (and its AsciiView) go first.
+			# Coming back from a game: let the old GameWorld (and its WorldView) go first.
 			if get_tree().root.get_node_or_null("GameWorld") == null:
 				_start()
 		Phase.PREPARING:
@@ -235,8 +234,6 @@ func _process(delta: float) -> void:
 		_view.tint = Color(k, k, k)
 	if _sky != null and _phase == Phase.PLAYING:
 		_grade()
-	if _view != null and Engine.get_process_frames() % 30 == 0:
-		_apply_render_scale()  # AsciiView resizes itself on window/setting changes
 
 
 func _build() -> void:
@@ -431,16 +428,7 @@ func _light_profile() -> void:
 
 
 func _apply_render_scale() -> void:
-	if _view == null or _view.viewport == null:
-		return
-	var scale := Settings.render_scale()
-	if Ascii.effect.enabled:
-		scale = minf(scale, ASCII_RENDER_SCALE)
-	var window := DisplayServer.window_get_size()
-	var logical := Vector2(window) / Ascii.screen_scale()
-	var want := Vector2i((logical * scale).round()).max(Vector2i(64, 64))
-	if _view.viewport.size != want:
-		_view.viewport.size = want
+	pass  # WorldView applies the quality's render resolution and upscaler itself.
 
 
 # --- Camera ---------------------------------------------------------------------------

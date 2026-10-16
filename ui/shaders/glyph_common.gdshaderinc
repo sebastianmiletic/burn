@@ -1,5 +1,5 @@
-// Shared helpers for UI shaders that draw with the game's glyph atlas.
-// The atlas is one row of glyphs, each cell_px in size (GlyphAtlas).
+// Shared helpers for the menu's fire / ash effect shaders. They work on a
+// grid of small cells (cell_px); `atlas` is unused unless a caller supplies one.
 
 uniform sampler2D atlas : filter_nearest;
 uniform bool has_atlas = false;
@@ -52,8 +52,9 @@ float g_ink(float b, vec2 local_px, float jitter) {
 	if (b <= 0.02) return 0.0;
 	int idx = clamp(int(b * float(ramp_len) + jitter * 0.6), 1, ramp_len - 1);
 	if (!has_atlas) {
-		vec2 c = abs(local_px / cell_px - 0.5);
-		return step(max(c.x, c.y), 0.5 * b);
+		// No glyphs: a soft, continuous coverage (the cells are only a few
+		// pixels, so effects read as smoke, embers and fire, not characters).
+		return smoothstep(0.0, 0.6, b);
 	}
 	ivec2 lp = clamp(ivec2(local_px), ivec2(0), ivec2(cell_px) - 1);
 	return texelFetch(atlas, ivec2(ramp[idx] * int(cell_px.x) + lp.x, lp.y), 0).r;
