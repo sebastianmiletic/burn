@@ -60,15 +60,13 @@ static func arrays_for(world_gen: WorldGen) -> Array:
 	water.resize(n * n)
 	peaks.resize(n * n)
 	canopy.resize(n * n)
-	# Sample rows in parallel (pure reads of the generator), then stitch.
-	var rows: Array = []
-	rows.resize(n)
+	# This already runs on the dimension's preparation worker. Keep calls
+	# into its WorldGen script instance on that worker: a native crash in
+	# _surface_v3 was observed with nested parallel row callbacks during MP
+	# loading. Array-only filtering and tile assembly below remain parallel.
 	var hm := world_gen.height_map() if world_gen.revision >= 3 else PackedFloat32Array()
-	var task := WorkerThreadPool.add_group_task(func(z: int) -> void:
-		rows[z] = _sample_row(world_gen, z, n, hm), n, -1, true, "distant land rows")
-	WorkerThreadPool.wait_for_group_task_completion(task)
 	for z in n:
-		var row: Array = rows[z]
+		var row := _sample_row(world_gen, z, n, hm)
 		var h: PackedFloat32Array = row[0]
 		var c: PackedByteArray = row[1]
 		var wtr: PackedByteArray = row[2]
