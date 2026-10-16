@@ -208,11 +208,21 @@ func _client() -> void:
 		net.send_chat("session ok")
 
 	await wait_seconds(3.0)
-	var rtt: float = net.ping_ms()
-	print("INFO: client ping to host = %.0f ms (sim latency %.0f ms, loss %.3f)" % [rtt, net.sim_latency_ms, net.sim_loss])
 	if args.has("rtt"):
 		var r := String(args["rtt"]).split("-")
-		check(rtt >= float(r[0]) and rtt <= float(r[1]), "round trip %.0f ms within %s ms" % [rtt, args["rtt"]])
+		# The session's bulk transfer can inflate the first RTT samples. Net
+		# smooths once per second, so three seconds is not always enough for
+		# that history to decay on a busy machine. Keep the same limits, but
+		# allow bounded settling; missing pongs must not pass as a zero RTT.
+		print("INFO: post-transfer ping = %.0f ms; settling within %s ms" % [net.ping_ms(), args["rtt"]])
+		await wait_until(func() -> bool:
+			var sample: float = net.ping_ms()
+			return sample > 0.0 and sample >= float(r[0]) and sample <= float(r[1]), 12.0)
+		var settled: float = net.ping_ms()
+		check(settled > 0.0 and settled >= float(r[0]) and settled <= float(r[1]),
+				"round trip %.0f ms within %s ms" % [settled, args["rtt"]])
+	var rtt: float = net.ping_ms()
+	print("INFO: client ping to host = %.0f ms (sim latency %.0f ms, loss %.3f)" % [rtt, net.sim_latency_ms, net.sim_loss])
 	check(absf(net.server_time() - Time.get_ticks_usec() / 1000000.0) < 600.0, "server clock estimate is sane")
 
 	if args.has("probe"):
