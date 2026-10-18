@@ -53,8 +53,7 @@ const FIRST_STEPS := [
 		"id": "fs_village", "title": "The Last Village", "giver": "",
 		"description": "Emberfall lies just north of the shrine. Its elder, Maren, keeps the story of the grey sky; the smith Brannoc keeps its forge.",
 		"objectives": [
-			{"type": "reach", "key": "emberfall", "count": 1, "text": "Find the village of Emberfall"},
-			{"type": "talk", "key": "elder", "count": 1, "text": "Speak with Elder Maren"},
+			{"type": "talk", "key": "elder", "count": 1, "text": "Find the village and speak with Elder Maren"},
 		],
 		"rewards": {"xp": 20, "gold": 5}, "next": "",
 	},

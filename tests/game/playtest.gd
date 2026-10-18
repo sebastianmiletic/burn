@@ -58,6 +58,7 @@ func _run() -> void:
 	_check(p.body.on_floor and not p.dead, "player spawns standing on ground at %s" % str(p.global_position.round()))
 	_check(p.inventory.has("pickaxe_stone") and p.inventory.has("sword_rusty"), "starting kit given")
 	_check(_w.quests.is_active("kindling"), "first quest active")
+	await _early_ladder(p)
 
 	# --- Shrine and the elder -------------------------------------------------
 	var is_home_shrine := func(e: Entity) -> bool: return String(e.get("location_id")) == "emberfall_shrine"
@@ -76,6 +77,7 @@ func _run() -> void:
 		elder.local_interact(p)
 		Events.dialog_choice.emit(elder, "turnin:kindling")
 		_check(_w.quests.is_completed("kindling"), "kindling handed in")
+		_check(_w.quests.is_completed("fs_village"), "speaking with the elder ends the guide")
 		_check(p.xp > 0 and p.inventory.has("potion_health", 3), "quest rewards granted (xp %d)" % p.xp)
 		var smith := _find("npc", func(e: Entity) -> bool: return e.get("role") == "blacksmith") as Npc
 		_check(smith != null, "blacksmith present")
@@ -250,6 +252,54 @@ func _run() -> void:
 
 	print("%s — %d failures" % ["PLAYTEST PASSED" if _failures == 0 else "PLAYTEST FAILED", _failures])
 	get_tree().quit(1 if _failures > 0 else 0)
+
+
+## The guided first steps through the real crafting and placing paths:
+## gather wood -> planks -> workbench (placed) -> stone tool -> campfire (placed).
+func _early_ladder(p: Player) -> void:
+	var q := _w.quests
+	_check(q.is_active("fs_timber"), "guide starts: gather wood")
+	p.give_item("wood", 6)  # what a felled tree's logs give on pickup
+	_check(q.is_completed("fs_timber") and q.is_active("fs_workbench"), "wood gathered, workbench step next")
+	_check(p.craft("planks") and p.craft("workbench"), "planks and a workbench crafted by hand")
+	_check(await _place(p, "workbench"), "workbench placed in the world")
+	_check(q.is_completed("fs_workbench") and q.is_active("fs_stone_tools"), "workbench step done")
+	p.give_item("stone", 11)
+	_check(p.craft("planks") and p.craft("stick"), "sticks whittled")
+	_check("workbench" in p.nearby_station_kinds(), "the placed workbench is within reach")
+	_check(p.craft("axe_stone"), "stone axe made at the workbench")
+	_check(q.is_completed("fs_stone_tools") and q.is_active("fs_campfire"), "stone tools step done")
+	_check(p.craft("campfire"), "campfire crafted")
+	p.global_position += Vector3(0, 0, 2.5)
+	await _frames(2)
+	_check(await _place(p, "campfire"), "campfire placed in the world")
+	_check(q.is_completed("fs_campfire") and q.is_active("fs_village"), "campfire step done, find the village next")
+	p.give_item("raw_meat", 1)
+	_check("campfire" in p.nearby_station_kinds() and p.craft("cooked_meat_campfire"), "meat roasted on the campfire")
+
+
+## Selects the item in the hotbar and uses it on the ground in front; true when a station appeared.
+func _place(p: Player, item: String) -> bool:
+	var before := _count("station")
+	var slot := -1
+	for i in Inventory.HOTBAR:
+		if String(p.inventory.get_slot(i).get("id", "")) == item:
+			slot = i
+	if slot < 0:
+		p.inventory.swap(_slot_of(p, item), 2)
+		slot = 2
+	p.inventory.select(slot)
+	p.camera.pitch = -0.9
+	await _frames(3)
+	p._use()
+	return await _wait_for(func() -> bool: return _count("station") > before, 3.0)
+
+
+func _slot_of(p: Player, item: String) -> int:
+	for i in 64:
+		if String(p.inventory.get_slot(i).get("id", "")) == item:
+			return i
+	return 0
 
 
 func _dump_entities() -> void:

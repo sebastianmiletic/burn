@@ -34,7 +34,6 @@ func test_craft_place_gather_objectives() -> void:
 	q.on_event("craft", "campfire", 1)
 	q.on_event("place", "campfire", 1)
 	check(q.is_completed("fs_campfire") and q.is_active("fs_village"), "campfire built and placed")
-	q.on_event("reach", "emberfall")
 	q.on_event("talk", "elder")
 	check(q.is_completed("fs_village"), "the guide ends at Elder Maren")
 	check(QuestLog.key_matches("axe_stone|spear_stone", "craft", "axe_stone"), "key alternatives")
