@@ -10,7 +10,8 @@ extends CreatureModel
 ## The entity position is the head's anchor at the water line. Set
 ## `surfaced` (rear the head out of the water), `water_y`, `arena_center`
 ## and `platform_y`; one-shot actions: bite, roar, breath (spit), slam (tail
-## slam towards the arena), summon, dive, hit, die.
+## slam towards the arena), swipe (head sweep across the platform), whip
+## (thrashing coils racing round the islet), summon, dive, hit, die.
 
 var surfaced := false
 var engaged := false
@@ -81,6 +82,9 @@ func _init(kind_name := "leviathan") -> void:
 	durations["roar"] = 2.0
 	durations["summon"] = 1.8
 	durations["dive"] = 1.2
+	durations["swipe"] = 2.0
+	durations["whip"] = 2.8
+	durations["hit"] = 0.6
 
 
 func _ember_extents() -> Vector3:
@@ -346,6 +350,21 @@ func _animate(delta: float) -> void:
 			"dive":
 				offset += fwd * 3.0 * k * w
 				pitch = lerpf(pitch, -0.9, w)
+			"swipe":
+				# Wind up to one side, then swing the open jaws across (impact ~55 %).
+				var side := fwd.cross(Vector3.UP)
+				var swing := keys(p, [[0, 0], [0.35, -1.0], [0.55, 0.9], [0.75, 1.0], [1, 0]])
+				offset += side * swing * 7.0 * k + fwd * keys(p, [[0, 0], [0.35, -1.5], [0.55, 4.0], [1, 0]]) * k
+				offset += Vector3.UP * -keys(p, [[0, 0], [0.35, -1.0], [0.55, 4.0], [0.8, 3.0], [1, 0]]) * k
+				pitch += -0.2 * w
+				jaw_t = lerpf(jaw_t, keys(p, [[0, 0.2], [0.35, 1.0], [0.6, 0.9], [1, 0.1]]), w)
+				frill_t = lerpf(frill_t, 1.0, w)
+			"whip":
+				# The coils thrash and the head plunges and rears as it races round.
+				pitch = lerpf(pitch, -0.35 + 0.25 * sin(_time * 5.0), w)
+				jaw_t = lerpf(jaw_t, 0.6, w)
+				frill_t = lerpf(frill_t, 0.9, w)
+				shake = 0.08 * w
 			"hit":
 				offset += -fwd * 1.2 * k * sin(PI * p)
 				pitch += 0.25 * sin(PI * p)
@@ -387,6 +406,9 @@ func _animate(delta: float) -> void:
 	chain.rest_height = water_y - lerpf(1.7, 1.4, _surf) * k - (3.0 * k * _sink / 8.0 if _dead else 0.0)
 	chain.hump_amp = (3.0 * k if not engaged else 2.2 * k) * (0.5 + 0.5 * cruise) * (0.0 if _dead else 1.0)
 	chain.wave_amp = (1.3 * k * (0.4 + 0.6 * clampf(speed / 6.0, 0.0, 1.0))) * (0.15 if _dead else 1.0)
+	if _action == "whip" and p >= 0.0 and not _dead:
+		chain.wave_amp *= 1.0 + 1.6 * w
+		chain.hump_amp *= 1.0 + 1.2 * w
 	# The body is simulated from the neck base; the neck itself is a curve from
 	# there up to the head (straight behind it while swimming, a rearing S when surfaced).
 	var flat_look := Vector3(_look.x, 0, _look.z).normalized() if Vector2(_look.x, _look.z).length() > 0.05 else fwd

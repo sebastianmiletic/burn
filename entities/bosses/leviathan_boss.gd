@@ -10,9 +10,15 @@ extends Boss
 ##            landing spots marked), tail slam (the tail lifts out of the sea
 ##            and crashes across the platform), geysers under every player
 ##   Phase 2: + tidal wave (sweeps two thirds of the platform; one strip stays
-##            dry), + calls drowned thralls up the islet's sides
+##            dry), + calls drowned thralls up the islet's sides, + head sweep
+##            (rears at the edge and swings its head across a marked cone),
+##            + coil (races round the islet; its coils crush the platform rim)
 ##   Phase 3: + breach (leaps clean over the platform along a marked lane),
-##            + maelstrom (rings of geysers with safe bands), faster tempo
+##            + maelstrom (rings of geysers with safe bands), + frenzy (three
+##            snapping bites at whoever is nearest, one after another), faster tempo
+## Between attacks it circles the islet, reversing direction now and then, and
+## surfaces wherever its target stands. A heavy blow while its head rests on
+## the platform makes it recoil.
 ## Every damaging blow is telegraphed and lands when its marker fills.
 
 const RING := 23.0         ## circling radius around the platform centre while fighting
@@ -129,7 +135,13 @@ func _idle(delta: float) -> void:
 
 func _approach(delta: float) -> void:
 	flying = false
-	_swim(RING, 7.0 + phase * 1.5, delta)
+	_strafe_t -= delta
+	if _strafe_t <= 0.0:
+		_strafe_t = 5.0 + _rng.randf() * 6.0
+		if _rng.randf() < 0.45:
+			_dir = -_dir
+	# It swims a little wider or tighter as it circles, so the coils move.
+	_swim(RING + sin(fight_time * 0.4) * 3.0, 7.0 + phase * 1.5, delta)
 
 
 func _physics(delta: float) -> void:
@@ -187,6 +199,9 @@ func _attacks() -> Dictionary:
 		"summon": {"phase": 2, "weight": 0.8, "cooldown": 1.5, "ok": func() -> bool: return summons.size() < 3},
 		"breach": {"phase": 3, "weight": 1.8, "cooldown": 1.4},
 		"maelstrom": {"phase": 3, "weight": 1.1, "cooldown": 1.6},
+		"sweep": {"phase": 2, "weight": 1.4, "cooldown": 1.2},
+		"coil": {"phase": 2, "weight": 1.0, "cooldown": 1.4},
+		"frenzy": {"phase": 3, "weight": 1.4, "cooldown": 1.6},
 		"emerge": {"phase": 99, "weight": 0.0, "cooldown": 0.8},
 	}
 
@@ -195,7 +210,7 @@ func _begin_attack(name: String) -> void:
 	_attack_data["stage"] = "travel"
 	_attack_data["stage_t"] = 0.0
 	match name:
-		"bite", "spit", "summon":
+		"bite", "spit", "summon", "sweep", "frenzy":
 			var p := _target if _target != null else _random_player()
 			var a := _angle_of(p.global_position) if p != null else _angle
 			if name == "spit":
@@ -217,6 +232,8 @@ func _begin_attack(name: String) -> void:
 			_geysers(1)
 		"maelstrom":
 			_maelstrom()
+		"coil":
+			_coil()
 
 
 func _stage(name: String) -> void:
@@ -238,6 +255,9 @@ func _update_attack(name: String, t: float, delta: float) -> bool:
 		"maelstrom":
 			_swim(RING, 12.0, delta)
 			return t > 3.4
+		"coil":
+			_swim(PLATFORM + 4.0, 20.0, delta)
+			return t > 2.9
 		"breach":
 			return _update_breach(stage, st, delta)
 	# Surface-and-act attacks: travel -> rise -> act -> linger -> sink.
@@ -255,12 +275,12 @@ func _update_attack(name: String, t: float, delta: float) -> bool:
 		"act":
 			_swim(RING - 2.5, 0.0, delta, true)
 			_act_update(name, st)
-			var act_len := {"bite": 1.6, "spit": 2.6, "emerge": 2.0, "summon": 1.8, "wave": 2.4}
+			var act_len := {"bite": 1.6, "spit": 2.6, "emerge": 2.0, "summon": 1.8, "wave": 2.4, "sweep": 2.0, "frenzy": 3.2}
 			if st > float(act_len.get(name, 1.5)):
 				_stage("linger")
 		"linger":
 			_swim(RING - 2.5, 0.0, delta, true)
-			var linger := {"bite": 2.0, "spit": 1.0, "emerge": 0.8, "summon": 0.6, "wave": 0.8}
+			var linger := {"bite": 2.0, "spit": 1.0, "emerge": 0.8, "summon": 0.6, "wave": 0.8, "sweep": 1.2, "frenzy": 1.8}
 			if st > float(linger.get(name, 1.0)) - (0.6 if phase == 3 else 0.0):
 				_stage("sink")
 				_play("dive", 1.0)
@@ -276,21 +296,24 @@ func _update_attack(name: String, t: float, delta: float) -> bool:
 func _act(name: String) -> void:
 	match name:
 		"bite":
-			var p := _target if _target != null else _random_player()
-			var head := global_position
-			var aim := (p.global_position if p != null else arena_center) - head
-			aim.y = 0.0
-			aim = aim.limit_length(13.0)
-			if aim.length() < 6.0:
-				aim = aim.normalized() * 6.0 if aim.length() > 0.1 else _fwd() * 6.0
-			var c := head + aim
-			c.y = arena_center.y
-			_face(c, 1.0, 60.0)
-			_play("bite", 1.6)
-			_tele("circle:bite", c, aim.normalized(), Vector3(5.0, 0, 0), 0.8, 46.0, "hit", 8.0,
+			_snap(_target if _target != null else _random_player(), 0.8, 46.0)
+		"frenzy":
+			_attack_data["snaps"] = 1
+			_snap(_nearest_player(), 0.7, 34.0)
+			Audio.play("leviathan_roar", global_position + Vector3(0, 8, 0), 5.0, 1.2)
+		"sweep":
+			# The head rears at the edge and swings across a cone of the platform.
+			var to := arena_center - global_position
+			to.y = 0.0
+			var dir := to.normalized() if to.length() > 0.1 else _fwd()
+			_face(arena_center, 1.0, 60.0)
+			_play("swipe", 2.0)
+			var origin := global_position
+			origin.y = arena_center.y
+			_tele("cone:wave", origin, dir, Vector3(RING + 2.0, 70.0, 0), 1.1, 38.0, "hit", 11.0,
 				func() -> void:
-					_shake_near(c, 0.6)
-					Audio.play("hit_heavy", c, 4.0, 0.6))
+					_shake_near(arena_center, 0.5)
+					Audio.play("wave_crash", arena_center, 5.0, 0.8))
 		"spit":
 			_play("breath", 1.6)
 			_attack_data["shots"] = 0
@@ -313,6 +336,12 @@ func _act(name: String) -> void:
 
 
 func _act_update(name: String, st: float) -> void:
+	if name == "frenzy":
+		var snaps: int = _attack_data.get("snaps", 1)
+		if snaps < 3 and st > snaps * 1.05:
+			_attack_data["snaps"] = snaps + 1
+			_snap(_nearest_player(), 0.7, 34.0)
+		return
 	if name != "spit":
 		return
 	var shots: int = _attack_data.get("shots", 0)
@@ -320,6 +349,58 @@ func _act_update(name: String, st: float) -> void:
 	if shots < total and st > 0.5 + shots * 0.3:
 		_attack_data["shots"] = shots + 1
 		_bile_at_player()
+
+
+## The head lunges and bites at `p` (a marked circle at the platform edge).
+func _snap(p: Entity, tele: float, base: float) -> void:
+	var head := global_position
+	var aim := (p.global_position if p != null else arena_center) - head
+	aim.y = 0.0
+	aim = aim.limit_length(13.0)
+	if aim.length() < 6.0:
+		aim = aim.normalized() * 6.0 if aim.length() > 0.1 else _fwd() * 6.0
+	var c := head + aim
+	c.y = arena_center.y
+	_face(c, 1.0, 60.0)
+	# The model's bite lunge peaks halfway through its action.
+	_play("bite", tele * 2.0)
+	_tele("circle:bite", c, aim.normalized(), Vector3(5.0, 0, 0), tele, base, "hit", 8.0,
+		func() -> void:
+			_shake_near(c, 0.6)
+			Audio.play("hit_heavy", c, 4.0, 0.6))
+
+
+func _nearest_player() -> Entity:
+	var best: Entity = null
+	var best_d := INF
+	for p in _players():
+		var d := p.global_position.distance_to(global_position)
+		if d < best_d:
+			best_d = d
+			best = p
+	return best if best != null else _target
+
+
+## The Leviathan races round the islet; its coils crush the platform's rim
+## (a marked band) and throw whoever stands there inwards.
+func _coil() -> void:
+	_play("whip", 2.8)
+	Audio.play("wave_crash", arena_center, 6.0, 0.7)
+	_tele("ring:wave", arena_center, _fwd(), Vector3(PLATFORM - 4.0, PLATFORM + 2.0, 0), 2.0, 36.0, "hit", -9.0,
+		func() -> void:
+			_shake_near(arena_center, 0.7)
+			Audio.play("hit_heavy", arena_center, 6.0, 0.5))
+
+
+## A heavy blow while its head rests on the platform makes it recoil (the
+## base flinch only reacts outside attacks, and this boss is only hurt in them).
+func _flinch(dealt: float) -> void:
+	if not engaged or _flinch_t > 0.0 or dealt < max_health * 0.015 or not is_server():
+		return
+	if String(_attack_data.get("stage", "")) != "linger":
+		return
+	_flinch_t = flinch_cooldown
+	_play("hit", 0.6)
 
 
 func _bile_at_player() -> void:

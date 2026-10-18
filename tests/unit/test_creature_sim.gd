@@ -175,11 +175,17 @@ func test_new_bosses_simulate() -> void:
 		var acc := 0.0
 		var steps := 0
 		var surfaced_time := 0.0
+		var used := {}
+		var start_pos: Vector3 = boss.global_position
+		var roamed := 0.0
 		while sim.now < 300.0 and not boss.dead:
 			sim.now += dt
 			steps += 1
 			acc += dt
 			boss.server_tick(dt)
+			if boss._attack != "":
+				used[boss._attack] = true
+			roamed = maxf(roamed, Vector2(boss.global_position.x - start_pos.x, boss.global_position.z - start_pos.z).length())
 			if boss.flying:
 				surfaced_time += dt
 			max_phase = maxi(max_phase, boss.phase)
@@ -212,8 +218,101 @@ func test_new_bosses_simulate() -> void:
 			check(surfaced_time > 10.0 and surfaced_time < sim.now * 0.95, "%s rises and sinks (risen %.0fs of %.0fs)" % [kind, surfaced_time, sim.now])
 			check(sim.projectiles > 0, "%s hurled wreckage" % kind)
 			check(sim.spawned > 0, "%s called up the drowned" % kind)
-		print("      %-12s phases→%d  telegraphs %d  hits %d  summons %d  projectiles %d  fight %.0fs" % [kind, max_phase, sim.telegraphs.size(), sim.hits.size(), sim.spawned, sim.projectiles, sim.now])
+		if kind in ["leviathan", "kraken", "charybdis"]:
+			check(used.size() >= 6, "%s used a varied moveset (%s)" % [kind, ",".join(PackedStringArray(used.keys()))])
+			check(roamed > 2.0, "%s moved around its arena (%.1f m)" % [kind, roamed])
+		print("      %-12s phases→%d  telegraphs %d  hits %d  summons %d  projectiles %d  attacks %d  roamed %.0fm  fight %.0fs" % [kind, max_phase, sim.telegraphs.size(), sim.hits.size(), sim.spawned, sim.projectiles, used.size(), roamed, sim.now])
 		arena.queue_free()
+
+
+## Every attack of the sea bosses (forced one by one in phase 3) runs to its
+## end, telegraphs, and only hurts through a filled telegraph.
+func test_sea_boss_attacks_each_complete() -> void:
+	var tree := _ready_tree()
+	if tree == null:
+		return
+	var boss_script: GDScript = load("res://entities/bosses/boss.gd")
+	for kind: String in ["leviathan", "kraken", "charybdis"]:
+		var probe: Node3D = boss_script.call("create", kind)
+		var names: Array = (probe._attacks() as Dictionary).keys()
+		probe.free()
+		check(names.size() >= 9, "%s has a wide moveset (%d attacks)" % [kind, names.size()])
+		for attack: String in names:
+			var sim := SimWorld.new()
+			var arena := Node3D.new()
+			tree.root.add_child(arena)
+			# On the platform / deck ring, within reach of every attack.
+			var player := _player(arena, Vector3(0, 0, 12.0 if kind != "leviathan" else 6.0))
+			sim.players.append(player)
+			var boss: Node3D = boss_script.call("create", kind)
+			boss.sim_world = sim
+			boss.body.gravity = 0.0
+			arena.add_child(boss)
+			var dt := 1.0 / 30.0
+			boss._engage()
+			# Let the opening (emerge / gulp) finish first.
+			var guard := 0
+			while boss._attack != "" and guard < 600:
+				sim.now += dt
+				boss.server_tick(dt)
+				guard += 1
+			boss.health = boss.max_health * 0.2
+			boss.phase = 3
+			sim.telegraphs.clear()
+			sim.hits.clear()
+			var t0: float = sim.now
+			boss._attack = attack
+			boss._attack_t = 0.0
+			boss._attack_data = {}
+			boss._begin_attack(attack)
+			var done := false
+			while sim.now - t0 < 20.0:
+				sim.now += dt
+				boss.server_tick(dt)
+				if boss._attack != attack:
+					done = true
+					break
+			# Let anything still pending land.
+			for i in 120:
+				sim.now += dt
+				boss._tick_pending(dt)
+			check(done, "%s %s finished" % [kind, attack])
+			if not attack in ["summon", "emerge"]:
+				check(sim.telegraphs.size() > 0 or sim.projectiles > 0, "%s %s telegraphed" % [kind, attack])
+			var unfair := 0
+			for h: Array in sim.hits:
+				var ok := false
+				for t: Array in sim.telegraphs:
+					var end: float = t[0] + t[2]
+					if end <= h[0] + 0.001 and h[0] - end < 3.0:
+						ok = true
+				if not ok:
+					unfair += 1
+			check_eq(unfair, 0, "%s %s hits without a filled telegraph" % [kind, attack])
+			arena.queue_free()
+
+
+## The Leviathan's lower jaw drops (its tip moves down, below the hinge) when it opens.
+func test_leviathan_jaw_opens_downwards() -> void:
+	var tree := _ready_tree()
+	if tree == null:
+		return
+	var arena := Node3D.new()
+	tree.root.add_child(arena)
+	var m := LeviathanModel.new()
+	m.lod_enabled = false
+	m.particles_enabled = false
+	arena.add_child(m)
+	for i in 10:
+		m._process(1.0 / 30.0)
+	var tip_local := Vector3(0, -0.15, -6.0)
+	var closed := (m.head.global_transform.affine_inverse() * (m.jaw.global_transform * tip_local)).y
+	m.play("roar", 2.0)
+	for i in 20:
+		m._process(1.0 / 30.0)
+	var opened := (m.head.global_transform.affine_inverse() * (m.jaw.global_transform * tip_local)).y
+	check(opened < closed - 2.0, "jaw tip drops when the mouth opens (%.2f -> %.2f in head space)" % [closed, opened])
+	arena.queue_free()
 
 
 func test_new_bosses_reset_when_abandoned() -> void:
