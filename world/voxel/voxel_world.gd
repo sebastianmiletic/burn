@@ -701,9 +701,9 @@ func _try_mesh(k: Vector3i) -> int:
 ## Skylight heights for the mesher: the lowest column within 2 m. A vertex on
 ## a cliff face sits far below its own column's top but is open to the sky
 ## sideways; only rock overhead on every side (caves, overhangs) darkens it.
-## Neighbours outside the chunk come from the generator, so the shading has
-## no seams at chunk borders.
-func _sky_heights(surface: PackedInt32Array, o: Vector3i, detail: FastNoiseLite, ridge: FastNoiseLite) -> PackedInt32Array:
+## The 2 m border outside the chunk comes from the generator's smooth base
+## height (a cheap, thread-safe lookup), so the shading has no chunk seams.
+func _sky_heights(surface: PackedInt32Array, o: Vector3i) -> PackedInt32Array:
 	if dimension == 2:
 		return surface
 	const B := 2
@@ -717,17 +717,23 @@ func _sky_heights(surface: PackedInt32Array, o: Vector3i, detail: FastNoiseLite,
 			if lx >= 0 and lz >= 0 and lx < Chunk.SIZE and lz < Chunk.SIZE:
 				wide[x + z * W] = surface[lx + lz * Chunk.SIZE]
 			else:
-				var wx := o.x + lx
-				var wz := o.z + lz
-				wide[x + z * W] = int(gen.column(wx, wz, detail, ridge).x) if gen.in_bounds(wx, wz) else -64
+				wide[x + z * W] = int(gen.smooth_height(o.x + lx, o.z + lz))
+	# Separable 5x5 minimum: rows, then columns.
+	var rows := PackedInt32Array()
+	rows.resize(W * W)
+	for z in W:
+		for x in range(B, W - B):
+			var lo := wide[x - B + z * W]
+			for d in range(1, 2 * B + 1):
+				lo = mini(lo, wide[x - B + d + z * W])
+			rows[x + z * W] = lo
 	var out := PackedInt32Array()
 	out.resize(Chunk.AREA)
 	for z in Chunk.SIZE:
 		for x in Chunk.SIZE:
-			var lo := wide[x + B + (z + B) * W]
-			for dz in range(-B, B + 1):
-				for dx in range(-B, B + 1):
-					lo = mini(lo, wide[x + B + dx + (z + B + dz) * W])
+			var lo := rows[x + B + z * W]
+			for d in range(1, 2 * B + 1):
+				lo = mini(lo, rows[x + B + (z + d) * W])
 			out[x + z * Chunk.SIZE] = lo
 	return out
 
@@ -781,7 +787,7 @@ func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) 
 			surface[x + z * Chunk.SIZE] = int(gen.column(wx, wz, detail, ridge).x) if gen.in_bounds(wx, wz) else -64
 			biomes[x + z * Chunk.SIZE] = gen.biome_at(wx, wz)
 	var result := ChunkMesher.build(neighbours, surface, o.y)
-	var smooth := SmoothMesher.build(neighbours, densities, _sky_heights(surface, o, detail, ridge), biomes, o, dimension)
+	var smooth := SmoothMesher.build(neighbours, densities, _sky_heights(surface, o), biomes, o, dimension)
 	if smooth.has("terrain"):
 		result["terrain"] = smooth["terrain"]
 	if flora != null:
