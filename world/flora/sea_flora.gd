@@ -33,7 +33,7 @@ const RULES := {
 const LAKE_BLOCKS := [Blocks.SAND, Blocks.MUD, Blocks.GRAVEL, Blocks.DIRT, Blocks.GRASS, Blocks.CLAY]
 const PAL := {
 	"grass": [Color(0.2, 0.36, 0.12), Color(0.26, 0.4, 0.14), Color(0.3, 0.38, 0.12)],
-	"kelp": [Color(0.42, 0.34, 0.12), Color(0.36, 0.3, 0.1), Color(0.46, 0.4, 0.16)],
+	"kelp": [Color(0.32, 0.26, 0.06), Color(0.26, 0.22, 0.05), Color(0.36, 0.3, 0.08)],
 	"coral": [Color(0.95, 0.45, 0.4), Color(0.98, 0.7, 0.35), Color(0.75, 0.42, 0.85), Color(0.95, 0.85, 0.7), Color(0.4, 0.75, 0.7)],
 	"fan": [Color(0.75, 0.2, 0.45), Color(0.9, 0.5, 0.2), Color(0.55, 0.35, 0.85)],
 	"brain": [Color(0.75, 0.68, 0.45), Color(0.6, 0.72, 0.5), Color(0.85, 0.6, 0.5)],
@@ -73,6 +73,9 @@ static func plan(o: Vector3, tris: PackedVector3Array, normals: PackedVector3Arr
 			depth = 2.0
 		for rule: Array in rules:
 			if depth < float(rule[4]):
+				continue
+			# Plants need light: nothing but anemones grows deeper than ~30 m (the trench floor stays bare).
+			if depth > 30.0 and int(rule[0]) != S.ANEMONE:
 				continue
 			var layer: int = rule[0]
 			var expect := area * float(rule[1])

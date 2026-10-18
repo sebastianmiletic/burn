@@ -90,7 +90,7 @@ func _build() -> void:
 	var skin := CreatureSkin.smooth(Color(0.32, 0.07, 0.1), Color(0.78, 0.6, 0.55), {"wet": 0.8, "bump": 1.1,
 		"bump_distance": 120.0, "accent": Color(0.12, 0.02, 0.05), "accent_mode": 3, "accent_amount": 0.65, "accent_scale": 0.35,
 		"glow_mode": 1, "glow_color": Color(0.35, 0.85, 1.0), "glow_amount": 0.05, "glow_energy": 3.0, "glow_pulse": 0.5})
-	var arm_skin := CreatureSkin.smooth(Color(0.36, 0.08, 0.11), Color(0.86, 0.66, 0.6), {"use_uv": true, "wet": 0.85, "bump": 1.3,
+	var arm_skin := CreatureSkin.smooth(Color(0.34, 0.07, 0.1), Color(0.6, 0.32, 0.3), {"use_uv": true, "belly_mix": 0.35, "wet": 0.85, "bump": 1.3,
 		"bump_distance": 100.0, "accent": Color(0.95, 0.82, 0.76), "accent_mode": 3, "accent_amount": 0.55, "accent_scale": 0.9,
 		"glow_mode": 1, "glow_color": Color(0.35, 0.85, 1.0), "glow_amount": 0.04, "glow_energy": 2.5, "glow_pulse": 0.7})
 	var fin := CreatureSkin.membrane(Color(0.42, 0.1, 0.14), {"backlight": 1.2, "accent": Color(0.15, 0.03, 0.06), "accent_mode": 1, "accent_amount": 0.5})
