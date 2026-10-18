@@ -103,6 +103,11 @@ func stop_hosting() -> void:
 	_failures = 0
 
 
+## Requests still in flight (an unregister sent just before quitting).
+func pending_requests() -> int:
+	return _pending.size()
+
+
 func is_hosting() -> bool:
 	return _hosting
 

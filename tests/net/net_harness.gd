@@ -58,6 +58,10 @@ func _finish() -> void:
 	net.leave()
 	check(not net.lobby_options["shrine_respawn"], "leaving resets party rules to safe defaults")
 	print("%s %s: %s" % ["RESULT", args.get("role"), "ok" if failures == 0 else "%d failure(s)" % failures])
+	# Let a public host's unregister reach the master before the process exits.
+	var deadline := Time.get_ticks_msec() + 4000
+	while net.server_list != null and net.server_list.pending_requests() > 0 and Time.get_ticks_msec() < deadline:
+		await process_frame
 	await process_frame
 	quit(0 if failures == 0 else 1)
 
