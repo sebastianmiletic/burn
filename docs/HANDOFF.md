@@ -2,6 +2,30 @@
 
 Written for whoever continues this project (human or another AI). It covers what the game is, what state it is in, what was being worked on, what is left, how to test, and the gotchas that cost time.
 
+## 000. PAUSED round 3 (18 Oct 2026) — resume here
+
+v0.5.1 is published (prerelease, all platforms, CI green). A third round of features was started by nine
+parallel agents and PAUSED by the user mid-way. Each area's unfinished work is saved as a branch
+(pushed to origin; also local git worktrees under `.claude/worktrees/agent-*`). The last commit on each is
+"WIP (paused)": untested, may not compile. All new terrain must be gated on `revision >= 5`
+(`WorldGen.LATEST_REVISION = 5`); revisions 2-4 must generate identically.
+
+| Branch | Scope (user's request) | State when paused |
+|---|---|---|
+| `wip/r3-bosses` | full animations/movement/5-7+ attacks for every boss, Ashvane flies, Leviathan lower jaw opens UP (fix to open down), distinct music per boss fight and per biome | most progress (7 commits); music part was mid-way |
+| `wip/r3-map` | pretty minimap/map, island outlines always grey, everything else revealed by exploring, custom icons per boss/place/biome (extensible by location kind), player markers, remove roads leading out of villages (rev 5) | icons/markers code written, tests not run |
+| `wip/r3-building` | build walls/floors/roofs/doors/windows/furniture in many materials; barrels + chests with container UI, mineable; working village wells (junk/rare loot); ores as small veins not chunk blobs | building + containers started; container UI not done |
+| `wip/r3-surface-biomes` | desert + cyan oasis (no hostile spawns), Moony Meadows (player-height reactive grass, trapdoors to a labyrinth), Dragons' Graveyard (ghosts, dragon fang/blood/femur), ravines/valleys/cliffs, biome blending | just started generation file |
+| `wip/r3-underground` | varied cave shapes/colours/biomes (moss, dripstone, mineral...), Everbloom cave (harvest tree; damaging it kills it and collapses the cave), Trollhunters-like underground city | early |
+| `wip/r3-volcano-atlantis` | volcano with lava rivers/falls, fire-people village, sword in the stone -> villagers attack, countdown, eruption escape, OP sword; Atlantis in the deepest sea with the Kraken (move lair, rev 5); off-island isles incl. a Scumport-like port, boats; celestial prison (Aaravos-like) | early (architecture builders) |
+| `wip/r3-roles-spells` | Warrior/Archer/Mage chosen in a lobby even solo, slow per-role ranks granting double jump/dash etc., spells cast by drawing glyphs, spell/potion/crafting books as loot with exact steps, hard multi-step brewing with failures, achievements on main menu, skins, PvP servers by category | many files written (23), untested |
+| `wip/r3-villagers-pets-fishing` | only the hit villager fights back, trading by profession, taming (birds/foxes/cats with fish, dogs with meat), full fishing with rod tiers/recipes, fishing shacks on coasts | trade UI mid-rewrite |
+| `wip/r3-water-art-films` | realistic water with randomised waves (fix black water at dusk), rain/snow blur the distance, swimming arm animation + horizontal body, hyperreal swords/arms, two new loading films (dragon in clouds; Atlantis without the kraken) | water done-ish, swim anim mid-way |
+
+To resume: for each branch, continue the work in its worktree (or `git worktree add`), finish, run targeted tests, then
+merge into main one at a time (expect conflicts in world_gen.gd, item_db.gd, player.gd, settings_menu.gd, run_tests.gd),
+run the full validation (section 4), push, and tag a new release (v0.6.0).
+
 ## 00. Update (18 Oct 2026): menu, online, chat, oceans, swimming, progression
 
 Merged on `main` (not pushed): Play/runs menu (unlimited runs, `SaveSystem` run ids, old `slot_N` saves still load),
