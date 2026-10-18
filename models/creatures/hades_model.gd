@@ -30,12 +30,54 @@ var _grow := 1.0
 var _grow_target := 1.0
 
 
+## Fraction of each action at which its blow lands (HadesBoss plays the
+## action for telegraph / IMPACT so the bident meets the filled warning).
+const IMPACT := {"sweep": 0.65, "thrust": 0.55, "smash": 0.6, "summon": 0.56, "pull": 0.55, "nova": 0.44}
+## Soul bolt casts (5 bolts, 8 bolts): action lengths in seconds.
+const BOLT_TIME := [2.1, 2.76]
+## The reaping combination: blows land at these fractions of COMBO_TIME.
+const COMBO := [0.28, 0.55, 0.86]
+const COMBO_TIME := 2.5
+
+
 func _init() -> void:
 	super({"height": 5.6, "bulk": 1.4, "cloak": true, "cloak_hem": 0.03, "held": "scythe", "eyes": SOUL, "cloak_color": CAPE})
 	durations["sweep"] = 1.3
 	durations["cast"] = 1.2
 	durations["summon"] = 1.8
 	durations["teleport"] = 0.9
+	# A god's duelling: long reaping sweeps, a double-pronged lunge, soul
+	# bolts flung from the off hand, the bident's butt rammed down for the
+	# fire pillars, chains of the dead yanked tight, the dead called up, a
+	# reaping combination, and the arms raised for the rings of soul fire.
+	moves["sweep"] = Moves.sweep(IMPACT["sweep"])
+	moves["thrust"] = Moves.thrust(IMPACT["thrust"], 0.5)
+	moves["cast"] = Moves.fling(0.5 / BOLT_TIME[0], (0.5 + 4 * 0.22) / BOLT_TIME[0], 5)
+	moves["volley"] = Moves.fling(0.5 / BOLT_TIME[1], (0.5 + 7 * 0.22) / BOLT_TIME[1], 8)
+	moves["smash"] = Moves.plant(IMPACT["smash"], Vector3(0.22, 1.05, -0.42), Vector3.UP)
+	moves["summon"] = Moves.invoke(IMPACT["summon"], 0.08)
+	moves["pull"] = Moves.yank(IMPACT["pull"])
+	moves["nova"] = Moves.invoke(IMPACT["nova"], 0.2)
+	moves["combo"] = Moves.chain([[Moves.sweep(0.7), 0.0, 0.4], [Moves.backhand(0.6), 0.4, 0.65], [Moves.thrust(0.6, 0.5), 0.65, 1.0]])
+	moves["teleport"] = _vanish()
+	moves["phase"] = Moves.invoke(0.6, 0.3)
+	moves["phase"]["shake"] = [[0, 0.0], [0.6, 1.0], [0.85, 0.6], [1, 0.0]]
+	moves["hit"] = Moves.flinch()
+	moves["roar"] = Moves.bellow(0.35)
+
+
+## Vanishing: he draws the cape about him with the off arm and sinks into
+## the floor's shadow, then rises where he reappears.
+func _vanish() -> Dictionary:
+	var z := Vector3.ZERO
+	return {
+		R.UARM_L: [[0, Moves.ARM_L], [0.35, Vector3(1.3, -0.9, -0.2)], [0.7, Vector3(1.3, -0.9, -0.2)], [1, Moves.ARM_L]],
+		R.FARM_L: [[0, Vector3(0.3, 0, 0)], [0.35, Vector3(1.9, 0, 0)], [0.7, Vector3(1.9, 0, 0)], [1, Vector3(0.3, 0, 0)]],
+		R.SPINE: [[0, z], [0.35, Vector3(-0.3, 0, 0)], [0.6, Vector3(-0.3, 0, 0)], [1, z]],
+		R.HEAD: [[0, z], [0.35, Vector3(-0.35, 0, 0)], [1, z]],
+		"hips": [[0, z], [0.45, Vector3(0, -0.4, 0)], [0.6, Vector3(0, -0.4, 0)], [1, z]],
+		"fing": [[0, 1.2], [1, 1.2]],
+	}
 
 
 func _ember_extents() -> Vector3:

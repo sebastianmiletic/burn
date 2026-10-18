@@ -28,12 +28,51 @@ var _breath: GPUParticles3D
 var _breath_t := 2.0
 var _crystals: Array[Node3D] = []
 
+## Fraction of each action at which its blow lands (MountainKingBoss plays
+## the action for telegraph / IMPACT so the hammer meets the filled warning).
+const IMPACT := {"slam": 0.7, "swipe": 0.62, "throw": 0.54, "stomp": 0.6, "spikes": 0.6, "roar": 0.5, "summon": 0.56}
+## Leap: airborne from LEAP[0], lands at LEAP[1] of LEAP_TIME seconds.
+const LEAP := [0.3, 0.62]
+const LEAP_TIME := 2.3
+## Avalanche charge: the run spans these fractions of CHARGE_TIME.
+const CHARGE := [0.5, 0.77]
+const CHARGE_TIME := 2.2
+const PLANT := Vector3(0.04, 1.08, -0.42)
+
 
 func _init() -> void:
 	super({"height": 7.0, "bulk": 1.75, "hunch": -0.12, "arm_length": 1.15, "cloak": true, "cloak_hem": 0.22,
 		"held": "giant_club", "eyes": FROST, "cloak_color": CAPE})
 	durations["slam"] = 1.5
 	durations["throw"] = 1.2
+	# A giant's brawling: deep hammer slams, a low backhand swipe, boulders
+	# torn out of the floor, stomps, the hammer rammed down for ice spikes,
+	# a war cry, a leap that shakes the hall and an avalanche charge.
+	moves["slam"] = Moves.overhead(IMPACT["slam"], 0.32)
+	moves["swipe"] = Moves.backhand(IMPACT["swipe"])
+	moves["throw"] = Moves.heave(IMPACT["throw"])
+	moves["stomp"] = Moves.stomp(IMPACT["stomp"])
+	moves["spikes"] = Moves.plant(IMPACT["spikes"], PLANT)
+	moves["roar"] = Moves.bellow(IMPACT["roar"])
+	moves["summon"] = Moves.chain([[Moves.stomp(0.6), 0.0, 0.5], [Moves.bellow(0.4), 0.5, 1.0]])
+	moves["leap"] = Moves.leap(LEAP[0], LEAP[1], 0.6)
+	moves["charge"] = Moves.charge(CHARGE[0], CHARGE[1])
+	moves["phase"] = Moves.chain([[_chest_beat(), 0.0, 0.5], [Moves.bellow(0.4), 0.5, 1.0]])
+	moves["hit"] = Moves.flinch()
+
+
+## Beats his chest with the free fist, twice, glaring down at his foes.
+func _chest_beat() -> Dictionary:
+	var z := Vector3.ZERO
+	return {
+		R.UARM_L: [[0, Moves.ARM_L], [0.2, Vector3(0.9, -0.9, -0.6)], [0.3, Vector3(0.7, -1.2, -0.3)], [0.45, Vector3(0.95, -0.9, -0.65)], [0.6, Vector3(0.7, -1.2, -0.3)], [1, Moves.ARM_L]],
+		R.FARM_L: [[0, Vector3(0.3, 0, 0)], [0.2, Vector3(2.0, 0, 0)], [0.6, Vector3(2.1, 0, 0)], [1, Vector3(0.3, 0, 0)]],
+		R.CHEST: [[0, z], [0.3, Vector3(0.15, 0, 0)], [0.6, Vector3(0.15, 0, 0)], [1, z]],
+		R.HEAD: [[0, z], [0.3, Vector3(-0.25, 0, 0)], [1, z]],
+		"hips": [[0, z], [0.3, Vector3(0, -0.06, 0)], [0.6, Vector3(0, -0.06, 0)], [1, z]],
+		"fing": [[0, 1.6], [1, 1.6]],
+		"jaw": [[0, 0.0], [0.3, 0.2], [0.6, 0.25], [1, 0.0]],
+	}
 
 
 func _ember_extents() -> Vector3:
