@@ -144,6 +144,18 @@ class MockQuests:
 	extends RefCounted
 
 	var _tracked := {"embers": true, "mountain_king": true}
+	## The Path tab comes from a real QuestLog part-way up the ladder.
+	var _ladder := QuestLog.new()
+
+	func _init() -> void:
+		var done := ["fs_timber", "fs_workbench", "fs_stone_tools", "fs_campfire", "fs_village", "kindling", "iron_in_the_deep", "tempered", "silent_crypt"]
+		_ladder.from_dict({"active": {"steel_and_frost": {"progress": [2, 0], "tracked": true}}, "completed": done})
+
+	func path() -> Array:
+		return _ladder.path()
+
+	func optional_path() -> Array:
+		return _ladder.optional_path()
 
 	func _quests() -> Array:
 		return [

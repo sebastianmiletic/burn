@@ -574,6 +574,7 @@ func _use() -> void:
 		if absf(g) < 1e6:
 			p.y = g
 		world().request_place_station(String(info["place_station"]), p, yaw + PI, dimension)
+		world().quests.on_event("place", id)
 		inventory.remove_from_slot(inventory.selected, 1)
 		Audio.play("block_place", p)
 		_start_action("interact", 0.25)
@@ -729,6 +730,8 @@ func held_item() -> String:
 func give_item(id: String, count: int) -> void:
 	var left := inventory.add(id, count)
 	if count - left > 0:
+		if is_local and world() != null:
+			world().quests.on_event("gather", id, count - left)
 		Events.item_picked_up.emit(id, count - left)
 		Events.notify.emit("+%d %s" % [count - left, ItemDB.display_name(id)], "loot")
 		Audio.play_ui("pickup")
@@ -789,6 +792,8 @@ func craft(recipe_id: String) -> bool:
 		return false
 	Events.item_picked_up.emit(String(res["item"]), int(res["count"]))
 	Audio.play_ui("levelup")
+	if is_local and world() != null:
+		world().quests.on_event("craft", String(res["item"]), int(res["count"]))
 	return true
 
 

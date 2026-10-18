@@ -14,8 +14,8 @@ extends UiModal
 const GROUP_NAMES := {"basics": "Basics", "stations": "Stations", "building": "Building", "smelting": "Smelting", "food": "Cooking",
 	"tools": "Tools", "weapons": "Weapons", "armor": "Armour", "potions": "Potions"}
 ## Seconds per craft when a recipe sets no "time".
-const DEFAULT_TIME := {"": 0.35, "workbench": 0.6, "anvil": 1.1, "furnace": 1.6, "alchemy": 1.5, "smithy": 1.0}
-const WORK_SOUND := {"workbench": "pick_wood", "anvil": "hit_metal", "furnace": "fire", "alchemy": "potion", "": "cloth"}
+const DEFAULT_TIME := {"": 0.35, "workbench": 0.6, "anvil": 1.1, "furnace": 1.6, "alchemy": 1.5, "campfire": 1.8, "smithy": 1.0}
+const WORK_SOUND := {"workbench": "pick_wood", "anvil": "hit_metal", "furnace": "fire", "alchemy": "potion", "campfire": "fire", "": "cloth"}
 
 var kind := ""
 var station: Node = null

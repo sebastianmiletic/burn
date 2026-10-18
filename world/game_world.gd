@@ -150,9 +150,13 @@ func setup(info: Dictionary) -> void:
 		local_player.global_position = default_spawn(0)
 		if not pdata.has("respawn") or (pdata["respawn"] as Vector3) == Vector3.ZERO:
 			local_player.respawn_point = local_player.global_position
+	quests.known_bosses = bosses_defeated
+	quests.known_places = discovered
+	quests.sync_world_facts()
 	if pdata.is_empty():
 		local_player.give_starting_kit()
 		quests.accept("kindling")
+	quests.start_guide()
 	if quests.is_completed("throne") and not quests.is_completed("ryft"):
 		quests.accept("ryft")
 	local_dimension = local_player.dimension

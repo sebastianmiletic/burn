@@ -1,9 +1,63 @@
 class_name QuestDB
 extends RefCounted
 ## Quest definitions. Objectives are matched against game events:
-##   talk(role)  interact(kind @ location)  mine(block)  collect(item)
+##   talk(giver key)  interact(kind @ location)  mine(block)  collect(item)
 ##   kill(enemy kind)  boss(kind)  reach(location id)  have(item)
-## The main campaign is a chain (`next`); side quests come from villages.
+##   gather(item: picked up)  craft(item: made)  place(item: station set down)
+##   dimension(id)  discover(location kind)
+## Keys may list alternatives: "axe_stone|spear_stone".
+## The main campaign is a chain (`next`); FIRST_STEPS is the guided start for
+## new characters (it runs beside Kindling); OPTIONAL holds the regional boss
+## contracts, offered by a giver once `requires` is done. PATH is the ladder
+## the journal shows (docs/PROGRESSION.md describes it in full).
+
+## The guided start: survival basics, one small step at a time. No givers, so
+## each completes itself and opens the next.
+const FIRST_STEPS := [
+	{
+		"id": "fs_timber", "title": "Embers and Timber", "giver": "",
+		"description": "You wake beside a cold shrine with a pick-axe and little else. Its axe bit fells trees: chop one down and gather the logs.",
+		"objectives": [{"type": "gather", "key": "wood", "count": 4, "text": "Gather wood: chop down a tree"}],
+		"rewards": {"xp": 15}, "next": "fs_workbench",
+	},
+	{
+		"id": "fs_workbench", "title": "A Place to Work", "giver": "",
+		"description": "Split logs into planks by hand (open your pack with Tab or I), build a workbench and set it down on level ground.",
+		"objectives": [
+			{"type": "craft", "key": "planks", "count": 4, "text": "Split wood into planks"},
+			{"type": "craft", "key": "workbench", "count": 1, "text": "Craft a workbench"},
+			{"type": "place", "key": "workbench", "count": 1, "text": "Place the workbench"},
+		],
+		"rewards": {"xp": 25}, "next": "fs_stone_tools",
+	},
+	{
+		"id": "fs_stone_tools", "title": "Stone and Haft", "giver": "",
+		"description": "Dig into bare rock for stone, whittle planks into sticks and make yourself a proper stone tool at the workbench.",
+		"objectives": [
+			{"type": "gather", "key": "stone", "count": 6, "text": "Dig stone with your pick-axe"},
+			{"type": "craft", "key": "stick", "count": 4, "text": "Make sticks from planks"},
+			{"type": "craft", "key": "axe_stone|spear_stone|warhammer_stone", "count": 1, "text": "Make a stone axe, spear or warhammer"},
+		],
+		"rewards": {"xp": 30, "items": {"torch": 4}}, "next": "fs_campfire",
+	},
+	{
+		"id": "fs_campfire", "title": "A Fire of Your Own", "giver": "",
+		"description": "Nights are long and the dead walk in them. Ring stones round a few logs: a campfire gives light and cooks what you hunt.",
+		"objectives": [
+			{"type": "craft", "key": "campfire", "count": 1, "text": "Build a campfire"},
+			{"type": "place", "key": "campfire", "count": 1, "text": "Set the campfire down"},
+		],
+		"rewards": {"xp": 30, "items": {"raw_meat": 2}}, "next": "fs_village",
+	},
+	{
+		"id": "fs_village", "title": "The Last Village", "giver": "",
+		"description": "Emberfall lies just north of the shrine. Its elder, Maren, keeps the story of the grey sky; the smith Brannoc keeps its forge.",
+		"objectives": [
+			{"type": "talk", "key": "elder", "count": 1, "text": "Find the village and speak with Elder Maren"},
+		],
+		"rewards": {"xp": 20, "gold": 5}, "next": "",
+	},
+]
 
 const MAIN := [
 	{
@@ -19,7 +73,16 @@ const MAIN := [
 			{"type": "collect", "key": "iron_ore", "count": 5, "text": "Mine iron ore"},
 			{"type": "collect", "key": "coal", "count": 3, "text": "Mine coal"},
 		],
-		"rewards": {"xp": 120, "gold": 15, "items": {"sword_iron": 1}, "take": {"iron_ore": 5, "coal": 3}}, "next": "silent_crypt",
+		"rewards": {"xp": 120, "gold": 15, "items": {"sword_iron": 1}, "take": {"iron_ore": 5, "coal": 3}}, "next": "tempered",
+	},
+	{
+		"id": "tempered", "title": "Tempered in Iron", "giver": "blacksmith",
+		"description": "A blade alone won't keep you alive in the crypt. Smelt iron at a furnace (or Brannoc's forge) and hammer yourself some armour.",
+		"objectives": [
+			{"type": "craft", "key": "iron_ingot", "count": 6, "text": "Smelt iron ingots"},
+			{"type": "craft", "key": "helmet_iron|chestplate_iron|greaves_iron|boots_iron", "count": 1, "text": "Forge a piece of iron armour"},
+		],
+		"rewards": {"xp": 150, "gold": 20, "items": {"potion_health": 2}}, "next": "silent_crypt",
 	},
 	{
 		"id": "silent_crypt", "title": "The Silent Crypt", "giver": "elder",
@@ -28,7 +91,16 @@ const MAIN := [
 			{"type": "reach", "key": "silent_crypt", "count": 1, "text": "Find the Silent Crypt in the Blackmarsh"},
 			{"type": "boss", "key": "warden", "count": 1, "text": "Defeat the Warden"},
 		],
-		"rewards": {"xp": 250, "gold": 60, "items": {"potion_greater": 1}}, "next": "mountain_king",
+		"rewards": {"xp": 250, "gold": 60, "items": {"potion_greater": 1}}, "next": "steel_and_frost",
+	},
+	{
+		"id": "steel_and_frost", "title": "Steel and Frost", "giver": "blacksmith",
+		"description": "Iron cracks in the mountain cold. Fold coal into iron to make steel, and forge spiked boots for the steep paths beyond Frosthold.",
+		"objectives": [
+			{"type": "craft", "key": "steel_ingot", "count": 4, "text": "Smelt steel ingots"},
+			{"type": "craft", "key": "hiking_boots", "count": 1, "text": "Forge Ironspike Hiking Boots"},
+		],
+		"rewards": {"xp": 220, "gold": 40, "items": {"potion_greater": 1}}, "next": "mountain_king",
 	},
 	{
 		"id": "mountain_king", "title": "Hall of the Mountain King", "giver": "elder",
@@ -62,7 +134,7 @@ const MAIN := [
 	},
 	{
 		"id": "hound", "title": "Hound of the Underworld", "giver": "",
-		"description": "Cerberus guards the road from Tartarus to the throne. Its fang opens the way.",
+		"description": "Cerberus guards the road from Tartarus to the throne. Nothing reaches Hades past that hound alive.",
 		"objectives": [
 			{"type": "reach", "key": "tartarus", "count": 1, "text": "Find Tartarus"},
 			{"type": "boss", "key": "cerberus", "count": 1, "text": "Defeat Cerberus"},
@@ -109,6 +181,79 @@ const MAIN := [
 	},
 ]
 
+## Optional regional bosses: offered by `giver` once `requires` is complete
+## (and, for bosses added by later builds, once the boss kind exists in this
+## build: `boss_kind` must be in EntityFactory.BOSS_KINDS). Handed back to the
+## giver. `tier` is the recommended equipment.
+const OPTIONAL := [
+	{
+		"id": "opt_broodmother", "title": "The Weeping Hollow", "giver": "villager@thornwick", "requires": "silent_crypt",
+		"boss_kind": "broodmother", "tier": "Steel",
+		"description": "Webs choke the forest east of Thornwick and the hunters stopped coming home. Something old breeds beneath the Weeping Hollow.",
+		"objectives": [
+			{"type": "reach", "key": "broodmother_lair", "count": 1, "text": "Descend beneath the Weeping Hollow"},
+			{"type": "boss", "key": "broodmother", "count": 1, "text": "Kill Vexhira, the Broodmother"},
+		],
+		"rewards": {"xp": 400, "gold": 120, "items": {"potion_greater": 2}}, "next": "",
+	},
+	{
+		"id": "opt_bog_hag", "title": "Old Mother Mire", "giver": "villager@mirewatch", "requires": "silent_crypt",
+		"boss_kind": "bog_hag", "tier": "Steel",
+		"description": "Mirewatch's children dream of a woman in the reeds who sings their names. The hag of the Hagsfen has to be put down.",
+		"objectives": [
+			{"type": "reach", "key": "hagsfen", "count": 1, "text": "Find the Hagsfen in the marsh"},
+			{"type": "boss", "key": "bog_hag", "count": 1, "text": "Defeat Old Mother Mire"},
+		],
+		"rewards": {"xp": 380, "gold": 110, "items": {"potion_ironskin": 2}}, "next": "",
+	},
+	{
+		"id": "opt_leviathan", "title": "The Drowned Spire", "giver": "elder", "requires": "mountain_king",
+		"boss_kind": "leviathan", "tier": "Steel or mithril",
+		"description": "A broken causeway runs out to a drowned tower, and something vast circles it. The fishers of the coast want their sea back.",
+		"objectives": [
+			{"type": "reach", "key": "drowned_spire", "count": 1, "text": "Reach the Drowned Spire"},
+			{"type": "boss", "key": "leviathan", "count": 1, "text": "Slay the Leviathan"},
+		],
+		"rewards": {"xp": 600, "gold": 180, "items": {"potion_phoenix": 1}}, "next": "",
+	},
+	{
+		"id": "opt_kraken", "title": "Ink in the Trench", "giver": "villager@kaldvik", "requires": "ashvane",
+		"boss_kind": "kraken", "tier": "Mithril",
+		"description": "Kaldvik's boats come back crushed, or not at all. Their chief swears the deep trench off the fjord has arms.",
+		"objectives": [{"type": "boss", "key": "kraken", "count": 1, "text": "Slay the Abyssal Kraken in the deep trench"}],
+		"rewards": {"xp": 800, "gold": 240, "items": {"potion_phoenix": 2}}, "next": "",
+	},
+	{
+		"id": "opt_charybdis", "title": "The Maw of the Sea", "giver": "villager@kaldvik", "requires": "opt_kraken",
+		"boss_kind": "charybdis", "tier": "Mithril or adamantite",
+		"description": "With the Kraken dead the sailors talk of worse: a whirlpool that swallows ships whole, and the thing that drinks at its bottom.",
+		"objectives": [{"type": "boss", "key": "charybdis", "count": 1, "text": "Defeat Charybdis, the Maw of the Sea"}],
+		"rewards": {"xp": 1000, "gold": 300, "items": {"potion_phoenix": 2, "starmetal": 1}}, "next": "",
+	},
+]
+
+## The ladder shown on the journal's Path tab. Each step is done when its
+## `quest` is completed. `tier` is the gear the step expects or unlocks.
+const PATH := [
+	{"quest": "fs_timber", "title": "Gather wood", "hint": "Fell a tree with your pick-axe.", "tier": "Starting kit"},
+	{"quest": "fs_workbench", "title": "Build a workbench", "hint": "Planks by hand, then the bench. Set it down.", "tier": "Workbench"},
+	{"quest": "fs_stone_tools", "title": "Stone tools", "hint": "Dig stone, make sticks, craft at the workbench.", "tier": "Stone"},
+	{"quest": "fs_campfire", "title": "Make camp", "hint": "A campfire lights the night and cooks meat.", "tier": "Campfire"},
+	{"quest": "kindling", "title": "Rekindle the shrine", "hint": "Light the Emberfall Shrine, then see Elder Maren.", "tier": "Respawn point"},
+	{"quest": "iron_in_the_deep", "title": "Iron in the deep", "hint": "Dig below the plains for iron ore and coal.", "tier": "Copper, iron sword"},
+	{"quest": "tempered", "title": "Forge iron gear", "hint": "Smelt iron and forge armour at Brannoc's forge.", "tier": "Iron"},
+	{"quest": "silent_crypt", "title": "The first seal", "hint": "Something waits in a crypt in the western marsh.", "tier": "Iron recommended"},
+	{"quest": "steel_and_frost", "title": "Steel", "hint": "Steel ingots, and boots for steep paths.", "tier": "Steel, silver, gold"},
+	{"quest": "mountain_king", "title": "The second seal", "hint": "A king under the mountain beyond Frosthold.", "tier": "Steel recommended"},
+	{"quest": "ashvane", "title": "The third seal", "hint": "Fire nests across the Cinder Wastes. Bring fire resistance.", "tier": "Steel or mithril, fire resist"},
+	{"quest": "into_the_deep", "title": "The way down", "hint": "Carry all three seals and dig deeper than anyone.", "tier": "Mithril, adamantite"},
+	{"quest": "hound", "title": "The hound", "hint": "A guardian on the road through the underworld.", "tier": "Mithril or adamantite"},
+	{"quest": "throne", "title": "The throne", "hint": "The lord of the underworld.", "tier": "Adamantite or infernal"},
+	{"quest": "ryft", "title": "Beyond the broken sky", "hint": "A gateway in Emberfall wakes.", "tier": "Mithril axe, Ryftwood"},
+	{"quest": "prism_sentinel", "title": "Glass and light", "hint": "A guardian of the floating isles.", "tier": "Infernal or starfall"},
+	{"quest": "void_sovereign", "title": "The crown of nothing", "hint": "The last power above the world.", "tier": "Infernal or starfall"},
+]
+
 ## Legacy village side quests (no longer offered: villages now post bounty
 ## contracts and run activities, see world/activities). Kept so saves that
 ## have them active can still finish and hand them in.
@@ -133,7 +278,7 @@ const SIDE_TEMPLATES := [
 
 const VILLAGES := ["emberfall", "ashford", "thornwick", "frosthold", "mirewatch", "cinderreach"]
 const VILLAGE_NAMES := {"emberfall": "Emberfall", "ashford": "Ashford", "thornwick": "Thornwick",
-		"frosthold": "Frosthold", "mirewatch": "Mirewatch", "cinderreach": "Cinderreach"}
+		"frosthold": "Frosthold", "mirewatch": "Mirewatch", "cinderreach": "Cinderreach", "kaldvik": "Kaldvik"}
 
 
 static func main_quest(id: String) -> Dictionary:
@@ -158,8 +303,42 @@ static func side_quests_for(village: String) -> Array[Dictionary]:
 	return out
 
 
+static func first_step(id: String) -> Dictionary:
+	for q: Dictionary in FIRST_STEPS:
+		if q["id"] == id:
+			return q
+	return {}
+
+
+static func optional_quest(id: String) -> Dictionary:
+	for q: Dictionary in OPTIONAL:
+		if q["id"] == id:
+			return q
+	return {}
+
+
+## "main" (story and first steps) or "side" (optional bosses, village quests).
+static func category_of(id: String) -> String:
+	if not main_quest(id).is_empty() or not first_step(id).is_empty():
+		return "main"
+	return "side"
+
+
+## Is an optional quest's boss part of this build? Bosses can arrive in later
+## builds; their quests stay hidden until then.
+static func boss_available(q: Dictionary) -> bool:
+	var kind := String(q.get("boss_kind", ""))
+	return kind == "" or kind in EntityFactory.BOSS_KINDS
+
+
 static func any(id: String) -> Dictionary:
 	var q := main_quest(id)
+	if not q.is_empty():
+		return q
+	q = first_step(id)
+	if not q.is_empty():
+		return q
+	q = optional_quest(id)
 	if not q.is_empty():
 		return q
 	for v: String in VILLAGES:

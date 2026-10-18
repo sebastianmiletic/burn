@@ -1,21 +1,24 @@
 class_name QuestLogScreen
 extends UiModal
-## The journal. Tabs (Main story / Side / Activities / Completed), a list of
+## The journal. Tabs (Main story / Side / Activities / Completed / Path), a list of
 ## quest cards on the left, and the selected quest on the right with its
 ## current objective up top (progress, distance and direction), the steps,
 ## the story and the rewards. Track / untrack and "show on map" buttons.
-## Keys: 1-4 or Q/E tabs, up/down (W/S) select, T track, M show on map.
+## The Path tab shows the progression ladder (QuestLog.path()) and optional hunts.
+## Keys: 1-5 or Q/E tabs, up/down (W/S) select, T track, M show on map.
 ##
 ## Categories come from the quest dictionaries: `category` ("main", "side",
 ## "activity") when present, otherwise `main` (bool) picks main or side.
 
-enum Tab { MAIN, SIDE, ACTIVITY, DONE }
-const TAB_NAMES := ["MAIN STORY", "SIDE QUESTS", "ACTIVITIES", "COMPLETED"]
+enum Tab { MAIN, SIDE, ACTIVITY, DONE, PATH }
+const TAB_NAMES := ["MAIN STORY", "SIDE QUESTS", "ACTIVITIES", "COMPLETED", "PATH"]
+const TAB_COUNT := 5
 const EMPTY_TEXT := [
 	"The story waits. Speak with Elder Maren in Emberfall.",
 	"No side quests yet. Villagers with a need will ask for help.",
 	"No activities under way. Look for hunts, races and contests in the villages and the wilds.",
 	"Nothing finished yet.",
+	"",
 ]
 const CARD_H := 62.0
 
@@ -37,7 +40,9 @@ var _track_btn: Button
 var _map_btn: Button
 var _turn_in: Label
 var _selected := ""
-var _by_tab := [[], [], [], []]
+var _path_scroll: ScrollContainer
+var _path_box: HBoxContainer
+var _by_tab := [[], [], [], [], []]
 var _quest := {}
 
 
@@ -51,7 +56,7 @@ func _build() -> void:
 	content.add_theme_constant_override("separation", 10)
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 6)
-	for i in 4:
+	for i in TAB_COUNT:
 		var t := TabButton.new()
 		t.index = i
 		t.label = TAB_NAMES[i]
@@ -61,7 +66,7 @@ func _build() -> void:
 	var spring := Control.new()
 	spring.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(spring)
-	var keys := UiTheme.label("1–4 tabs   ↑↓ select   T track   M map", 11, UiTheme.TEXT_FAINT)
+	var keys := UiTheme.label("1–5 tabs   ↑↓ select   T track   M map", 11, UiTheme.TEXT_FAINT)
 	keys.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bar.add_child(keys)
 	content.add_child(bar)
@@ -127,6 +132,15 @@ func _build() -> void:
 	_empty.visible = false
 	body.add_child(_empty)
 	_empty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_path_scroll = ScrollContainer.new()
+	_path_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_path_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_path_scroll.visible = false
+	_path_box = HBoxContainer.new()
+	_path_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_path_box.add_theme_constant_override("separation", 28)
+	_path_scroll.add_child(_path_box)
+	body.add_child(_path_scroll)
 	UiContext.on("quest_updated", func(_id: String) -> void:
 		if is_open:
 			_refresh())
@@ -186,7 +200,7 @@ static func category_of(quest: Dictionary) -> int:
 
 
 func _tab_of(id: String) -> int:
-	for t in 4:
+	for t in TAB_COUNT:
 		for q: Dictionary in _by_tab[t]:
 			if str(q.get("id", "")) == id:
 				return t
@@ -194,7 +208,7 @@ func _tab_of(id: String) -> int:
 
 
 func _refresh() -> void:
-	_by_tab = [[], [], [], []]
+	_by_tab = [[], [], [], [], []]
 	var q := UiContext.quests()
 	var active: Variant = UiContext.call_on(q, "active", [], [])
 	var done: Variant = UiContext.call_on(q, "completed", [], [])
@@ -238,8 +252,10 @@ func _refresh() -> void:
 		(_by_tab[t] as Array).sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 			return bool(a.get("tracked", false)) and not bool(b.get("tracked", false)))
 	(_by_tab[Tab.DONE] as Array).reverse()
-	for t in 4:
+	for t in TAB_COUNT:
 		_tabs[t].count = (_by_tab[t] as Array).size()
+	var steps: Variant = UiContext.call_on(q, "path", [], [])
+	_tabs[Tab.PATH].count = (steps as Array).filter(func(s: Dictionary) -> bool: return s.get("state", "") == "done").size() if steps is Array else 0
 	_rebuild_list()
 
 
@@ -284,8 +300,16 @@ func _set_tab(t: int) -> void:
 
 
 func _rebuild_list() -> void:
-	for t in 4:
+	for t in TAB_COUNT:
 		_tabs[t].selected = t == _tab
+	_path_scroll.visible = _tab == Tab.PATH
+	if _tab == Tab.PATH:
+		_scroll.visible = false
+		_detail.visible = false
+		_empty.visible = false
+		_quest = {}
+		_build_path()
+		return
 	for c in _list.get_children():
 		c.queue_free()
 	_cards.clear()
@@ -306,6 +330,69 @@ func _rebuild_list() -> void:
 		_list.add_child(card)
 		_cards.append(card)
 	_show(_selected)
+
+
+## The Path tab: the progression ladder (QuestLog.path()) on the left, the
+## optional boss contracts (QuestLog.optional_path()) on the right.
+func _build_path() -> void:
+	for c in _path_box.get_children():
+		_path_box.remove_child(c)
+		c.queue_free()
+	var q := UiContext.quests()
+	var steps: Variant = UiContext.call_on(q, "path", [], [])
+	var extras: Variant = UiContext.call_on(q, "optional_path", [], [])
+	var left := VBoxContainer.new()
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	left.size_flags_stretch_ratio = 1.6
+	left.add_theme_constant_override("separation", 2)
+	left.add_child(_heading("THE PATH"))
+	if steps is Array:
+		for s: Dictionary in steps:
+			left.add_child(_path_row(s))
+	_path_box.add_child(left)
+	var right := VBoxContainer.new()
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation", 6)
+	right.add_child(_heading("OPTIONAL HUNTS"))
+	var any := false
+	if extras is Array:
+		for e: Dictionary in extras:
+			var st := str(e.get("state", "locked"))
+			if st == "locked":
+				continue
+			any = true
+			var mark: String = {"done": "✓", "active": "▶", "available": "!"}.get(st, "·")
+			var col: Color = UiTheme.TEXT_FAINT if st == "done" else (UiTheme.ACCENT_HOT if st == "active" else UiTheme.TEXT)
+			right.add_child(UiTheme.label("%s  %s" % [mark, str(e.get("title", ""))], 15, col))
+			var sub := "Defeated" if st == "done" else ("In your journal" if st == "active" else "Ask " + str(e.get("giver", "")))
+			var l := UiTheme.label("     %s  ·  gear: %s" % [sub, str(e.get("tier", ""))], 12, UiTheme.TEXT_DIM)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			right.add_child(l)
+	if not any:
+		var l := UiTheme.label("Rumours of other monsters will reach you as your name grows.", 13, UiTheme.TEXT_DIM)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		right.add_child(l)
+	_path_box.add_child(right)
+
+
+func _path_row(s: Dictionary) -> Control:
+	var st := str(s.get("state", "locked"))
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 0)
+	var mark: String = {"done": "✓", "current": "▶", "next": "◇"}.get(st, "·")
+	var col: Color = {"done": UiTheme.TEXT_FAINT, "current": UiTheme.ACCENT_HOT, "next": UiTheme.TEXT}.get(st, Color(UiTheme.TEXT_FAINT, 0.6))
+	var head := HBoxContainer.new()
+	var t := UiTheme.label("%s  %s" % [mark, str(s.get("title", ""))], 16 if st == "current" else 14, col)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	if st != "locked":
+		head.add_child(UiTheme.label(str(s.get("tier", "")), 12, UiTheme.ACCENT_DIM if st != "done" else UiTheme.TEXT_FAINT, HORIZONTAL_ALIGNMENT_RIGHT))
+	row.add_child(head)
+	if st == "current" or st == "next":
+		var h := UiTheme.label("     " + str(s.get("hint", "")), 12, UiTheme.TEXT_DIM)
+		h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row.add_child(h)
+	return row
 
 
 func _select(id: String) -> void:
@@ -423,12 +510,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	if k != null and k.pressed and not k.echo:
 		var handled := true
 		match k.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4:
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5:
 				_set_tab(k.keycode - KEY_1)
 			KEY_Q:
-				_set_tab(posmod(_tab - 1, 4))
+				_set_tab(posmod(_tab - 1, TAB_COUNT))
 			KEY_E, KEY_TAB:
-				_set_tab(posmod(_tab + 1, 4))
+				_set_tab(posmod(_tab + 1, TAB_COUNT))
 			KEY_UP, KEY_W:
 				_step(-1)
 			KEY_DOWN, KEY_S:
@@ -523,7 +610,7 @@ class TabButton:
 	func _init() -> void:
 		flat = true
 		focus_mode = Control.FOCUS_NONE
-		custom_minimum_size = Vector2(176, 38)
+		custom_minimum_size = Vector2(150, 38)
 		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		for s in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
 			add_theme_stylebox_override(s, StyleBoxEmpty.new())

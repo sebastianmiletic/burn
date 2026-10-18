@@ -108,6 +108,7 @@ const STATIONS := {
 	"furnace": {"name": "Furnace", "verb": "Smelt", "desc": "Ore into ingots, sand into glass, clay into brick. Burns fuel."},
 	"anvil": {"name": "Anvil", "verb": "Forge", "desc": "Hammer ingots into tools, weapons and armour."},
 	"alchemy": {"name": "Alchemy Table", "verb": "Brew", "desc": "Potions and elixirs from herbs, gems and glass."},
+	"campfire": {"name": "Campfire", "verb": "Cook", "desc": "Stones, logs and a flame: roast what you hunt and catch, and keep the dark at bay."},
 }
 
 const BASE := {
@@ -162,6 +163,8 @@ const BASE := {
 		"stack": 4, "value": 30, "rarity": 1, "desc": "Place it to forge metal tools, weapons and armour."},
 	"alchemy_table": {"name": "Alchemy Table", "category": "station", "glyph": "n", "color": Color(0.55, 0.4, 0.7), "place_station": "alchemy",
 		"stack": 4, "value": 30, "rarity": 1, "desc": "Place it to brew potions and elixirs."},
+	"campfire": {"name": "Campfire", "category": "station", "glyph": "n", "color": Color(0.85, 0.45, 0.2), "place_station": "campfire",
+		"stack": 4, "value": 3, "rarity": 0, "desc": "Place it to light a fire: warm light for the night, and a place to roast meat and fish."},
 	# Blocks -------------------------------------------------------------------
 	"stone": {"name": "Stone", "category": "block", "glyph": "#", "color": Color(0.5, 0.49, 0.48), "place_block": 1, "stack": 99, "value": 0},
 	"cobble": {"name": "Cobblestone", "category": "block", "glyph": "#", "color": Color(0.45, 0.44, 0.43), "place_block": 10, "stack": 99, "value": 0},
@@ -293,6 +296,34 @@ const BASE := {
 		"model_script": "res://world/activities/activity_items.gd", "desc": "Only fifteen-wave champions carry it."},
 }
 
+## Creature and boss loot that the mob/boss tables already name (they were
+## silently skipped while undefined). Merged without overwriting, so other
+## branches may define the same ids in BASE.
+const LOOT_ITEMS := {
+	"leather": {"name": "Leather", "category": "material", "glyph": "~", "color": Color(0.5, 0.33, 0.2), "stack": 99, "value": 4, "desc": "Tanned hide. Traders buy it by the bundle."},
+	"rabbit_hide": {"name": "Rabbit Hide", "category": "material", "glyph": "~", "color": Color(0.7, 0.62, 0.52), "stack": 99, "value": 2, "desc": "Soft and small. Worth a coin or two."},
+	"wool": {"name": "Wool", "category": "material", "glyph": "~", "color": Color(0.88, 0.86, 0.8), "stack": 99, "value": 3, "desc": "Greasy, warm fleece."},
+	"antler": {"name": "Antler", "category": "material", "glyph": "Y", "color": Color(0.8, 0.72, 0.6), "stack": 99, "value": 6, "desc": "A stag's crown. Carvers pay for it."},
+	"tusk": {"name": "Boar Tusk", "category": "material", "glyph": "v", "color": Color(0.92, 0.88, 0.76), "stack": 99, "value": 7, "desc": "Curved, yellowed ivory."},
+	"wolf_pelt": {"name": "Wolf Pelt", "category": "material", "glyph": "~", "color": Color(0.45, 0.42, 0.38), "stack": 20, "value": 10, "desc": "A grey pelt, thick for winter."},
+	"frost_pelt": {"name": "Frost Wolf Pelt", "category": "material", "glyph": "~", "color": Color(0.82, 0.88, 0.92), "stack": 20, "value": 18, "rarity": 1, "desc": "Pale fur that never quite thaws."},
+	"bear_pelt": {"name": "Bear Pelt", "category": "material", "glyph": "~", "color": Color(0.36, 0.25, 0.16), "stack": 20, "value": 22, "rarity": 1, "desc": "Heavy enough to sleep under through a blizzard."},
+	"lurker_hide": {"name": "Lurker Hide", "category": "material", "glyph": "~", "color": Color(0.3, 0.38, 0.26), "stack": 20, "value": 14, "rarity": 1, "desc": "Slick, mottled skin from the bog."},
+	"spider_silk": {"name": "Spider Silk", "category": "material", "glyph": "%", "color": Color(0.9, 0.9, 0.88), "stack": 99, "value": 5, "desc": "Stronger than rope, stickier than sin."},
+	"venom_sac": {"name": "Venom Sac", "category": "material", "glyph": "o", "color": Color(0.5, 0.75, 0.25), "stack": 20, "value": 12, "rarity": 1, "desc": "Handle with gloves. Alchemists want it."},
+	"chitin": {"name": "Chitin Plate", "category": "material", "glyph": "#", "color": Color(0.35, 0.28, 0.2), "stack": 99, "value": 6, "desc": "Armour from something with too many legs."},
+	"bat_wing": {"name": "Bat Wing", "category": "material", "glyph": "v", "color": Color(0.25, 0.2, 0.2), "stack": 99, "value": 2, "desc": "Leathery. Hedge witches love them."},
+	"shark_tooth": {"name": "Shark Tooth", "category": "material", "glyph": "v", "color": Color(0.95, 0.94, 0.9), "stack": 99, "value": 9, "desc": "Serrated and still sharp."},
+	"pearl": {"name": "Pearl", "category": "gem", "glyph": "o", "color": Color(0.95, 0.93, 0.9), "stack": 99, "value": 35, "rarity": 2, "desc": "Sea-born and lustrous. Merchants pay well."},
+	"leviathan_scale": {"name": "Leviathan Scale", "category": "material", "glyph": "#", "color": Color(0.2, 0.45, 0.5), "stack": 99, "value": 30, "rarity": 2, "desc": "A plate of sea-green armour as big as a shield."},
+	"swamp_herb": {"name": "Swamp Herb", "category": "material", "glyph": "\"", "color": Color(0.4, 0.55, 0.25), "stack": 99, "value": 2, "desc": "Bitter marsh leaf. Brewed like emberleaf into healing draughts."},
+	"raw_fish": {"name": "Raw Fish", "category": "consumable", "glyph": "o", "color": Color(0.6, 0.65, 0.7), "heal": 3.0, "stack": 20, "value": 2, "food": true, "desc": "Cook it over a fire first."},
+	"cooked_fish": {"name": "Grilled Fish", "category": "consumable", "glyph": "o", "color": Color(0.75, 0.55, 0.3), "heal": 24.0, "stack": 20, "value": 5, "food": true, "desc": "Smoky and flaky. Restores 24 health."},
+	"hag_eye": {"name": "Hag's Eye", "category": "key", "glyph": "&", "color": Color(0.6, 0.8, 0.3), "stack": 1, "value": 0, "rarity": 4, "desc": "Old Mother Mire's glass eye. It still turns to watch you."},
+	"brood_heart": {"name": "Brood Heart", "category": "key", "glyph": "&", "color": Color(0.55, 0.2, 0.35), "stack": 1, "value": 0, "rarity": 4, "desc": "Vexhira's heart, a cold knot of silk and venom."},
+	"leviathan_heart": {"name": "Leviathan Heart", "category": "key", "glyph": "&", "color": Color(0.2, 0.6, 0.7), "stack": 1, "value": 0, "rarity": 4, "desc": "It beats like surf. The sea remembers it."},
+}
+
 ## Hand-written recipes. The recipe id is always the id of the item it makes
 ## (Player.craft gives `recipe_id`). Generated gear recipes are added in _static_init.
 ##   inputs: {item: count}, count: made per craft, station: "" | workbench | furnace | anvil | alchemy,
@@ -307,6 +338,11 @@ const BASE_RECIPES := {
 	"stick": {"inputs": {"planks": 1}, "count": 4, "station": "", "group": "basics"},
 	"torch": {"inputs": {"stick": 1, "coal": 1}, "count": 4, "station": "", "group": "basics"},
 	"workbench": {"inputs": {"wood": 2, "planks": 4}, "station": "", "group": "stations"},
+	"campfire": {"inputs": {"stone": 5, "wood": 2, "stick": 2}, "station": "", "group": "stations"},
+	# Campfire
+	"cooked_meat_campfire": {"result": "cooked_meat", "inputs": {"raw_meat": 1}, "time": 2.5, "station": "campfire", "group": "food"},
+	"cooked_fish_campfire": {"result": "cooked_fish", "inputs": {"raw_fish": 1}, "time": 2.0, "station": "campfire", "group": "food"},
+	"potion_health_marsh": {"result": "potion_health", "inputs": {"glass_vial": 1, "swamp_herb": 2}, "time": 1.5, "station": "alchemy", "group": "potions"},
 	# Workbench
 	"furnace": {"inputs": {"stone": 12, "coal": 2}, "station": "workbench", "group": "stations"},
 	"anvil": {"inputs": {"copper_ingot": 4, "stone": 8}, "station": "workbench", "group": "stations"},
@@ -363,6 +399,9 @@ static var RECIPES := {}
 static func _static_init() -> void:
 	for id: String in BASE:
 		ITEMS[id] = BASE[id]
+	for id: String in LOOT_ITEMS:
+		if not ITEMS.has(id):
+			ITEMS[id] = LOOT_ITEMS[id]
 	for tier: String in TIER_ORDER:
 		var t: Dictionary = TIERS[tier]
 		var kinds: Array = TIER_KINDS.get(tier, KINDS.keys())
