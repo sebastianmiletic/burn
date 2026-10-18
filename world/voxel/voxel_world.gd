@@ -76,7 +76,8 @@ func setup(world_gen: WorldGen, dim: int) -> void:
 	TerrainTextures.apply(opaque_material)
 	if ResourceLoader.exists(FLORA_PATH):
 		flora = load(FLORA_PATH)
-	flora_quality = int(Settings.get_value("graphics", "quality"))
+	flora_quality = GraphicsQuality.foliage()
+	Settings.changed.connect(_on_settings_changed)
 	if DisplayServer.get_name() != "headless":
 		CaveDecor.warmup()  # cave decoration meshes (world/caves), built once on the loading screen
 	var cores := maxi(2, OS.get_processor_count() - 1)
@@ -84,6 +85,20 @@ func setup(world_gen: WorldGen, dim: int) -> void:
 	# Separate budgets: meshing must never wait behind a long generation queue.
 	_max_mesh = maxi(1, cores / 3)
 	_max_gen = maxi(1, cores - _max_mesh)
+
+
+## Graphics options apply to the chunks already built, not just new ones.
+func _on_settings_changed(section: String, _key: String) -> void:
+	if section != "graphics" or not is_inside_tree():
+		return
+	var q := GraphicsQuality.foliage()
+	flora_quality = q
+	if flora != null and dimension == 0:
+		flora.call("requalify", get_tree(), q)
+	for k: Vector3i in _meshes:
+		var m: MeshInstance3D = _meshes[k]
+		if m != null:
+			m.cast_shadow = _shadow_setting(k)
 
 
 func _exit_tree() -> void:
@@ -521,6 +536,16 @@ func _process(delta: float) -> void:
 		_rebuild_wanted(fkey)
 		_unload_far(fkey)
 	_schedule()
+	# Cave decoration (thousands of instanced crystals, fungi, dripstone) is
+	# only drawn when it can be seen: from inside the caves, or near a mouth.
+	var under := dimension != 2 and focus.y < gen.ground_level(focus.x, focus.z) - 4.0
+	if under != _focus_under:
+		_focus_under = under
+		_refresh_decor()
+	if flora != null and visible and meshing_enabled:
+		var cam := get_viewport().get_camera_3d()
+		if cam != null:
+			flora.call("update_distance_lod", get_tree(), cam.global_position)
 	if meshing_enabled:
 		_light_timer -= delta
 		if _light_timer <= 0.0:
@@ -673,6 +698,46 @@ func _try_mesh(k: Vector3i) -> int:
 	return 1
 
 
+## Skylight heights for the mesher: the lowest column within 2 m. A vertex on
+## a cliff face sits far below its own column's top but is open to the sky
+## sideways; only rock overhead on every side (caves, overhangs) darkens it.
+## The 2 m border outside the chunk comes from the generator's smooth base
+## height (a cheap, thread-safe lookup), so the shading has no chunk seams.
+func _sky_heights(surface: PackedInt32Array, o: Vector3i) -> PackedInt32Array:
+	if dimension == 2:
+		return surface
+	const B := 2
+	const W := Chunk.SIZE + 2 * B
+	var wide := PackedInt32Array()
+	wide.resize(W * W)
+	for z in W:
+		for x in W:
+			var lx := x - B
+			var lz := z - B
+			if lx >= 0 and lz >= 0 and lx < Chunk.SIZE and lz < Chunk.SIZE:
+				wide[x + z * W] = surface[lx + lz * Chunk.SIZE]
+			else:
+				wide[x + z * W] = int(gen.smooth_height(o.x + lx, o.z + lz))
+	# Separable 5x5 minimum: rows, then columns.
+	var rows := PackedInt32Array()
+	rows.resize(W * W)
+	for z in W:
+		for x in range(B, W - B):
+			var lo := wide[x - B + z * W]
+			for d in range(1, 2 * B + 1):
+				lo = mini(lo, wide[x - B + d + z * W])
+			rows[x + z * W] = lo
+	var out := PackedInt32Array()
+	out.resize(Chunk.AREA)
+	for z in Chunk.SIZE:
+		for x in Chunk.SIZE:
+			var lo := rows[x + B + z * W]
+			for d in range(1, 2 * B + 1):
+				lo = mini(lo, rows[x + B + (z + d) * W])
+			out[x + z * Chunk.SIZE] = lo
+	return out
+
+
 func _neighbour_data(k: Vector3i) -> Array:
 	var out := []
 	out.resize(27)
@@ -722,7 +787,7 @@ func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) 
 			surface[x + z * Chunk.SIZE] = int(gen.column(wx, wz, detail, ridge).x) if gen.in_bounds(wx, wz) else -64
 			biomes[x + z * Chunk.SIZE] = gen.biome_at(wx, wz)
 	var result := ChunkMesher.build(neighbours, surface, o.y)
-	var smooth := SmoothMesher.build(neighbours, densities, surface, biomes, o, dimension)
+	var smooth := SmoothMesher.build(neighbours, densities, _sky_heights(surface, o), biomes, o, dimension)
 	if smooth.has("terrain"):
 		result["terrain"] = smooth["terrain"]
 	if flora != null:
@@ -905,13 +970,35 @@ func _set_mesh(k: Vector3i, result: Dictionary) -> void:
 	if result.has("cave_decor"):
 		var decor_node := CaveDecor.build_chunk(result["cave_decor"], flora_quality)
 		if decor_node != null:
+			decor_node.visible = _decor_visible(k)
 			mi.add_child(decor_node)
+
+
+var _focus_under := false
+
+
+## Decor in a chunk buried well below the ground is invisible from the surface.
+func _decor_visible(k: Vector3i) -> bool:
+	if _focus_under:
+		return true
+	var c := Vector3(k * Chunk.SIZE) + Vector3(8, 16, 8)
+	return c.y > gen.ground_level(c.x, c.z) - 6.0
+
+
+func _refresh_decor() -> void:
+	for k: Vector3i in _meshes:
+		var m: MeshInstance3D = _meshes[k]
+		if m == null:
+			continue
+		var decor := m.get_node_or_null(^"CaveDecor") as Node3D
+		if decor != null:
+			decor.visible = _decor_visible(k)
 
 
 func _shadow_setting(k: Vector3i) -> int:
 	var c := Vector3(k * Chunk.SIZE) + Vector3(8, 8, 8)
 	var near := c.distance_to(focus) < GraphicsQuality.shadow_caster_distance() + 12.0
-	return GeometryInstance3D.SHADOW_CASTING_SETTING_ON if near else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return GeometryInstance3D.SHADOW_CASTING_SETTING_ON if near and GraphicsQuality.shadows_enabled() else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _unload_far(fkey: Vector3i) -> void:

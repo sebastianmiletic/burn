@@ -126,7 +126,7 @@ func _add_mesh(mesh: Mesh, at: Vector3, mat: Material) -> MeshInstance3D:
 
 func _make_steam(at: Vector3) -> void:
 	var particles := GPUParticles3D.new()
-	particles.amount = [24, 40, 64, 80][int(Settings.get_value("graphics", "quality"))]
+	particles.amount = [24, 40, 64, 80][clampi(Settings.gfx("effects"), 0, 3)]
 	particles.lifetime = 2.0
 	particles.position = at
 	var pm := ParticleProcessMaterial.new()

@@ -338,6 +338,8 @@ func _run() -> void:
 			for a: Node3D in arenas:
 				a.visible = true
 			report.append("   arena gpu cost %.2f ms (%.2f with, %.2f without)" % [gpu - gpu_off, gpu, gpu_off])
+		if "--breakdown" in OS.get_cmdline_user_args():
+			await _breakdown(w, report)
 		if "--gpu-breakdown" in OS.get_cmdline_user_args():
 			await _gpu_breakdown(w, report, gpu if gpu > 0.0 else (await _measure(2.0)).x)
 		var meshes := p.model.find_children("*", "GeometryInstance3D", true, false)
@@ -408,6 +410,104 @@ func _gpu_breakdown(w: GameWorld, report: PackedStringArray, all_on: float) -> v
 			g = (await _measure(2.0)).x
 		(pair[1] as Callable).call()
 		line += "  -%s %.2f" % [label, all_on - g]
+	report.append(line)
+	await _frames(20)
+
+
+## Frame-time cost of each scene part / feature, one off at a time (run with
+## --no-vsync and a fixed --scale so adaptive resolution stays out of it), plus
+## the draw calls of the main and shadow passes. Metal has no GPU timestamps,
+## so the cost is the drop in whole-frame time.
+func _breakdown(w: GameWorld, report: PackedStringArray) -> void:
+	var env := w.sky.environment
+	var vp := w.view.viewport.get_viewport_rid()
+	var vw := w.world_for(w.local_dimension)
+	var info := func(t: int) -> String:
+		return "objs %d draws %d prims %dk" % [RenderingServer.viewport_get_render_info(vp, t, RenderingServer.VIEWPORT_RENDER_INFO_OBJECTS_IN_FRAME),
+				RenderingServer.viewport_get_render_info(vp, t, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME),
+				RenderingServer.viewport_get_render_info(vp, t, RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME) / 1000]
+	report.append("   main pass: %s | shadow pass: %s" % [info.call(RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE), info.call(RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW)])
+	var chunk_kids: Array = []
+	var chunks: Array = []
+	for c in vw.get_children():
+		if c is MeshInstance3D:
+			chunks.append(c)
+			for k in c.get_children():
+				if k is Node3D:
+					chunk_kids.append(k)
+	var mmis := vw.find_children("*", "MultiMeshInstance3D", true, false)
+	var inst := 0
+	for m: MultiMeshInstance3D in mmis:
+		if m.is_visible_in_tree() and m.multimesh != null:
+			inst += m.multimesh.visible_instance_count if m.multimesh.visible_instance_count >= 0 else m.multimesh.instance_count
+	report.append("   chunks %d, flora/decor nodes %d, multimeshes %d (%d instances), scene nodes %d" % [chunks.size(), chunk_kids.size(), mmis.size(), inst, Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
+	# Submitted triangles per flora mesh: instances in their visibility range times mesh triangles.
+	var cam_pos := w.view.camera.global_position
+	var per_mesh := {}
+	var tri_cache := {}
+	for m: MultiMeshInstance3D in mmis:
+		if not m.is_visible_in_tree() or m.multimesh == null or m.multimesh.mesh == null:
+			continue
+		var d := cam_pos.distance_to(m.global_transform * m.get_aabb().get_center())
+		if d > m.visibility_range_end and m.visibility_range_end > 0.0 or d < m.visibility_range_begin:
+			continue
+		var mesh := m.multimesh.mesh
+		if not tri_cache.has(mesh):
+			tri_cache[mesh] = mesh.get_faces().size() / 3
+		var n := m.multimesh.visible_instance_count if m.multimesh.visible_instance_count >= 0 else m.multimesh.instance_count
+		var key := "%s/%d" % [String(m.get_parent().name), int(tri_cache[mesh])]
+		per_mesh[key] = int(per_mesh.get(key, 0)) + n * int(tri_cache[mesh])
+	var keys := per_mesh.keys()
+	keys.sort_custom(func(a: String, b: String) -> bool: return per_mesh[a] > per_mesh[b])
+	var top := "   flora tris by parent/mesh-tris:"
+	for k: String in keys.slice(0, 12):
+		top += "  %s %dk" % [k, int(per_mesh[k]) / 1000]
+	report.append(top)
+	var arch: Array = w.find_children("*", "Architecture", true, false)
+	var distant: Array = w.find_children("*", "DistantLand", true, false)
+	var shadow_was := {}
+	var set_vis := func(nodes: Array, on: bool) -> void:
+		for n: Variant in nodes:
+			if is_instance_valid(n):
+				(n as Node3D).visible = on
+	var shadows_off := func() -> void:
+		for c: Variant in chunks:
+			if is_instance_valid(c):
+				shadow_was[c] = (c as GeometryInstance3D).cast_shadow
+				c.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var shadows_on := func() -> void:
+		for c: Variant in shadow_was:
+			if is_instance_valid(c):
+				(c as GeometryInstance3D).cast_shadow = shadow_was[c]
+	var toggles := {
+		"terrain+flora": [func() -> void: vw.visible = false, func() -> void: vw.visible = true],
+		"flora+decor": [func() -> void: set_vis.call(chunk_kids, false), func() -> void: set_vis.call(chunk_kids, true)],
+		"terrain shadows": [shadows_off, shadows_on],
+		"architecture": [func() -> void: set_vis.call(arch, false), func() -> void: set_vis.call(arch, true)],
+		"horizon": [func() -> void: set_vis.call(distant, false), func() -> void: set_vis.call(distant, true)],
+		"entities": [func() -> void: w.get_node("Entities").visible = false, func() -> void: w.get_node("Entities").visible = true],
+		"sun shadow": [func() -> void: w.sky.set_meta("no_shadow", true), func() -> void: w.sky.remove_meta("no_shadow")],
+		"vol fog": [func() -> void: env.volumetric_fog_enabled = false, func() -> void: GraphicsQuality.apply_environment(env)],
+		"sdfgi": [func() -> void: env.sdfgi_enabled = false, func() -> void: GraphicsQuality.apply_environment(env)],
+		"ssr": [func() -> void: env.ssr_enabled = false, func() -> void: GraphicsQuality.apply_environment(env)],
+		"ssao": [func() -> void: env.ssao_enabled = false, func() -> void: GraphicsQuality.apply_environment(env)],
+		"ssil": [func() -> void: env.ssil_enabled = false, func() -> void: GraphicsQuality.apply_environment(env)],
+		"glow": [func() -> void: env.glow_enabled = false, func() -> void: GraphicsQuality.apply_environment(env)],
+		"sky": [func() -> void: env.background_mode = Environment.BG_COLOR, func() -> void: env.background_mode = Environment.BG_SKY],
+		"weather": [func() -> void: w.weather.visible = false, func() -> void: w.weather.visible = true],
+		"hud": [func() -> void: if w.hud != null: w.hud.visible = false, func() -> void: if w.hud != null: w.hud.visible = true],
+	}
+	await _frames(30)
+	var base := (await _measure(2.0)).x
+	var line := "   frame %.2f ms (cpu render %.2f ms, setup %.2f ms);" % [base, RenderingServer.viewport_get_measured_render_time_cpu(vp), RenderingServer.get_frame_setup_time_cpu()]
+	for label: String in toggles:
+		var pair: Array = toggles[label]
+		(pair[0] as Callable).call()
+		await _frames(20)
+		var t := (await _measure(1.5)).x
+		(pair[1] as Callable).call()
+		line += "  -%s %.1f" % [label, base - t]
+		await _frames(10)
 	report.append(line)
 	await _frames(20)
 

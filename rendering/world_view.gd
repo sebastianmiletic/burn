@@ -61,6 +61,15 @@ var camera: Camera3D:
 		return source_camera
 
 var _layer: CanvasLayer
+var _post: ColorRect
+var _post_mat := ShaderMaterial.new()
+var _prev_basis := Basis.IDENTITY
+var _motion_blur := 0.0
+var _aberration := 0.0
+var _sun_shafts := true
+var _sun_vis := 0.0
+var _sun_timer := 0.0
+var _sky: SkyController
 var _mul: ColorRect
 var _add: ColorRect
 var _mul_mat := ShaderMaterial.new()
@@ -98,6 +107,8 @@ func _ready() -> void:
 	_add_mat.shader = add_shader
 	_layer = CanvasLayer.new()
 	_layer.layer = -10   # above the 3D world, below every UI layer
+	_post_mat.shader = preload("res://rendering/post_fx.gdshader")
+	_post = _overlay(_post_mat)
 	_mul = _overlay(_mul_mat)
 	_add = _overlay(_add_mat)
 	add_child(_layer)
@@ -123,6 +134,8 @@ func _exit_tree() -> void:
 	if viewport != null:
 		viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 		viewport.scaling_3d_scale = 1.0
+		viewport.use_taa = false
+		viewport.msaa_3d = Viewport.MSAA_DISABLED
 
 
 func _process(delta: float) -> void:
@@ -141,6 +154,7 @@ func _process(delta: float) -> void:
 	if _mul.visible:
 		_mul_mat.set_shader_parameter(&"tint", Vector3(tint.r, tint.g, tint.b))
 		_mul_mat.set_shader_parameter(&"time", _time)
+	_update_post(delta)
 	_add.visible = flash > 0.001
 	if _add.visible:
 		# Subtle: the sky and the bolt's own light carry lightning.
@@ -152,7 +166,82 @@ func unproject(world: Vector3) -> Vector2:
 	return source_camera.unproject_position(world) if source_camera != null else Vector2.ZERO
 
 
+## Motion blur, sun shafts, lens flare and chromatic aberration (post_fx.gdshader).
+func _update_post(delta: float) -> void:
+	var cam := source_camera
+	if cam == null or not is_instance_valid(cam) or not cam.is_inside_tree() or DisplayServer.get_name() == "headless":
+		_post.visible = false
+		return
+	var basis := cam.global_basis.orthonormalized()
+	var blur := 0.0
+	if _motion_blur > 0.0 and delta > 0.0:
+		# Shutter of half a 60 fps frame, whatever the frame rate.
+		blur = _motion_blur * clampf((1.0 / 120.0) / delta, 0.0, 2.0)
+		_post_mat.set_shader_parameter(&"reproject", Basis(_prev_basis.inverse() * basis))
+		var t := tan(deg_to_rad(cam.fov) * 0.5)
+		var sz := Vector2(viewport.get_visible_rect().size)
+		_post_mat.set_shader_parameter(&"tan_half_fov", Vector2(t * sz.x / maxf(sz.y, 1.0), t))
+	_prev_basis = basis
+	var shafts := 0.0
+	var flare := 0.0
+	if _sun_shafts:
+		if _sky == null or not is_instance_valid(_sky):
+			_sky = _find_sky()
+		if _sky != null:
+			var sun_dir := _sky.sun_direction()
+			var strength := clampf(_sky.sun.light_energy / SkyController.SUN_ENERGY, 0.0, 1.0) if _sky.sun.visible else 0.0
+			var fwd := -basis.z
+			var on := strength > 0.05 and fwd.dot(sun_dir) > 0.2 and not cam.is_position_behind(cam.global_position + sun_dir * 100.0)
+			_sun_timer -= delta
+			if _sun_timer <= 0.0:
+				_sun_timer = 0.12
+				_sun_target = 1.0 if on and not _sun_blocked(cam.global_position, sun_dir) else 0.0
+			_sun_vis = move_toward(_sun_vis, _sun_target if on else 0.0, delta * 5.0)
+			if _sun_vis > 0.001:
+				var p := cam.unproject_position(cam.global_position + sun_dir * 100.0)
+				var sz := Vector2(viewport.get_visible_rect().size)
+				_post_mat.set_shader_parameter(&"sun_uv", p / sz)
+				var c := _sky.sun.light_color
+				_post_mat.set_shader_parameter(&"sun_color", Vector3(c.r, c.g, c.b))
+				shafts = _sun_vis * strength * 0.8
+				flare = _sun_vis * strength * clampf(fwd.dot(sun_dir) * 2.0 - 1.0, 0.0, 1.0)
+	_post_mat.set_shader_parameter(&"blur_amount", blur)
+	_post_mat.set_shader_parameter(&"shafts", shafts)
+	_post_mat.set_shader_parameter(&"flare", flare)
+	_post.visible = blur > 0.0 or shafts > 0.002 or flare > 0.002 or _aberration > 0.0
+
+
+var _sun_target := 0.0
+
+
+## Terrain or a building between the camera and the sun (no shafts through a mountain).
+func _sun_blocked(from: Vector3, dir: Vector3) -> bool:
+	var w := GameWorld.instance
+	if w == null:
+		return false
+	if w.tracker != null and w.tracker.underground:
+		return true
+	var vw := w.world_for(w.local_dimension)
+	return vw != null and not vw.raycast(from, dir, 150.0).is_empty()
+
+
+func _find_sky() -> SkyController:
+	var w := GameWorld.instance
+	if w != null and w.sky != null:
+		return w.sky
+	var p := get_parent()
+	if p != null:
+		for c in p.get_children():
+			if c is SkyController:
+				return c
+	return null
+
+
 func _apply_settings() -> void:
+	_motion_blur = float(Settings.get_value("graphics", "motion_blur"))
+	_aberration = float(Settings.get_value("graphics", "chromatic_aberration"))
+	_sun_shafts = bool(Settings.get_value("graphics", "sun_shafts"))
+	_post_mat.set_shader_parameter(&"aberration", _aberration)
 	_vignette = float(Settings.get_value("graphics", "vignette"))
 	_mul_mat.set_shader_parameter(&"vignette", _vignette)
 	_mul_mat.set_shader_parameter(&"grain", float(Settings.get_value("graphics", "grain")))
@@ -170,13 +259,25 @@ func _resize() -> void:
 	# Fraction of the physical window the 3D scene is rendered at.
 	var scale := clampf(preset * _adaptive_scale / screen, 0.25, 1.0)
 	var upscaler := _upscaler()
+	var temporal := upscaler == Viewport.SCALING_3D_MODE_FSR2 or upscaler == Viewport.SCALING_3D_MODE_METALFX_TEMPORAL
+	if scale >= 0.999 and not temporal:
+		upscaler = Viewport.SCALING_3D_MODE_BILINEAR   # native: nothing to upscale
 	viewport.scaling_3d_mode = upscaler
 	viewport.scaling_3d_scale = scale
-	# FXAA unless a temporal upscaler is smoothing edges already.
-	var temporal := upscaler == Viewport.SCALING_3D_MODE_FSR2 or upscaler == Viewport.SCALING_3D_MODE_METALFX_TEMPORAL
-	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED if temporal else Viewport.SCREEN_SPACE_AA_FXAA
-	# Spatial upscalers sharpen; keep textures crisp at the output size.
-	viewport.fsr_sharpness = 0.35
+	# Anti-aliasing: a temporal upscaler already resolves edges over time.
+	var aa := Settings.gfx("antialiasing")
+	var fp := GraphicsQuality.forward_plus()
+	if aa == 2 and not fp:
+		aa = 1   # no TAA in the compatibility renderer
+	viewport.use_taa = aa == 2 and not temporal
+	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == 1 and not temporal else Viewport.SCREEN_SPACE_AA_DISABLED
+	viewport.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_DISABLED, Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][clampi(aa, 0, 4)] if not temporal else Viewport.MSAA_DISABLED
+	# Sharpness 0..1 -> FSR / MetalFX sharpening (0 = sharpest .. 2 = none).
+	viewport.fsr_sharpness = (1.0 - clampf(float(Settings.get_value("graphics", "sharpness")), 0.0, 1.0)) * 2.0
+	var tq := clampi(Settings.gfx("texture_quality"), 0, 3)
+	viewport.texture_mipmap_bias = [0.75, 0.25, 0.0, -0.25][tq]
+	viewport.anisotropic_filtering_level = [Viewport.ANISOTROPY_2X, Viewport.ANISOTROPY_4X, Viewport.ANISOTROPY_8X, Viewport.ANISOTROPY_16X][tq]
+	viewport.mesh_lod_threshold = [4.0, 2.0, 1.0, 0.5][clampi(Settings.gfx("mesh_detail"), 0, 3)]
 
 
 ## The resolution the 3D scene is actually rendered at (before upscaling).
@@ -199,6 +300,18 @@ static func _upscaler() -> Viewport.Scaling3DMode:
 			return named.get(arg.trim_prefix("--upscaler="), Viewport.SCALING_3D_MODE_BILINEAR)
 	if DisplayServer.get_name() == "headless":
 		return Viewport.SCALING_3D_MODE_BILINEAR
+	var metal := RenderingServer.get_current_rendering_driver_name() == "metal"
+	match int(Settings.get_value("graphics", "upscaler")):
+		1:
+			return Viewport.SCALING_3D_MODE_BILINEAR
+		2:
+			return Viewport.SCALING_3D_MODE_FSR
+		3:
+			return Viewport.SCALING_3D_MODE_FSR2
+		4:
+			return Viewport.SCALING_3D_MODE_METALFX_SPATIAL if metal else Viewport.SCALING_3D_MODE_FSR
+		5:
+			return Viewport.SCALING_3D_MODE_METALFX_TEMPORAL if metal else Viewport.SCALING_3D_MODE_FSR2
 	# Spatial upscalers: measured on the M4 at 2940x1652 output, MetalFX
 	# temporal cost ~15 ms a frame more than MetalFX spatial / FSR 1 for the
 	# same render resolution, which no amount of saved pixels pays back.

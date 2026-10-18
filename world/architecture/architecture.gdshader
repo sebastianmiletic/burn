@@ -129,8 +129,8 @@ void fragment() {
 		albedo *= 1.0 - v_wear * side * smoothstep(0.55, 0.9, streak) * 0.3;
 	}
 	// Snow settles on upward faces (roofs, sills, beams); weather adds more.
-	// Paths and squares are trodden clear.
-	float sn = max(v_snow, snow_cover * (L == 10 ? 0.3 : 0.85));
+	// Paths and squares are trodden to patchy slush.
+	float sn = max(v_snow, snow_cover * (L == 10 ? 0.55 : 0.85));
 	if (sn > 0.0 && L != 12 && L != 13 && L != 15) {
 		float noise_s = n_fbm3(v_world * 1.1);
 		float lie = smoothstep(0.25, 0.75, n.y + noise_s * 0.35);

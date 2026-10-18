@@ -1,7 +1,7 @@
 extends SceneTree
 ## Headless test runner:  godot --headless --path . -s res://tests/run_tests.gd
 ## Runs every tests/unit/test_*.gd (each extends TestCase). Exit code 1 on failure.
-## `-- --only=voxel,flora` runs just the files whose names contain one of the words.
+## `-- --only=voxel,flora` runs just test_voxel.gd and test_flora.gd.
 
 
 var _ran := false
@@ -19,28 +19,17 @@ func _run() -> void:
 	var only := PackedStringArray()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--only="):
-			only = a.get_slice("=", 1).split(",", false)
+			only = a.trim_prefix("--only=").split(",", false)
 	var dir := DirAccess.open("res://tests/unit")
 	var files := PackedStringArray()
-	# --only=ui_logic,map_ui runs just those files (test_<name>.gd).
-	var only := PackedStringArray()
-	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--only="):
-			only = a.trim_prefix("--only=").split(",", false)
 	for f in dir.get_files():
+		if not (f.begins_with("test_") and f.ends_with(".gd")):
+			continue
+		# Exact names (test_<name>.gd) only, so --only=settings skips graphics_settings.
 		if not only.is_empty() and not f.trim_prefix("test_").trim_suffix(".gd") in only:
 			continue
-		if f.begins_with("test_") and f.ends_with(".gd"):
-			if not only.is_empty() and not Array(only).any(func(w: String) -> bool: return f.contains(w)):
-				continue
-			files.append(f)
+		files.append(f)
 	files.sort()
-	# --only=items,progression runs just test_items.gd and test_progression.gd.
-	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--only="):
-			var keep := a.trim_prefix("--only=").split(",", false)
-			files = PackedStringArray(Array(files).filter(func(f: String) -> bool:
-				return keep.has(f.trim_prefix("test_").trim_suffix(".gd"))))
 
 	var total := 0
 	var failed := 0

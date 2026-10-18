@@ -38,14 +38,16 @@ const _PLANTS := [L.DAISY, L.POPPY, L.BUTTERCUP, L.SPIKE, L.HEATHER, L.IRIS, L.A
 
 ## Distances per quality (Low, Medium, High, Ultra), metres.
 const GRASS_RANGE := [35.0, 50.0, 70.0, 90.0]
-const GRASS_SPLIT := [12.0, 15.0, 18.0, 22.0]   # near (full clumps) / far (sparse clumps) switch
-const PLANT_RANGE := [40.0, 60.0, 80.0, 100.0]
-const BUSH_RANGE := [60.0, 80.0, 110.0, 140.0]
-const ROCK_RANGE := [70.0, 100.0, 130.0, 160.0]
+const GRASS_SPLIT := [10.0, 12.0, 14.0, 18.0]   # near (full clumps) / far (sparse clumps) switch
+const PLANT_RANGE := [35.0, 50.0, 62.0, 85.0]
+const BUSH_RANGE := [55.0, 70.0, 90.0, 120.0]
+const ROCK_RANGE := [65.0, 90.0, 115.0, 150.0]
 const TREE_LOD0 := [22.0, 34.0, 48.0, 66.0]
 const TREE_LOD1 := [70.0, 95.0, 120.0, 150.0]
 const TREE_FAR := [150.0, 175.0, 210.0, 250.0]
-const CHUNK_MARGIN := 16.0   # node visibility ranges are measured to the chunk AABB centre
+## Node visibility ranges are measured to the chunk AABB centre: half the
+## diagonal of a 16 m chunk's footprint reaches its farthest corner.
+const CHUNK_MARGIN := 11.5
 
 const MeshKit := preload("res://world/flora/flora_mesh_kit.gd")
 const FellFx := preload("res://world/flora/fell_fx.gd")
@@ -160,6 +162,8 @@ static func warmup() -> void:
 static func _settings_quality() -> int:
 	var loop := Engine.get_main_loop() as SceneTree
 	var s: Node = loop.root.get_node_or_null(^"Settings") if loop != null and loop.root != null else null
+	if s != null and s.has_method(&"gfx"):
+		return clampi(int(s.call(&"gfx", "foliage")), 0, 3)
 	return int(s.call(&"get_value", "graphics", "quality")) if s != null else 1
 
 
@@ -267,8 +271,9 @@ static func _apply_quality(q: int) -> void:
 	if q == _quality:
 		return
 	_quality = q
+	var md := _mesh_detail() if _warm else q
 	for kind in 4:
-		var bands := [[0.0, TREE_LOD0[q]], [TREE_LOD0[q], TREE_LOD1[q]], [TREE_LOD1[q], TREE_FAR[q]], [0.0, 100000.0]]
+		var bands := [[0.0, TREE_LOD0[md]], [TREE_LOD0[md], TREE_LOD1[md]], [TREE_LOD1[md], TREE_FAR[q]], [0.0, 100000.0]]
 		for lod in 4:
 			for m: ShaderMaterial in [_mats["bark_%d_%d" % [kind, lod]], _mats["leaves_%d_%d" % [kind, lod]]]:
 				m.set_shader_parameter(&"lod_begin", bands[lod][0])
@@ -291,7 +296,7 @@ static func _apply_quality(q: int) -> void:
 		m.set_shader_parameter(&"fade_len", PLANT_RANGE[q] * 0.15)
 		m.set_shader_parameter(&"thin_start", PLANT_RANGE[q] * 0.35)
 	for k in ["boulder", "pebble"]:
-		_mats[k].set_shader_parameter(&"fade_end", ROCK_RANGE[q] if k == "boulder" else PLANT_RANGE[q] * 0.6)
+		_mats[k].set_shader_parameter(&"fade_end", ROCK_RANGE[q] if k == "boulder" else PLANT_RANGE[q] * 0.4)
 
 
 ## A cached flora mesh (for tools/tests). kind: Tree, variant 0..3, lod 0..2.
@@ -608,7 +613,11 @@ static func plan_chunk(origin: Vector3i, surface: Dictionary, trees: Array, dime
 				if mixed:
 					col = base_col.lerp(col, 0.35)
 				var basis := tilt * Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(sx, sy, sx))
-				bt.add(basis, p - up * sink, Color(col.r, col.g, col.b, rng.randf()), rng.randf())
+				# The thinning hash doubles as the tier, so the buffer is ordered by it and
+				# far chunks can stop drawing the clumps the shader would thin out anyway.
+				var thin := rng.randf()
+				rng.randf()
+				bt.add(basis, p - up * sink, Color(col.r, col.g, col.b, thin), thin)
 
 	var groups: Array = []
 	for layer: int in batches:
@@ -715,57 +724,160 @@ static func build_chunk(plan: Dictionary, quality: int) -> Node3D:
 	for g: Dictionary in plan.get("groups", []):
 		var layer: int = g.layer
 		var mmi := _mmi(_layer_mesh[layer], g)
-		var mm := mmi.multimesh
-		var small: bool = layer in _GRASSY or layer in _PLANTS or layer == L.LITTER or layer == L.PEBBLES
-		if small:
-			var tiers: PackedInt32Array = g.tiers
-			var n := 0
-			for t in q + 1:
-				n += tiers[t]
-			mm.visible_instance_count = n
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var reach: float = GRASS_RANGE[q]
-		if layer in _PLANTS or layer == L.LITTER:
-			reach = PLANT_RANGE[q]
-		elif layer == L.BUSH_AUTUMN or layer == L.BUSH_GREEN:
-			reach = BUSH_RANGE[q]
-		elif layer == L.BOULDER or layer == L.LOG:
-			reach = ROCK_RANGE[q]
-		elif layer == L.PEBBLES:
-			reach = PLANT_RANGE[q] * 0.6
-		mmi.visibility_range_end = reach + CHUNK_MARGIN
+		_tag(mmi, 0, layer, g.tiers)
 		if _layer_far[layer] != null:
 			# Full clumps near the camera, sparse single-triangle clumps beyond the split.
-			mmi.visibility_range_end = GRASS_SPLIT[q] + 4.0 + CHUNK_MARGIN
 			var far := _mmi(_layer_far[layer], g)
-			far.multimesh.visible_instance_count = mm.visible_instance_count
-			far.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			far.visibility_range_begin = maxf(GRASS_SPLIT[q] - CHUNK_MARGIN, 0.0)
-			far.visibility_range_end = reach + CHUNK_MARGIN
+			_tag(far, 1, layer, g.tiers)
 			root.add_child(far)
-		if layer == L.BUSH_AUTUMN or layer == L.BUSH_GREEN:
-			# Bushes cast shadows only up close.
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if q >= 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(mmi)
 	for g: Dictionary in plan.get("trees", []):
 		var lods: Array = _tree_mesh[g.kind][g.variant]
-		var m0 := _mmi(lods[0], g)
-		m0.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		m0.visibility_range_end = TREE_LOD0[q] + CHUNK_MARGIN
-		root.add_child(m0)
-		var m1 := _mmi(lods[1], g)
-		m1.visibility_range_end = TREE_LOD1[q] + CHUNK_MARGIN
-		root.add_child(m1)
+		root.add_child(_tag(_mmi(lods[0], g), 2, -1, PackedInt32Array()))
+		root.add_child(_tag(_mmi(lods[1], g), 3, -1, PackedInt32Array()))
 	for g: Dictionary in plan.get("far", []):
-		var m2 := _mmi(_tree_mesh[g.kind][0][2], g)
-		m2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		m2.visibility_range_begin = maxf(TREE_LOD1[q] - CHUNK_MARGIN - 6.0, 0.0)
-		m2.visibility_range_end = TREE_FAR[q] + CHUNK_MARGIN
-		root.add_child(m2)
+		root.add_child(_tag(_mmi(_tree_mesh[g.kind][0][2], g), 4, -1, PackedInt32Array()))
+	_configure(root, q)
 	var info: PackedVector4Array = plan.get("tree_info", PackedVector4Array())
 	root.set_meta(&"trees", info)
 	root.add_to_group(&"flora_chunks")
 	return root
+
+
+## Re-applies a quality to every flora chunk already in the scene (the
+## graphics settings changed): instance counts, draw distances, shadows.
+static func requalify(tree: SceneTree, quality: int) -> void:
+	if not _warm:
+		return
+	_quality = -1
+	_apply_quality(quality)
+	for root: Node in tree.get_nodes_in_group(&"flora_chunks"):
+		_configure(root as Node3D, clampi(quality, 0, 3))
+		root.set_meta(&"lod_band", -1)
+	_lod_cam = Vector3.INF
+
+
+## Role of a flora MultiMeshInstance3D: 0 layer (near), 1 grass far LOD,
+## 2 tree LOD0, 3 tree LOD1 (shadow caster), 4 tree far billboard.
+static func _tag(mmi: MultiMeshInstance3D, role: int, layer: int, tiers: PackedInt32Array) -> MultiMeshInstance3D:
+	mmi.set_meta(&"flora", [role, layer, tiers])
+	return mmi
+
+
+static func _configure(root: Node3D, q: int) -> void:
+	var md := _mesh_detail()
+	for c in root.get_children():
+		var mmi := c as MultiMeshInstance3D
+		if mmi == null or not mmi.has_meta(&"flora"):
+			continue
+		var tag: Array = mmi.get_meta(&"flora")
+		var role: int = tag[0]
+		var layer: int = tag[1]
+		var mm := mmi.multimesh
+		mmi.visibility_range_begin = 0.0
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		match role:
+			0, 1:
+				var small: bool = layer in _GRASSY or layer in _PLANTS or layer == L.LITTER or layer == L.PEBBLES
+				if small:
+					var tiers: PackedInt32Array = tag[2]
+					var n := 0
+					for t in q + 1:
+						n += tiers[t]
+					mm.visible_instance_count = n
+				var reach: float = GRASS_RANGE[q]
+				if layer in _PLANTS or layer == L.LITTER:
+					reach = PLANT_RANGE[q]
+				elif layer == L.BUSH_AUTUMN or layer == L.BUSH_GREEN:
+					reach = BUSH_RANGE[q]
+					# Bush shadows (600+ triangles each, every cascade) on Ultra only.
+					if q >= 3:
+						mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+				elif layer == L.BOULDER or layer == L.LOG:
+					reach = ROCK_RANGE[q]
+					mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+				elif layer == L.PEBBLES:
+					reach = PLANT_RANGE[q] * 0.4
+				mmi.visibility_range_end = reach + CHUNK_MARGIN
+				if _layer_far[layer] != null:
+					if role == 0:
+						mmi.visibility_range_end = GRASS_SPLIT[q] + 4.0 + CHUNK_MARGIN
+					else:
+						mmi.visibility_range_begin = maxf(GRASS_SPLIT[q] - CHUNK_MARGIN, 0.0)
+			2:
+				mmi.visibility_range_end = TREE_LOD0[md] + CHUNK_MARGIN
+			3:
+				mmi.visibility_range_end = TREE_LOD1[md] + CHUNK_MARGIN
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			4:
+				mmi.visibility_range_begin = maxf(TREE_LOD1[md] - CHUNK_MARGIN - 6.0, 0.0)
+				mmi.visibility_range_end = TREE_FAR[q] + CHUNK_MARGIN
+
+
+const _TIER_LO := [0.0, 0.4, 0.65, 0.85]
+static var _lod_cursor := 0
+static var _lod_cam := Vector3.INF
+static var _lod_roots: Array = []
+static var _lod_idle := 0
+
+
+## Per chunk, draws only the grass and plant clumps the shaders keep at that
+## distance (they thin with distance; dropped clumps used to still cost their
+## vertices). A slice of the chunks per call; a full pass after the camera
+## moved a few metres.
+static func update_distance_lod(tree: SceneTree, cam: Vector3) -> void:
+	if not _warm or _quality < 0:
+		return
+	_lod_idle += 1
+	if _lod_roots.is_empty():
+		if _lod_cam.distance_squared_to(cam) < 16.0 and _lod_idle < 90:
+			return
+		_lod_idle = 0
+		_lod_cam = cam
+		_lod_roots = tree.get_nodes_in_group(&"flora_chunks")
+		_lod_cursor = 0
+	var q := _quality
+	var n := mini(_lod_roots.size(), _lod_cursor + 160)
+	for i in range(_lod_cursor, n):
+		var item: Variant = _lod_roots[i]
+		if not is_instance_valid(item):
+			continue
+		var root := item as Node3D
+		if root == null or not root.is_inside_tree():
+			continue
+		var d := maxf((root.global_position + Vector3(8, 8, 8)).distance_to(cam) - CHUNK_MARGIN, 0.0)
+		var band := int(d / 6.0)
+		if root.get_meta(&"lod_band", -1) == band:
+			continue
+		root.set_meta(&"lod_band", band)
+		for c in root.get_children():
+			var mmi := c as MultiMeshInstance3D
+			if mmi == null or not mmi.has_meta(&"flora"):
+				continue
+			var tag: Array = mmi.get_meta(&"flora")
+			var layer: int = tag[1]
+			if int(tag[0]) > 1 or not (layer in _GRASSY or layer in _PLANTS):
+				continue
+			var grassy: bool = layer in _GRASSY
+			var start: float = GRASS_RANGE[q] * 0.3 if grassy else PLANT_RANGE[q] * 0.35
+			var end: float = GRASS_RANGE[q] if grassy else PLANT_RANGE[q]
+			var keep := lerpf(1.0, 0.35 if grassy else 0.4, smoothstep(start, end, float(band) * 6.0))
+			var tiers: PackedInt32Array = tag[2]
+			var count := 0
+			for t in q + 1:
+				if _TIER_LO[t] < keep:
+					count += tiers[t]
+			mmi.multimesh.visible_instance_count = count
+	_lod_cursor = n
+	if _lod_cursor >= _lod_roots.size():
+		_lod_roots = []
+
+
+## Mesh detail (Settings.gfx "mesh_detail"): where trees switch level of detail.
+static func _mesh_detail() -> int:
+	var loop := Engine.get_main_loop() as SceneTree
+	var s: Node = loop.root.get_node_or_null(^"Settings") if loop != null and loop.root != null else null
+	return clampi(int(s.call(&"gfx", "mesh_detail")), 0, 3) if s != null and s.has_method(&"gfx") else _quality
 
 
 static func _mmi(mesh: Mesh, g: Dictionary) -> MultiMeshInstance3D:

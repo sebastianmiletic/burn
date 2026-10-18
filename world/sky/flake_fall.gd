@@ -33,7 +33,7 @@ func _init(k := Kind.SNOW) -> void:
 
 
 func _ready() -> void:
-	var q := int(Settings.get_value("graphics", "quality"))
+	var q := clampi(Settings.gfx("effects"), 0, 3)
 	var tint := Color(0.92, 0.94, 0.98)
 	var size := 0.07
 	match kind:
@@ -83,9 +83,33 @@ func _ready() -> void:
 	draw_pass_1 = _quad
 	_quad.material = _soft
 	amount_ratio = maxf(intensity, 0.001)
+	Settings.changed.connect(func(section: String, _k: String) -> void:
+		if section == "graphics" and is_inside_tree():
+			var n: int = _amounts()[clampi(Settings.gfx("effects"), 0, 3)]
+			if n != amount:
+				amount = n)
 
 
-func _process(_delta: float) -> void:
+func _amounts() -> Array:
+	match kind:
+		Kind.DUST:
+			return [1200, 2200, 3400, 5000]
+		Kind.ASH:
+			return [700, 1200, 1800, 2600]
+	return [1800, 3200, 4800, 7000]
+
+
+var _last_cam := Vector3.INF
+var _cam_vel := Vector3.ZERO
+var _delta := 0.0
+
+
+static func _delta_ok(d: float) -> bool:
+	return d > 0.0001 and d < 0.25
+
+
+func _process(delta: float) -> void:
+	_delta = delta
 	var camera := get_viewport().get_camera_3d()
 	if camera == null:
 		return
@@ -94,7 +118,16 @@ func _process(_delta: float) -> void:
 	# Upwind of the camera, so drifting flakes cross the view.
 	var upwind := -wind * clampf(_height / maxf(_fall, 0.3), 0.0, 4.0) * 0.5
 	upwind.y = 0.0
-	global_position = camera.global_position + forward.normalized() * 6.0 + Vector3.UP * _height + upwind.limit_length(14.0)
+	# Lead the emitter by the camera's own motion so running, riding or flying
+	# never outruns the falling flakes (no empty air popping in around you).
+	var cam_pos := camera.global_position
+	if _last_cam.x < INF and _delta_ok(_delta):
+		var v := (cam_pos - _last_cam) / _delta
+		v.y = 0.0
+		_cam_vel = _cam_vel.lerp(v.limit_length(40.0), 0.15)
+	_last_cam = cam_pos
+	var lead := _cam_vel * clampf(_height / maxf(_fall, 0.3), 1.0, 3.0)
+	global_position = cam_pos + forward.normalized() * 6.0 + Vector3.UP * _height + upwind.limit_length(14.0) + lead.limit_length(30.0)
 	var v := Vector3(wind.x, -_fall, wind.z)
 	_pm.direction = v.normalized()
 	_pm.initial_velocity_min = v.length() * 0.7

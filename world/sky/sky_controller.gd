@@ -59,6 +59,8 @@ var _moon_phase := 1.0
 var _fog_mult := 1.0
 var _quality := 1
 var _raw := false
+var _shadows := true
+var _dof := false
 
 
 static func cloud_noise() -> NoiseTexture2D:
@@ -147,6 +149,12 @@ func _apply_settings() -> void:
 	_quality = int(Settings.get_value("graphics", "quality"))
 	_fog_mult = float(Settings.get_value("graphics", "fog"))
 	GraphicsQuality.apply_environment(environment)
+	_shadows = GraphicsQuality.shadows_enabled()
+	_dof = bool(Settings.get_value("graphics", "depth_of_field"))
+	if GraphicsQuality.forward_plus():
+		RenderingServer.camera_attributes_set_dof_blur_quality(
+				[RenderingServer.DOF_BLUR_QUALITY_VERY_LOW, RenderingServer.DOF_BLUR_QUALITY_LOW,
+				RenderingServer.DOF_BLUR_QUALITY_MEDIUM, RenderingServer.DOF_BLUR_QUALITY_HIGH][clampi(_quality, 0, 3)], _quality >= 2)
 	if sun.is_inside_tree():
 		GraphicsQuality.apply_directional(sun, true)
 		GraphicsQuality.apply_directional(moon, false)
@@ -259,6 +267,8 @@ func _update_lights(delta: float, force: bool) -> void:
 	var ember := wx.ember_amount() if wx != null else 0.0
 	var aurora := wx.aurora_amount() if wx != null else 0.0
 	var meteors := wx.meteor_amount() if wx != null else 0.0
+	var snowing := wx.snow_amount() if wx != null else 0.0
+	var cover := wx.snow_cover() if wx != null else 0.0
 
 	_atmos_timer -= delta
 	if _atmos_timer <= 0.0 or force:
@@ -288,11 +298,11 @@ func _update_lights(delta: float, force: bool) -> void:
 	sun.light_energy = sun_e * surface_light * surface_light
 	# Overcast skies soften shadows into a broad penumbra.
 	sun.light_angular_distance = lerpf(0.5, 3.5, overcast)
-	sun.shadow_enabled = sun.light_energy > 0.02 and not has_meta("no_shadow")
+	sun.shadow_enabled = sun.light_energy > 0.02 and not has_meta("no_shadow") and _shadows
 	sun.visible = not hell
 	var moon_e := 0.1 * smoothstep(0.0, 0.25, _moon_dir.y) * nightf * (0.25 + 0.75 * _moon_phase) * (1.0 - overcast * 0.8)
 	moon.light_energy = moon_e * surface_light * surface_light
-	moon.shadow_enabled = moon.light_energy > 0.02 and not has_meta("no_shadow") and sun.light_energy < 0.02
+	moon.shadow_enabled = moon.light_energy > 0.02 and not has_meta("no_shadow") and sun.light_energy < 0.02 and _shadows
 	moon.visible = not hell
 
 	# --- Sky shader.
@@ -343,13 +353,19 @@ func _update_lights(delta: float, force: bool) -> void:
 	var floor_col := Vector3(0.012, 0.015, 0.024)
 	var amb_col := (amb * 0.8 + floor_col).lerp(_cave_bounce, u)
 	environment.ambient_light_color = Color(amb_col.x, amb_col.y, amb_col.z)
-	environment.ambient_light_energy = lerpf(0.45 * (1.0 - storm * 0.35), 2.3, u)
+	# Snow on the ground bounces light back up: brighter, cooler shadows.
+	environment.ambient_light_energy = lerpf(0.45 * (1.0 - storm * 0.2) * (1.0 + cover * 0.3), 2.3, u)
 	environment.background_energy_multiplier = 1.0
 	# Fog takes the colour of the horizon away from the sun; aerial perspective
 	# then pulls it towards the actual sky behind each object.
 	var hz := (_horizon * 0.85 + _horizon_sun.limit_length(1.2) * 0.15) * (1.0 - nightf) + Vector3(0.008, 0.01, 0.016) * nightf
 	var hz_grey := hz.dot(Vector3(0.3, 0.5, 0.2))
 	hz = hz.lerp(Vector3(hz_grey, hz_grey, hz_grey * 1.05), overcast * 0.7 + fog * 0.3) * sky_dim
+	# Falling snow: the air fills with a cool, bright grey-blue (light scattered
+	# by the flakes), not the warm haze of a clear day.
+	if snowing > 0.0:
+		var sl := hz.dot(Vector3(0.3, 0.5, 0.2))
+		hz = hz.lerp(Vector3(0.9, 0.94, 1.0) * sl, snowing * 0.6)
 	if dust > 0.0:
 		hz = hz.lerp(Vector3(0.42, 0.3, 0.2) * maxf(dayf, 0.08), dust * 0.6)
 	if ember > 0.0:
@@ -367,7 +383,7 @@ func _update_lights(delta: float, force: bool) -> void:
 	environment.fog_sun_scatter = 0.18 * (1.0 - overcast) * dayf * surface_light
 	var morning := _mist_amount()
 	var mist := morning + wet * (1.0 - rain) * 0.5
-	var surface_density := (0.0013 + fog * 0.028 + rain * 0.006 + storm * 0.004 + dust * 0.012 + mist * 0.003 + ember * 0.004 + heat * 0.0008) * _fog_mult
+	var surface_density := (0.0013 + fog * 0.028 + rain * 0.006 + snowing * 0.009 + storm * 0.004 + dust * 0.012 + mist * 0.003 + ember * 0.004 + heat * 0.0008) * _fog_mult
 	# High in the mountains a little cold haze hangs between the ranges (kept
 	# light so the view across the peaks stays the reward for the climb).
 	var alt := 0.0
@@ -377,11 +393,15 @@ func _update_lights(delta: float, force: bool) -> void:
 	surface_density += alt * 0.0016 * _fog_mult
 	var cave_density := 0.012 * (0.6 + 0.4 * _fog_mult)
 	environment.fog_density = lerpf(surface_density, cave_density, u)
-	camera_attributes.dof_blur_far_enabled = alt > 0.03 and u < 0.5 and bool(Settings.get_value("graphics", "altitude_blur"))
-	if alt > 0.03:
-		camera_attributes.dof_blur_far_distance = lerpf(700.0, 260.0, alt)
-		camera_attributes.dof_blur_far_transition = lerpf(400.0, 200.0, alt)
-		camera_attributes.dof_blur_amount = 0.02 + alt * 0.05
+	# Depth of field: the far distance softens (an option), more so from the
+	# mountain tops (the altitude blur option). Never underground.
+	var alt_blur := alt > 0.03 and bool(Settings.get_value("graphics", "altitude_blur"))
+	camera_attributes.dof_blur_far_enabled = (alt_blur or _dof) and u < 0.5
+	if camera_attributes.dof_blur_far_enabled:
+		var a := alt if alt_blur else 0.0
+		camera_attributes.dof_blur_far_distance = lerpf(700.0, 260.0, a) if not _dof else lerpf(160.0, 120.0, a)
+		camera_attributes.dof_blur_far_transition = lerpf(400.0, 200.0, a) if not _dof else 220.0
+		camera_attributes.dof_blur_amount = (0.02 + a * 0.05) if not _dof else 0.045 + a * 0.03
 	environment.fog_aerial_perspective = 0.6 * (1.0 - fog * 0.5) * (1.0 - u)
 	environment.fog_sky_affect = lerpf(0.12 + fog * 0.6 + rain * 0.2, 1.0, u)
 	# Ground mist that pools in the valleys at dawn and after rain.
@@ -524,7 +544,7 @@ func _hell_environment() -> void:
 	sun.light_energy = 0.32 * open * open
 	sun.light_angular_distance = 2.5
 	sun.look_at_from_position(Vector3.ZERO, Vector3(-0.3, -1.0, 0.45), Vector3.FORWARD)
-	sun.shadow_enabled = not has_meta("no_shadow") and sun.light_energy > 0.02
+	sun.shadow_enabled = not has_meta("no_shadow") and sun.light_energy > 0.02 and _shadows
 	moon.visible = false
 	_hell_glow.visible = true
 	_hell_glow.light_energy = 0.28 * lerpf(1.0, 0.25, u)
