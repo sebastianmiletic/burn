@@ -109,6 +109,7 @@ const STATIONS := {
 	"anvil": {"name": "Anvil", "verb": "Forge", "desc": "Hammer ingots into tools, weapons and armour."},
 	"alchemy": {"name": "Alchemy Table", "verb": "Brew", "desc": "Potions and elixirs from herbs, gems and glass."},
 	"campfire": {"name": "Campfire", "verb": "Cook", "desc": "Stones, logs and a flame: roast what you hunt and catch, and keep the dark at bay."},
+	"cauldron": {"name": "Cauldron", "verb": "Simmer", "desc": "Brew potions step by step: heat, ingredients in order, stirring and waiting (see Brewing)."},
 }
 
 const BASE := {
@@ -410,7 +411,8 @@ const BASE_RECIPES := {
 }
 
 const RANK_TITLES := ["Ashen", "Kindled", "Smoulder", "Ember", "Flame", "Blaze", "Pyre", "Inferno", "Phoenix", "Eternal Flame"]
-const RANK_XP := [0, 100, 260, 500, 850, 1350, 2000, 2900, 4100, 5800]
+## Steep on purpose: ranks are per role (Roles) and each one grants something real.
+const RANK_XP := [0, 180, 520, 1150, 2200, 3800, 6200, 9600, 14500, 21500]
 
 ## Merchant stock: id -> price in gold
 const SHOP := {"potion_health": 12, "potion_greater": 40, "bread": 3, "apple": 2, "emberleaf": 3, "glass_vial": 4,
@@ -438,6 +440,8 @@ static func _static_init() -> void:
 				_add_armor(piece + "_" + tier, piece, tier)
 	for rid: String in BASE_RECIPES:
 		RECIPES[rid] = BASE_RECIPES[rid]
+	# Roles, spells and brewing: bows, arrows, staffs, books, potions, the cauldron.
+	ArcanaItems.merge_into(ITEMS, RECIPES)
 
 
 static func _add_gear(id: String, kind: String, tier: String) -> void:
