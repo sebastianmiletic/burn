@@ -417,7 +417,7 @@ func _boss_state(id: int, engaged: bool, kind: String, defeated: bool) -> void:
 	if engaged:
 		if boss != null and boss.dimension == w.local_dimension:
 			Events.boss_engaged.emit(boss, boss.display_name)
-			Audio.set_music("boss")
+			Audio.set_music(boss.call("music_state") if boss.has_method("music_state") else "boss_" + kind)
 	else:
 		if not defeated:
 			Events.boss_disengaged.emit(boss)
@@ -429,7 +429,10 @@ func _boss_state(id: int, engaged: bool, kind: String, defeated: bool) -> void:
 			Events.slow_motion.emit(1.4, 0.3)
 			w.quests.on_event("boss", kind)
 			Audio.play_ui("levelup")
-		Audio.set_music("hell" if w.local_dimension == 1 else "explore")
+		if w.tracker != null:
+			w.tracker.refresh_music()
+		else:
+			Audio.set_music("hell" if w.local_dimension == 1 else "explore")
 
 
 func sync_bosses_defeated(defeated: Dictionary) -> void:
