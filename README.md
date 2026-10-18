@@ -12,14 +12,14 @@ in progress. Read [verification and limitations](docs/RELEASE_STATUS.md). There 
 
 ## Download
 
-[**v0.5.0 preview downloads**](https://github.com/sebastianmiletic/burn/releases/tag/v0.5.0)
+[**v0.5.1 preview downloads**](https://github.com/sebastianmiletic/burn/releases/tag/v0.5.1)
 · [All releases](https://github.com/sebastianmiletic/burn/releases)
 
 | Platform | Download | Start |
 | --- | --- | --- |
-| Windows 10/11, x86_64 | [Windows ZIP](https://github.com/sebastianmiletic/burn/releases/download/v0.5.0/Burn-0.5.0-Windows.zip) | Extract everything and run `Burn.exe`. |
-| macOS, Apple Silicon / Intel | [macOS ZIP](https://github.com/sebastianmiletic/burn/releases/download/v0.5.0/Burn-0.5.0-macOS.zip) | Extract, move `Burn.app` into Applications, then open it. |
-| Linux, x86_64 | [Linux tar.gz](https://github.com/sebastianmiletic/burn/releases/download/v0.5.0/Burn-0.5.0-Linux.tar.gz) | `tar xzf Burn-0.5.0-Linux.tar.gz`, then `chmod +x Burn.x86_64 && ./Burn.x86_64`. |
+| Windows 10/11, x86_64 | [Windows ZIP](https://github.com/sebastianmiletic/burn/releases/download/v0.5.1/Burn-0.5.1-Windows.zip) | Extract everything and run `Burn.exe`. |
+| macOS, Apple Silicon / Intel | [macOS ZIP](https://github.com/sebastianmiletic/burn/releases/download/v0.5.1/Burn-0.5.1-macOS.zip) | Extract, move `Burn.app` into Applications, then open it. |
+| Linux, x86_64 | [Linux tar.gz](https://github.com/sebastianmiletic/burn/releases/download/v0.5.1/Burn-0.5.1-Linux.tar.gz) | `tar xzf Burn-0.5.1-Linux.tar.gz`, then `chmod +x Burn.x86_64 && ./Burn.x86_64`. |
 
 These builds are unsigned/ad-hoc signed, not commercially signed or notarized. Verify the archive
 against the release's `SHA256SUMS.txt` before accepting an unknown-publisher warning. Windows may
@@ -95,9 +95,9 @@ Rebind gameplay actions under **Settings → Controls**.
 
 ## Multiplayer
 
-Everyone must use the **same game version**. The downloadable v0.5.0 preview uses network protocol 3.
-Unreleased source `main` is 0.5.1/protocol 4 and cannot join v0.5.0 parties; it adds live guest-lobby
-party-rule summaries.
+Everyone must use the **same game version**. The v0.5.1 preview uses network protocol 5 and cannot
+join older versions. It adds an Online server browser (public servers need a deployed master server,
+see `server/README.md`) and chat in every mode (`/` or T).
 
 - **Same Wi-Fi/LAN:** Host a party, share the four runes, and have friends choose Join. Once they
   are ready, the host begins the campaign. Joining an active campaign is supported.
