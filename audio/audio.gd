@@ -91,6 +91,7 @@ func _ready() -> void:
 	_started_usec = Time.get_ticks_usec()
 	_setup_buses()
 	_apply_volumes()
+	_apply_device()
 	var settings := _settings()
 	if settings != null:
 		settings.connect(&"changed", _on_setting)
@@ -827,10 +828,11 @@ func _apply_volumes() -> void:
 	var settings := _settings()
 	if settings == null:
 		return
-	_set_bus_volume(&"Master", float(settings.call("get_value", "audio", "master")))
+	var muted := _unfocused and bool(settings.call("get_value", "audio", "mute_unfocused"))
+	_set_bus_volume(&"Master", 0.0 if muted else float(settings.call("get_value", "audio", "master")))
 	_set_bus_volume(&"Music", float(settings.call("get_value", "audio", "music")))
 	_set_bus_volume(&"SFX", float(settings.call("get_value", "audio", "sfx")))
-	_set_bus_volume(&"UI", float(settings.call("get_value", "audio", "sfx")))
+	_set_bus_volume(&"UI", float(settings.call("get_value", "audio", "ui")))
 	_set_bus_volume(&"Ambient", float(settings.call("get_value", "audio", "ambient")))
 
 
@@ -842,6 +844,30 @@ func _set_bus_volume(bus: StringName, linear: float) -> void:
 	AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(linear, 0.001)))
 
 
-func _on_setting(section: String, _key: String) -> void:
+func _on_setting(section: String, key: String) -> void:
 	if section == "audio":
 		_apply_volumes()
+		if key == "output_device":
+			_apply_device()
+
+
+var _unfocused := false
+
+
+## Settings > Audio > Mute when unfocused.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		_unfocused = what == NOTIFICATION_APPLICATION_FOCUS_OUT
+		_apply_volumes()
+
+
+## Settings > Audio > Output device ("Default" follows the system).
+func _apply_device() -> void:
+	var settings := _settings()
+	if settings == null:
+		return
+	var want := String(settings.call("get_value", "audio", "output_device"))
+	if not want in AudioServer.get_output_device_list():
+		want = "Default"
+	if AudioServer.output_device != want:
+		AudioServer.output_device = want

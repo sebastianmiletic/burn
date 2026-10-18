@@ -144,7 +144,7 @@ func _process(delta: float) -> void:
 	_add.visible = flash > 0.001
 	if _add.visible:
 		# Subtle: the sky and the bolt's own light carry lightning.
-		_add_mat.set_shader_parameter(&"flash", flash * 0.22)
+		_add_mat.set_shader_parameter(&"flash", flash * 0.22 * Settings.flash_scale())
 
 
 ## Screen-space position of a world point, in the main window's coordinates.

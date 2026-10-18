@@ -581,7 +581,7 @@ func strike_fx(pos: Vector3) -> void:
 func _sky_flash(dir: Vector3, strength: float) -> void:
 	var w := _world()
 	if w != null and w.sky != null:
-		w.sky.flash_sky(dir, strength)
+		w.sky.flash_sky(dir, strength * Settings.flash_scale())
 
 
 func _make_embers() -> GPUParticles3D:

@@ -80,17 +80,39 @@ func _run() -> void:
 					await _shot("shot_%d" % idx)
 				await get_tree().process_frame
 	if _wants("panels") and menu != null and is_instance_valid(menu):
-		for p: Array in [["_show_solo", "panel_solo"], ["_show_multiplayer", "panel_multiplayer"], ["_show_credits", "panel_credits"]]:
+		await _shot("menu_main")
+		# A few throwaway runs so the runs page has content (removed afterwards).
+		var made: Array[String] = []
+		for i in 4:
+			var id := SaveSystem.new_id()
+			SaveSystem.create_meta(id, ["The Ashen Road", "Cinderfall", "Kindling", "Pyre Song"][i], 1000 + i, i % 3)
+			SaveSystem.write(id, {"seed": 1000 + i, "player": {"name": "Capture", "xp": i * 900}, "play_time": 1800.0 * (i + 1),
+				"location_name": "Ashfall", "edits": {}})
+			made.append(id)
+		for p: Array in [["_show_runs", "panel_runs"], ["_show_new_run", "panel_new_run"], ["_show_online", "panel_online"], ["_show_credits", "panel_credits"]]:
 			menu.call(p[0])
 			await _wait(0.9)
 			await _shot(p[1])
+		menu.call("_confirm_delete", made[0])
+		await _wait(0.6)
+		await _shot("panel_delete")
+		for id in made:
+			SaveSystem.delete(id)
 		if menu.has_method("_close_panel"):
 			menu.call("_close_panel")
 		menu.call("_show_settings")
 		await _wait(0.9)
-		await _shot("panel_settings")
 		var s: Node = menu.get("_settings")
 		if s != null:
+			var tabs: TabContainer = s.get("_tabs")
+			for t in tabs.get_tab_count():
+				tabs.current_tab = t
+				await _wait(0.4)
+				await _shot("settings_%d_%s" % [t, str(tabs.get_tab_control(t).name).to_lower()])
+			s.call("_show_confirm")
+			await _wait(0.4)
+			await _shot("settings_confirm")
+			s.call("_end_confirm", true)
 			s.call("close")
 		await _wait(0.8)
 		await _shot("menu_back")

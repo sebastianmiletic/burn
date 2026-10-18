@@ -2,8 +2,9 @@ class_name SettingsMenu
 extends Control
 ## Options overlay used from the main menu and the pause menu. Every control
 ## reads and writes `Settings`; changes apply immediately and persist.
-## A centred framed panel: Cinzel tabs, striped option rows, and a footer
-## that explains whichever option is hovered or focused.
+## A centred framed panel: a search box, Cinzel tabs, striped option rows,
+## and a footer that explains whichever option is hovered or focused.
+## Window changes (mode, screen, size, HDR) ask to be kept within 15 s.
 
 signal closed
 
@@ -13,15 +14,34 @@ var _keybinds: Script = load("res://core/keybinds.gd")
 
 const FPS_CAPS := [0, 30, 60, 90, 120, 144, 165, 240]
 const RENDER_SCALES := [-1.0, 0.5, 0.62, 0.75, 0.85, 1.0]
-const SECTIONS := ["graphics", "display", "audio", "controls", "gameplay"]
+const SECTIONS := ["graphics", "display", "audio", "controls", "gameplay", "accessibility"]
+const AUTOSAVE_MINUTES := [0.0, 2.0, 5.0, 10.0, 15.0, 30.0]
+const CONFIRM_SECONDS := 15.0
+## What "Reset tab" restores on tabs that mix sections.
+const TAB_KEYS := {
+	"controls": [["gameplay", "mouse_sensitivity"], ["gameplay", "invert_y"], ["input", "mouse_smoothing"],
+		["input", "pad_look_sensitivity"], ["input", "pad_deadzone"], ["input", "pad_vibration"], ["input", "pad_invert_y"]],
+	"gameplay": [["gameplay", "camera_shake"], ["gameplay", "head_bob"], ["gameplay", "autosave_minutes"],
+		["hud", "minimap"], ["hud", "compass"], ["hud", "quest_tracker"], ["hud", "damage_numbers"],
+		["hud", "crosshair"], ["hud", "crosshair_color"]],
+}
 
 var _tabs: TabContainer
 var _panel: MenuPanel
 var _hint: Label
+var _search: LineEdit
 var _rebinding := ""
+var _rebind_slot := 0
+var _rebind_pad := false
 var _rebind_button: Button
-var _binding_buttons := {}
+var _rebind_timeout := 0.0
+var _binding_buttons := {}      # action -> [primary, secondary, controller] buttons
 var _row_index := 0
+var _checks := {}               # "section/key" -> [CheckBox]
+var _confirm: Control
+var _confirm_left := 0.0
+var _confirm_label: Label
+var _confirm_revert := Callable()
 
 
 func _ready() -> void:
@@ -40,6 +60,14 @@ func _ready() -> void:
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 10)
 	_panel.add_child(outer)
+	_search = LineEdit.new()
+	_search.placeholder_text = "Search settings…"
+	_search.clear_button_enabled = true
+	_search.custom_minimum_size = Vector2(320, 32)
+	_search.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_search.text_changed.connect(_filter)
+	_hook_hint(_search, "Type to show only the options whose name or description matches, across every tab.")
+	outer.add_child(_search)
 	_tabs = TabContainer.new()
 	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_tabs.tab_alignment = TabBar.ALIGNMENT_CENTER
@@ -76,6 +104,9 @@ func _ready() -> void:
 	done.grab_focus.call_deferred()
 	modulate.a = 0.0
 	create_tween().tween_property(self, "modulate:a", 1.0, 0.18)
+	var settings := UiContext.autoload("Settings")
+	if settings != null:
+		settings.connect(&"changed", _sync_checks)
 
 
 ## Centred, as large as fits comfortably.
@@ -83,8 +114,8 @@ func _layout() -> void:
 	if _panel == null:
 		return
 	var s := size if size.x > 0.0 else Vector2(1600, 900)
-	var w := minf(940.0, s.x - 60.0)
-	var h := minf(700.0, s.y - 60.0)
+	var w := minf(1000.0, s.x - 40.0)
+	var h := minf(760.0, s.y - 40.0)
 	_panel.anchor_left = 0.5
 	_panel.anchor_right = 0.5
 	_panel.anchor_top = 0.5
@@ -96,72 +127,271 @@ func _layout() -> void:
 
 
 func close() -> void:
+	if _confirm != null:
+		_end_confirm(false)
 	UiContext.sound("ui_back")
 	closed.emit()
 	queue_free()
 
 
+func _process(delta: float) -> void:
+	if _confirm != null:
+		_confirm_left -= delta
+		_confirm_label.text = "Reverting in %d s" % ceili(maxf(_confirm_left, 0.0))
+		if _confirm_left <= 0.0:
+			_end_confirm(false)
+	if _rebinding != "" and _rebind_pad:
+		_rebind_timeout -= delta
+		if _rebind_timeout <= 0.0:
+			_finish_rebind()
+
+
 func _input(event: InputEvent) -> void:
 	if _rebinding != "":
-		var code := 0
-		if event is InputEventKey and event.pressed and not event.echo:
-			var k := event as InputEventKey
-			if k.keycode == KEY_ESCAPE:
-				_finish_rebind()
-				get_viewport().set_input_as_handled()
-				return
-			code = k.physical_keycode if k.physical_keycode != 0 else k.keycode
-		elif event is InputEventMouseButton and event.pressed:
-			var mb := event as InputEventMouseButton
-			if mb.button_index not in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-				code = mb.button_index
-		if code != 0:
-			_keybinds.call("rebind", _rebinding, code)
-			_finish_rebind()
+		_rebind_input(event)
+		return
+	if _confirm != null:
+		if event.is_action_pressed("ui_cancel"):
 			get_viewport().set_input_as_handled()
+			_end_confirm(false)
 		return
 	if event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
-		close()
+		if _search.has_focus() and _search.text != "":
+			_search.text = ""
+			_filter("")
+		else:
+			close()
 	elif event is InputEventKey and event.pressed and not event.echo and (event as InputEventKey).keycode == KEY_TAB \
 			and (event as InputEventKey).ctrl_pressed:
 		var step := -1 if (event as InputEventKey).shift_pressed else 1
 		_tabs.current_tab = posmod(_tabs.current_tab + step, _tabs.get_tab_count())
 		get_viewport().set_input_as_handled()
+	elif event is InputEventJoypadButton and event.pressed and (event as InputEventJoypadButton).button_index in [JOY_BUTTON_LEFT_SHOULDER, JOY_BUTTON_RIGHT_SHOULDER]:
+		var step := -1 if (event as InputEventJoypadButton).button_index == JOY_BUTTON_LEFT_SHOULDER else 1
+		_tabs.current_tab = posmod(_tabs.current_tab + step, _tabs.get_tab_count())
+		get_viewport().set_input_as_handled()
+
+
+# --- Rebinding ----------------------------------------------------------------------------
+
+func _start_rebind(action: String, slot: int, pad: bool, b: Button) -> void:
+	_finish_rebind()
+	_rebinding = action
+	_rebind_slot = slot
+	_rebind_pad = pad
+	_rebind_button = b
+	_rebind_timeout = 6.0
+	b.text = "press a button…" if pad else "press a key…"
+	_set_hint(("Press a controller button, trigger or stick direction. Waits 6 s; Esc cancels." if pad
+			else "Press a key or mouse button. Esc cancels; Backspace or Delete clears this binding."))
+
+
+func _rebind_input(event: InputEvent) -> void:
+	if event is InputEventMouseMotion:
+		return
+	get_viewport().set_input_as_handled()
+	if event is InputEventKey and event.pressed and not event.echo:
+		var k := event as InputEventKey
+		if k.keycode == KEY_ESCAPE:
+			_finish_rebind()
+			return
+		if not _rebind_pad and k.keycode in [KEY_BACKSPACE, KEY_DELETE]:
+			_bind(0)
+			return
+	var code := 0
+	if _rebind_pad:
+		if event is InputEventJoypadButton and event.pressed:
+			code = int(_keybinds.call("event_code", event))
+		elif event is InputEventJoypadMotion and absf((event as InputEventJoypadMotion).axis_value) > 0.6:
+			code = int(_keybinds.call("event_code", event))
+	else:
+		if event is InputEventKey and event.pressed and not event.echo:
+			code = int(_keybinds.call("event_code", event))
+		elif event is InputEventMouseButton and event.pressed:
+			var mb := event as InputEventMouseButton
+			if mb.button_index not in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT]:
+				code = int(mb.button_index)
+	if code != 0:
+		_bind(code)
+
+
+func _bind(code: int) -> void:
+	var action := _rebinding
+	var taken := str(_keybinds.call("set_binding", action, _rebind_slot, code, _rebind_pad))
+	_finish_rebind()
+	var labels: Dictionary = _keybinds.get("LABELS")
+	if taken != "":
+		_set_hint("%s was also bound to %s; the two swapped." % [_keybinds.call("code_name", code), labels.get(taken, taken)])
+	elif code == 0:
+		_set_hint("Cleared. %s keeps its other bindings." % labels.get(action, action))
+	else:
+		_set_hint("%s now uses %s." % [labels.get(action, action), _keybinds.call("code_name", code)])
 
 
 func _finish_rebind() -> void:
 	_rebinding = ""
 	_rebind_button = null
-	for action: String in _binding_buttons:
-		(_binding_buttons[action] as Button).text = str(_keybinds.call("label_for", action))
+	_refresh_bindings()
 
+
+func _refresh_bindings() -> void:
+	for action: String in _binding_buttons:
+		var keys: Array = _keybinds.call("key_list", action)
+		var pads: Array = _keybinds.call("pad_list", action)
+		var bs: Array = _binding_buttons[action]
+		for i in 2:
+			(bs[i] as Button).text = str(_keybinds.call("code_name", int(keys[i]))) if i < keys.size() else "—"
+		(bs[2] as Button).text = str(_keybinds.call("code_name", int(pads[0]))) if not pads.is_empty() else "—"
+
+
+# --- Reset, search -------------------------------------------------------------------------
 
 func _reset_tab() -> void:
 	var section: String = SECTIONS[_tabs.current_tab]
-	UiContext.call_on(UiContext.autoload("Settings"), "reset_section", [section])
+	var settings := UiContext.autoload("Settings")
+	if TAB_KEYS.has(section):
+		UiContext.call_on(settings, "reset_keys", [TAB_KEYS[section]])
+	if section != "gameplay":
+		UiContext.call_on(settings, "reset_section", [section])
 	var idx := _tabs.current_tab
 	for c in _tabs.get_children():
 		_tabs.remove_child(c)
 		c.queue_free()
 	_build_all()
 	_tabs.current_tab = idx
+	_filter(_search.text)
 	_set_hint("Restored the defaults of this tab.")
 
 
 func _build_all() -> void:
+	_checks.clear()
 	_build_graphics()
 	_build_display()
 	_build_audio()
 	_build_controls()
 	_build_gameplay()
+	_build_accessibility()
+
+
+## Hides rows (and empty headings) that do not match `text`, in every tab.
+func _filter(text: String) -> void:
+	var q := text.strip_edges().to_lower()
+	var first_hit := -1
+	for t in _tabs.get_tab_count():
+		var box := (_tabs.get_tab_control(t) as ScrollContainer).get_child(0) as VBoxContainer
+		var heading: Control = null
+		var heading_hits := 0
+		var hits := 0
+		for c: Node in box.get_children():
+			var ctl := c as Control
+			if ctl.has_meta("heading"):
+				if heading != null:
+					heading.visible = heading_hits > 0
+				heading = ctl
+				heading_hits = 0
+				continue
+			var hay := str(ctl.get_meta("search", ""))
+			var show := q == "" or hay.contains(q)
+			ctl.visible = show
+			if show and hay != "":
+				heading_hits += 1
+				hits += 1
+		if heading != null:
+			heading.visible = heading_hits > 0
+		_tabs.set_tab_title(t, str(_tabs.get_tab_control(t).name) + ("" if q == "" else " (%d)" % hits))
+		if hits > 0 and first_hit < 0:
+			first_hit = t
+	if q != "" and first_hit >= 0:
+		var cur := (_tabs.get_tab_control(_tabs.current_tab) as ScrollContainer).get_child(0) as VBoxContainer
+		var any := false
+		for c: Node in cur.get_children():
+			if (c as Control).visible and (c as Control).has_meta("search"):
+				any = true
+				break
+		if not any:
+			_tabs.current_tab = first_hit
 
 
 func _set_hint(text: String) -> void:
 	if _hint == null:
 		return
-	_hint.text = text if text != "" else "Esc closes  ·  Ctrl+Tab switches tabs  ·  hover an option to read about it"
+	_hint.text = text if text != "" else "Esc closes  ·  Ctrl+Tab or LB / RB switch tabs  ·  hover or focus an option to read about it"
 	_hint.add_theme_color_override("font_color", UiTheme.TEXT if text != "" else UiTheme.TEXT_FAINT)
+
+
+# --- Display confirmation ------------------------------------------------------------------
+
+## Applies a window option, then asks to keep it; no answer in 15 s reverts.
+func _set_display(value: Variant, key: String) -> void:
+	var before: Variant = UiContext.setting("display", key)
+	if before == value:
+		return
+	if _confirm != null:
+		_end_confirm(true)
+	UiContext.set_setting("display", key, value)
+	_confirm_revert = func() -> void: UiContext.set_setting("display", key, before)
+	_show_confirm()
+
+
+func _show_confirm() -> void:
+	_confirm = Control.new()
+	_confirm.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_confirm.mouse_filter = Control.MOUSE_FILTER_STOP
+	_confirm.add_child(UiTheme.scrim(0.6))
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_confirm.add_child(center)
+	var p := MenuPanel.new("KEEP THESE DISPLAY SETTINGS?")
+	p.title_size = 18
+	center.add_child(p)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	p.add_child(box)
+	var msg := UiTheme.label("If the picture is wrong, wait and the previous settings come back.", UiTheme.SIZE_BODY, UiTheme.TEXT_DIM, HORIZONTAL_ALIGNMENT_CENTER)
+	msg.custom_minimum_size.x = 440
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD
+	box.add_child(msg)
+	_confirm_label = UiTheme.label("", UiTheme.SIZE_LARGE, UiTheme.ACCENT, HORIZONTAL_ALIGNMENT_CENTER)
+	box.add_child(_confirm_label)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var keep := MenuOption.new("KEEP", func() -> void: _end_confirm(true), 16)
+	keep.custom_minimum_size = Vector2(170, 40)
+	var revert := MenuOption.new("REVERT", func() -> void: _end_confirm(false), 16)
+	revert.custom_minimum_size = Vector2(170, 40)
+	row.add_child(keep)
+	row.add_child(revert)
+	box.add_child(row)
+	_confirm_left = CONFIRM_SECONDS
+	_confirm_label.text = "Reverting in %d s" % int(CONFIRM_SECONDS)
+	add_child(_confirm)
+	keep.grab_focus.call_deferred()
+
+
+func _end_confirm(keep: bool) -> void:
+	if _confirm == null:
+		return
+	var c := _confirm
+	_confirm = null
+	c.queue_free()
+	if not keep and _confirm_revert.is_valid():
+		_confirm_revert.call()
+		_rebuild_keep_tab()
+		_set_hint("Display settings reverted.")
+	elif keep:
+		_set_hint("Display settings kept.")
+	_confirm_revert = Callable()
+
+
+func _rebuild_keep_tab() -> void:
+	var idx := _tabs.current_tab
+	for c in _tabs.get_children():
+		_tabs.remove_child(c)
+		c.queue_free()
+	_build_all()
+	_tabs.current_tab = idx
+	_filter(_search.text)
 
 
 # --- Tab builders --------------------------------------------------------------------
@@ -170,6 +400,7 @@ func _page(title: String) -> VBoxContainer:
 	var scroll := ScrollContainer.new()
 	scroll.name = title
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
 	var box := VBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_theme_constant_override("separation", 0)
@@ -201,13 +432,73 @@ func _build_graphics() -> void:
 func _build_display() -> void:
 	var p := _page("Display")
 	_heading(p, "Window")
-	_option(p, "display", "window_mode", "Window", UiContext.settings_const("WINDOW_MODE_NAMES"),
-			"Fill screen covers the whole display without a separate fullscreen space.")
-	_check(p, "display", "vsync", "Vertical sync", "Prevents tearing. Turn off for the lowest input latency.")
-	var cap_names: Array = []
+	var modes: Array = UiContext.settings_const("WINDOW_MODE_NAMES")
+	_choice(p, "display", "window_mode", "Window mode", modes, range(modes.size()),
+			"Fill screen: a borderless window over the whole display, quick to switch away from. Windowed: a normal window. Fullscreen: the display's own fullscreen space. Exclusive: fullscreen that takes over the display (lowest latency on Windows).",
+			_set_display.bind("window_mode"))
+	var screens: Array = ["The screen the game is on"]
+	var screen_values: Array = [-1]
+	if DisplayServer.get_name() != "headless":
+		for i in DisplayServer.get_screen_count():
+			var sz := DisplayServer.screen_get_size(i)
+			screens.append("Screen %d  (%d × %d)" % [i + 1, sz.x, sz.y])
+			screen_values.append(i)
+	_choice(p, "display", "monitor", "Monitor", screens, screen_values,
+			"Which display the game opens on. The window moves there at once.", _set_display.bind("monitor"))
+	var res_names: Array = ["Automatic (80% of the screen)"]
+	var res_values: Array = [""]
+	var scr := int(UiContext.setting("display", "monitor", -1))
+	var settings := UiContext.autoload("Settings")
+	var sizes: Variant = settings.call("resolutions_for", scr if scr >= 0 else DisplayServer.window_get_current_screen()) if settings != null else PackedStringArray()
+	for r: String in sizes:
+		res_names.append(r.replace("x", " × "))
+		res_values.append(r)
+	var cur_res := str(UiContext.setting("display", "resolution", ""))
+	if cur_res != "" and not cur_res in res_values:
+		res_names.append(cur_res.replace("x", " × "))
+		res_values.append(cur_res)
+	_choice(p, "display", "resolution", "Window size", res_names, res_values,
+			"Size of the window in Windowed mode, in pixels. The other modes always use the whole screen; lower the 3D resolution under Graphics instead.",
+			_set_display.bind("resolution"))
+	if settings != null and bool(settings.call("hdr_supported")):
+		_check(p, "display", "hdr", "HDR output", "Sends a high-dynamic-range picture to an HDR display. Only offered where the display and system support it.",
+				_set_display.bind("hdr"))
+	_heading(p, "Frame pacing")
+	_option(p, "display", "vsync", "Vertical sync", UiContext.settings_const("VSYNC_NAMES"),
+			"On prevents tearing. Adaptive tears only when the frame rate drops below the refresh rate. Mailbox shows the newest frame without tearing at some extra power use. Off gives the lowest input latency.")
+	_fps_cap(p)
+	_heading(p, "Interface")
+	_slider(p, "display", "ui_scale", "UI scale", 0.75, 1.5, 0.05, "%d%%", 100.0,
+			"Size of menus, HUD and text, on top of the automatic adjustment for your screen's size and pixel density.")
+
+
+func _fps_cap(p: Control) -> void:
+	var hint := "Limits the frame rate to save power and heat. Custom lets you pick any limit from 20 to 500."
+	var row := _row(p, "Frame cap", hint)
+	var opt := _option_button(hint)
+	var cur := int(UiContext.setting("display", "fps_cap", 0))
 	for c: int in FPS_CAPS:
-		cap_names.append("Unlimited" if c == 0 else "%d fps" % c)
-	_option_values(p, "display", "fps_cap", "Frame cap", cap_names, FPS_CAPS, "Limits the frame rate to save power and heat.")
+		opt.add_item("Unlimited" if c == 0 else "%d fps" % c)
+	opt.add_item("Custom")
+	var spin := SpinBox.new()
+	spin.min_value = 20
+	spin.max_value = 500
+	spin.step = 1
+	spin.suffix = "fps"
+	spin.custom_minimum_size = Vector2(120, 0)
+	spin.value = cur if cur > 0 else 75
+	var preset := FPS_CAPS.find(cur)
+	opt.select(preset if preset >= 0 else FPS_CAPS.size())
+	spin.visible = preset < 0
+	opt.custom_minimum_size.x = 300 - (130 if spin.visible else 0)
+	opt.item_selected.connect(func(i: int) -> void:
+		spin.visible = i >= FPS_CAPS.size()
+		opt.custom_minimum_size.x = 300 - (130 if spin.visible else 0)
+		UiContext.set_setting("display", "fps_cap", int(spin.value) if spin.visible else int(FPS_CAPS[i])))
+	spin.value_changed.connect(func(v: float) -> void: UiContext.set_setting("display", "fps_cap", int(v)))
+	_hook_hint(spin, hint)
+	row.add_child(opt)
+	row.add_child(spin)
 
 
 func _build_audio() -> void:
@@ -215,8 +506,26 @@ func _build_audio() -> void:
 	_heading(p, "Volume")
 	_slider(p, "audio", "master", "Master", 0.0, 1.0, 0.01, "%d%%", 100.0, "Everything you hear.")
 	_slider(p, "audio", "music", "Music", 0.0, 1.0, 0.01, "%d%%", 100.0, "The score.")
-	_slider(p, "audio", "sfx", "Effects", 0.0, 1.0, 0.01, "%d%%", 100.0, "Combat, footsteps, spells and the interface.")
+	_slider(p, "audio", "sfx", "Effects", 0.0, 1.0, 0.01, "%d%%", 100.0, "Combat, footsteps, spells, creatures and the world.")
 	_slider(p, "audio", "ambient", "Ambience", 0.0, 1.0, 0.01, "%d%%", 100.0, "Wind, rain, fire and the sounds of places.")
+	_slider(p, "audio", "ui", "Interface", 0.0, 1.0, 0.01, "%d%%", 100.0, "Menu clicks, page turns and other interface sounds.")
+	_heading(p, "Output")
+	var devices: Array = Array(AudioServer.get_output_device_list())
+	if not "Default" in devices:
+		devices.push_front("Default")
+	var cur := str(UiContext.setting("audio", "output_device", "Default"))
+	if not cur in devices:
+		devices.append(cur)
+	var names: Array = []
+	for d: String in devices:
+		names.append("System default" if d == "Default" else d)
+	_choice(p, "audio", "output_device", "Output device", names, devices,
+			"Where the sound plays. System default follows the device chosen in your operating system. A missing device falls back to the default.")
+	_check(p, "audio", "mute_unfocused", "Mute when in background", "Silences the game while another window has focus.")
+	var note := UiTheme.label("BURN has no spoken dialogue, so there are no voice or subtitle options.", UiTheme.SIZE_SMALL, UiTheme.TEXT_FAINT)
+	note.set_meta("search", "voice dialogue subtitles")
+	p.add_child(UiTheme.spacer(8))
+	p.add_child(note)
 
 
 func _build_controls() -> void:
@@ -224,27 +533,56 @@ func _build_controls() -> void:
 	_heading(p, "Mouse")
 	_slider(p, "gameplay", "mouse_sensitivity", "Sensitivity", 0.2, 3.0, 0.05, "%d%%", 100.0, "How far the camera turns per mouse movement.")
 	_check(p, "gameplay", "invert_y", "Invert vertical look", "Moving the mouse up looks down.")
-	_heading(p, "Keys")
+	_check(p, "input", "mouse_smoothing", "Mouse smoothing", "Eases camera turns over a few frames. Off gives the most direct, raw-feeling aim.")
+	_heading(p, "Controller")
+	_slider(p, "input", "pad_look_sensitivity", "Look sensitivity", 0.2, 3.0, 0.05, "%d%%", 100.0, "How fast the right stick turns the camera.")
+	_slider(p, "input", "pad_deadzone", "Stick dead zone", 0.05, 0.5, 0.01, "%d%%", 100.0, "How far a stick must move before it counts. Raise it if the view or your character drifts.")
+	_slider(p, "input", "pad_vibration", "Vibration", 0.0, 1.0, 0.05, "%d%%", 100.0, "Rumble when you are hit and when the ground shakes. 0% turns it off.")
+	_check(p, "input", "pad_invert_y", "Invert stick look", "Pushing the right stick up looks down.")
+	_heading(p, "Hold or toggle")
+	_check(p, "accessibility", "toggle_sprint", "Sprint: press to toggle", "Press sprint once to keep running, again to stop, instead of holding it. Opening a menu stops it.")
+	_check(p, "accessibility", "toggle_attack", "Attack / mine: press to toggle", "Press attack once to keep swinging or mining, again to stop, instead of holding it. Opening a menu stops it.")
+	_heading(p, "Bindings")
+	var head := _row(p, "Action")
+	for t: String in ["Primary", "Secondary", "Controller"]:
+		var l := UiTheme.label(t, UiTheme.SIZE_SMALL, UiTheme.TEXT_DIM, HORIZONTAL_ALIGNMENT_CENTER)
+		l.custom_minimum_size = Vector2(170, 0)
+		head.add_child(l)
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(34, 0)
+	head.add_child(spacer)
 	_binding_buttons.clear()
 	var actions: Dictionary = _keybinds.get("ACTIONS")
 	var labels: Dictionary = _keybinds.get("LABELS")
+	var hint := "Click a binding, then press the new key, mouse button or controller input. A key already in use swaps with the other action. ↺ restores the defaults."
 	for action: String in actions:
-		var row := _row(p, str(labels.get(action, action)), "Click, then press a key or mouse button. Esc cancels.")
-		var b := UiTheme.button(str(_keybinds.call("label_for", action)))
-		b.custom_minimum_size = Vector2(220, 0)
-		b.alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.add_theme_color_override("font_color", UiTheme.ACCENT)
-		b.add_theme_stylebox_override("normal", _key_box(false))
-		b.add_theme_stylebox_override("hover", _key_box(true))
-		b.add_theme_stylebox_override("focus", _key_box(true))
-		b.pressed.connect(func() -> void:
-			_finish_rebind()
-			_rebinding = action
-			_rebind_button = b
-			b.text = "press a key…")
-		_hook_hint(b, "Click, then press a key or mouse button. Esc cancels.")
-		row.add_child(b)
-		_binding_buttons[action] = b
+		var row := _row(p, str(labels.get(action, action)), hint)
+		var bs: Array = []
+		for i in 3:
+			var b := UiTheme.button("")
+			b.custom_minimum_size = Vector2(170, 0)
+			b.alignment = HORIZONTAL_ALIGNMENT_CENTER
+			b.clip_text = true
+			b.add_theme_color_override("font_color", UiTheme.ACCENT)
+			b.add_theme_stylebox_override("normal", _key_box(false))
+			b.add_theme_stylebox_override("hover", _key_box(true))
+			b.add_theme_stylebox_override("focus", _key_box(true))
+			var slot := i
+			b.pressed.connect(func() -> void: _start_rebind(action, mini(slot, 1), slot == 2, b))
+			_hook_hint(b, hint)
+			row.add_child(b)
+			bs.append(b)
+		var r := UiTheme.button("↺")
+		r.custom_minimum_size = Vector2(34, 0)
+		r.tooltip_text = "Restore the default bindings of %s" % str(labels.get(action, action))
+		r.pressed.connect(func() -> void:
+			_keybinds.call("reset_action", action)
+			_refresh_bindings()
+			_set_hint("%s: defaults restored." % str(labels.get(action, action))))
+		_hook_hint(r, "Restores this action's default keyboard, mouse and controller bindings.")
+		row.add_child(r)
+		_binding_buttons[action] = bs
+	_refresh_bindings()
 
 
 func _key_box(hot: bool) -> StyleBoxFlat:
@@ -259,7 +597,8 @@ func _key_box(hot: bool) -> StyleBoxFlat:
 func _build_gameplay() -> void:
 	var p := _page("Gameplay")
 	_heading(p, "You")
-	var row := _row(p, "Name", "The name others see in a warband, and on your save.")
+	var name_hint := "The name others see in a warband, and on your runs."
+	var row := _row(p, "Name", name_hint)
 	var edit := LineEdit.new()
 	edit.text = str(UiContext.setting("gameplay", "player_name"))
 	edit.max_length = 20
@@ -267,20 +606,57 @@ func _build_gameplay() -> void:
 	edit.text_changed.connect(func(t: String) -> void:
 		if t.strip_edges() != "":
 			UiContext.set_setting("gameplay", "player_name", t.strip_edges()))
-	_hook_hint(edit, "The name others see in a warband, and on your save.")
+	_hook_hint(edit, name_hint)
 	row.add_child(edit)
-	_heading(p, "Comfort")
+	_heading(p, "Camera")
 	_slider(p, "gameplay", "camera_shake", "Camera shake", 0.0, 1.5, 0.05, "%d%%", 100.0, "How hard big hits and explosions shake the view.")
+	_slider(p, "gameplay", "head_bob", "Head bob", 0.0, 1.0, 0.05, "%d%%", 100.0, "How much the first-person view sways while you walk and run.")
+	_heading(p, "HUD")
+	_check(p, "hud", "minimap", "Minimap", "The round map in the top-left corner. The world map (M) is always available.")
+	_check(p, "hud", "compass", "Compass", "The heading strip with objective markers at the top of the screen.")
+	_check(p, "hud", "quest_tracker", "Quest tracker", "Your active quests in the top-right corner. The quest log (J) is always available.")
+	_check(p, "hud", "damage_numbers", "Damage numbers", "Numbers that float up when you hit, are hit or heal.")
+	_option(p, "hud", "crosshair", "Crosshair", UiContext.settings_const("CROSSHAIR_NAMES"), "Shape of the reticle in the centre of the screen. The mining ring and prompts still show when hidden.")
+	_option(p, "hud", "crosshair_color", "Crosshair colour", UiContext.settings_const("CROSSHAIR_COLOR_NAMES"), "Colour of the reticle.")
+	_heading(p, "Saving")
+	var names: Array = []
+	for m: float in AUTOSAVE_MINUTES:
+		names.append("Off (save on quit)" if m <= 0.0 else "Every %d minutes" % int(m))
+	_choice(p, "gameplay", "autosave_minutes", "Autosave", names, AUTOSAVE_MINUTES,
+			"How often your run is saved while you play (hosts save for the whole warband). The game always saves when you quit to the title.")
+
+
+func _build_accessibility() -> void:
+	var p := _page("Accessibility")
+	_heading(p, "Colour")
+	_option(p, "accessibility", "colorblind", "Colour-blind filter", UiContext.settings_const("COLORBLIND_NAMES"),
+			"Shifts colours you may confuse into ones you can tell apart, over the whole screen (world, HUD and menus). Pick the type that matches your vision.")
+	_slider(p, "accessibility", "colorblind_strength", "Filter strength", 0.0, 1.0, 0.05, "%d%%", 100.0, "How strongly the colour-blind filter corrects.")
+	_check(p, "accessibility", "high_contrast", "High-contrast HUD", "Heavy dark outlines behind HUD text and a bolder crosshair, for reading over bright scenes.")
+	_heading(p, "Motion and light")
+	_check(p, "accessibility", "reduce_motion", "Reduce motion", "Removes head bob and cuts camera shake and landing dips to a fraction.")
+	_check(p, "accessibility", "reduce_flashing", "Reduce flashing", "Dims lightning, white flashes from big hits and the red damage pulse to a quarter.")
+	_heading(p, "Hold-to-press alternatives")
+	_check(p, "accessibility", "toggle_sprint", "Sprint: press to toggle", "Press sprint once to keep running, again to stop, instead of holding it. Opening a menu stops it.")
+	_check(p, "accessibility", "toggle_attack", "Attack / mine: press to toggle", "Press attack once to keep swinging or mining, again to stop, instead of holding it. Opening a menu stops it.")
+	var note := UiTheme.label("Text and interface size: Display > UI scale.", UiTheme.SIZE_SMALL, UiTheme.TEXT_FAINT)
+	note.set_meta("search", "text size font interface scale")
+	p.add_child(UiTheme.spacer(8))
+	p.add_child(note)
 
 
 # --- Row helpers --------------------------------------------------------------------
 
 func _heading(parent: Control, text: String) -> void:
-	parent.add_child(UiTheme.spacer(10))
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 0)
+	box.set_meta("heading", true)
+	box.add_child(UiTheme.spacer(10))
 	var l := UiTheme.title(text.to_upper(), 13, UiTheme.ACCENT_DIM, 700)
 	l.add_theme_font_override("font", UiTheme.title_font_spaced(700, 3))
-	parent.add_child(l)
-	parent.add_child(UiTheme.spacer(4))
+	box.add_child(l)
+	box.add_child(UiTheme.spacer(4))
+	parent.add_child(box)
 	_row_index = 0
 
 
@@ -288,6 +664,7 @@ func _heading(parent: Control, text: String) -> void:
 ## caller. Rows alternate a faint stripe; the row lights while its control has focus.
 func _row(parent: Control, text: String, hint := "") -> HBoxContainer:
 	var panel := PanelContainer.new()
+	panel.set_meta("search", (text + " " + hint).to_lower())
 	var base := UiTheme.flat(Color(1, 1, 1, 0.025 if _row_index % 2 == 0 else 0.0), 0)
 	base.content_margin_left = 12
 	base.content_margin_right = 12
@@ -299,7 +676,7 @@ func _row(parent: Control, text: String, hint := "") -> HBoxContainer:
 	row.add_theme_constant_override("separation", 12)
 	panel.add_child(row)
 	var l := UiTheme.label(text, UiTheme.SIZE_BODY, UiTheme.TEXT)
-	l.custom_minimum_size = Vector2(250, 32)
+	l.custom_minimum_size = Vector2(220, 32)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	if hint != "":
@@ -335,25 +712,44 @@ func _option(parent: Control, section: String, key: String, text: String, names:
 
 
 func _option_values(parent: Control, section: String, key: String, text: String, names: Array, values: Array, hint := "") -> void:
-	var row := _row(parent, text, hint)
+	_choice(parent, section, key, text, names, values, hint)
+
+
+func _option_button(hint: String) -> OptionButton:
 	var opt := OptionButton.new()
 	opt.custom_minimum_size = Vector2(300, 0)
+	opt.clip_text = true
 	opt.add_theme_color_override("font_color", UiTheme.ACCENT)
 	opt.add_theme_stylebox_override("normal", _key_box(false))
 	opt.add_theme_stylebox_override("hover", _key_box(true))
 	opt.add_theme_stylebox_override("focus", _key_box(true))
+	opt.tooltip_text = hint
+	_hook_hint(opt, hint)
+	return opt
+
+
+## A drop-down of `names` storing `values`. `apply` (optional) is called with
+## the new value instead of writing the setting directly (display confirmation).
+func _choice(parent: Control, section: String, key: String, text: String, names: Array, values: Array, hint := "",
+		apply := Callable()) -> void:
+	var row := _row(parent, text, hint)
+	var opt := _option_button(hint)
 	var current: Variant = UiContext.setting(section, key)
 	for i in names.size():
 		opt.add_item(str(names[i]), i)
-		if is_equal_approx(float(values[i]), float(current)):
+		var v: Variant = values[i]
+		if (v is String and str(current) == v) or (not v is String and not current is String and is_equal_approx(float(v), float(current))):
 			opt.select(i)
 	opt.item_selected.connect(func(i: int) -> void:
 		var v: Variant = values[i]
 		if current is int:
 			v = int(v)
-		UiContext.set_setting(section, key, v))
-	opt.tooltip_text = hint
-	_hook_hint(opt, hint)
+		elif current is float:
+			v = float(v)
+		if apply.is_valid():
+			apply.call(v)
+		else:
+			UiContext.set_setting(section, key, v))
 	row.add_child(opt)
 
 
@@ -378,7 +774,7 @@ func _slider(parent: Control, section: String, key: String, text: String, lo: fl
 	row.add_child(value_l)
 
 
-func _check(parent: Control, section: String, key: String, text: String, hint := "") -> void:
+func _check(parent: Control, section: String, key: String, text: String, hint := "", apply := Callable()) -> void:
 	var row := _row(parent, text, hint)
 	var c := CheckBox.new()
 	c.button_pressed = bool(UiContext.setting(section, key))
@@ -387,6 +783,22 @@ func _check(parent: Control, section: String, key: String, text: String, hint :=
 	c.toggled.connect(func(on: bool) -> void:
 		c.text = "on" if on else "off"
 		UiContext.sound("ui_click")
-		UiContext.set_setting(section, key, on))
+		if apply.is_valid():
+			apply.call(on)
+		else:
+			UiContext.set_setting(section, key, on))
 	_hook_hint(c, hint)
 	row.add_child(c)
+	var id := section + "/" + key
+	if not _checks.has(id):
+		_checks[id] = []
+	(_checks[id] as Array).append(c)
+
+
+## The same option can appear on two tabs: keep every copy in step.
+func _sync_checks(section: String, key: String) -> void:
+	for c: CheckBox in _checks.get(section + "/" + key, []):
+		if is_instance_valid(c):
+			var on := bool(UiContext.setting(section, key))
+			c.set_pressed_no_signal(on)
+			c.text = "on" if on else "off"

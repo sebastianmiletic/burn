@@ -118,6 +118,7 @@ func _process(delta: float) -> void:
 		var bb: Control = (hud as Object).get("boss_bar")
 		if bb != null and bb.visible and bb.modulate.a > 0.05 and w.active_boss() != null:
 			top = bb.offset_bottom + 8.0
+	_compass.visible = bool(UiContext.setting("hud", "compass", true))   # Settings > Gameplay
 	_compass.position = Vector2((vp.x - STRIP_W) * 0.5, top)
 	_compass.size = Vector2(STRIP_W, STRIP_H + 34.0)
 	_compass.queue_redraw()
