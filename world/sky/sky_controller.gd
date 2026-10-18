@@ -59,6 +59,8 @@ var _moon_phase := 1.0
 var _fog_mult := 1.0
 var _quality := 1
 var _raw := false
+var _shadows := true
+var _dof := false
 
 
 static func cloud_noise() -> NoiseTexture2D:
@@ -147,6 +149,12 @@ func _apply_settings() -> void:
 	_quality = int(Settings.get_value("graphics", "quality"))
 	_fog_mult = float(Settings.get_value("graphics", "fog"))
 	GraphicsQuality.apply_environment(environment)
+	_shadows = GraphicsQuality.shadows_enabled()
+	_dof = bool(Settings.get_value("graphics", "depth_of_field"))
+	if GraphicsQuality.forward_plus():
+		RenderingServer.camera_attributes_set_dof_blur_quality(
+				[RenderingServer.DOF_BLUR_QUALITY_VERY_LOW, RenderingServer.DOF_BLUR_QUALITY_LOW,
+				RenderingServer.DOF_BLUR_QUALITY_MEDIUM, RenderingServer.DOF_BLUR_QUALITY_HIGH][clampi(_quality, 0, 3)], _quality >= 2)
 	if sun.is_inside_tree():
 		GraphicsQuality.apply_directional(sun, true)
 		GraphicsQuality.apply_directional(moon, false)
@@ -288,11 +296,11 @@ func _update_lights(delta: float, force: bool) -> void:
 	sun.light_energy = sun_e * surface_light * surface_light
 	# Overcast skies soften shadows into a broad penumbra.
 	sun.light_angular_distance = lerpf(0.5, 3.5, overcast)
-	sun.shadow_enabled = sun.light_energy > 0.02 and not has_meta("no_shadow")
+	sun.shadow_enabled = sun.light_energy > 0.02 and not has_meta("no_shadow") and _shadows
 	sun.visible = not hell
 	var moon_e := 0.1 * smoothstep(0.0, 0.25, _moon_dir.y) * nightf * (0.25 + 0.75 * _moon_phase) * (1.0 - overcast * 0.8)
 	moon.light_energy = moon_e * surface_light * surface_light
-	moon.shadow_enabled = moon.light_energy > 0.02 and not has_meta("no_shadow") and sun.light_energy < 0.02
+	moon.shadow_enabled = moon.light_energy > 0.02 and not has_meta("no_shadow") and sun.light_energy < 0.02 and _shadows
 	moon.visible = not hell
 
 	# --- Sky shader.
@@ -377,11 +385,15 @@ func _update_lights(delta: float, force: bool) -> void:
 	surface_density += alt * 0.0016 * _fog_mult
 	var cave_density := 0.012 * (0.6 + 0.4 * _fog_mult)
 	environment.fog_density = lerpf(surface_density, cave_density, u)
-	camera_attributes.dof_blur_far_enabled = alt > 0.03 and u < 0.5 and bool(Settings.get_value("graphics", "altitude_blur"))
-	if alt > 0.03:
-		camera_attributes.dof_blur_far_distance = lerpf(700.0, 260.0, alt)
-		camera_attributes.dof_blur_far_transition = lerpf(400.0, 200.0, alt)
-		camera_attributes.dof_blur_amount = 0.02 + alt * 0.05
+	# Depth of field: the far distance softens (an option), more so from the
+	# mountain tops (the altitude blur option). Never underground.
+	var alt_blur := alt > 0.03 and bool(Settings.get_value("graphics", "altitude_blur"))
+	camera_attributes.dof_blur_far_enabled = (alt_blur or _dof) and u < 0.5
+	if camera_attributes.dof_blur_far_enabled:
+		var a := alt if alt_blur else 0.0
+		camera_attributes.dof_blur_far_distance = lerpf(700.0, 260.0, a) if not _dof else lerpf(160.0, 120.0, a)
+		camera_attributes.dof_blur_far_transition = lerpf(400.0, 200.0, a) if not _dof else 220.0
+		camera_attributes.dof_blur_amount = (0.02 + a * 0.05) if not _dof else 0.045 + a * 0.03
 	environment.fog_aerial_perspective = 0.6 * (1.0 - fog * 0.5) * (1.0 - u)
 	environment.fog_sky_affect = lerpf(0.12 + fog * 0.6 + rain * 0.2, 1.0, u)
 	# Ground mist that pools in the valleys at dawn and after rain.
@@ -524,7 +536,7 @@ func _hell_environment() -> void:
 	sun.light_energy = 0.32 * open * open
 	sun.light_angular_distance = 2.5
 	sun.look_at_from_position(Vector3.ZERO, Vector3(-0.3, -1.0, 0.45), Vector3.FORWARD)
-	sun.shadow_enabled = not has_meta("no_shadow") and sun.light_energy > 0.02
+	sun.shadow_enabled = not has_meta("no_shadow") and sun.light_energy > 0.02 and _shadows
 	moon.visible = false
 	_hell_glow.visible = true
 	_hell_glow.light_energy = 0.28 * lerpf(1.0, 0.25, u)

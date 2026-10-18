@@ -187,6 +187,7 @@ func setup(info: Dictionary) -> void:
 			local_player.global_position = Vector3(p.x, world.surface_y(int(p.x), int(p.z)) + 1.05, p.z)
 
 	_apply_gfx_flags()
+	Settings.changed.connect(_on_settings_changed)
 	hud = _make_ui()
 	if hud != null:
 		add_child(hud)
@@ -254,7 +255,7 @@ func _prepare_dimension(dim: int, seed_value: int, p0: float, p1: float) -> void
 	vw.name = ["Overworld", "Underworld", "Ryft"][dim]
 	vw.setup(gen, dim)
 	vw.view_radius = view_radius()
-	vw.max_point_lights = [6, 10, 14, 20][int(Settings.get_value("graphics", "quality"))]
+	vw.max_point_lights = [6, 10, 14, 20][clampi(GraphicsQuality.level("effects"), 0, 3)]
 	vw.block_changed.connect(_on_block_changed.bind(dim))
 	worlds[dim] = vw
 	add_child(vw)
@@ -263,7 +264,17 @@ func _prepare_dimension(dim: int, seed_value: int, p0: float, p1: float) -> void
 
 
 func view_radius() -> int:
-	return [6, 8, 10, 12][int(Settings.get_value("graphics", "quality"))]
+	return GraphicsQuality.view_radius()
+
+
+## View distance and light budget follow the graphics options live.
+func _on_settings_changed(section: String, _key: String) -> void:
+	if section != "graphics":
+		return
+	for d: int in worlds:
+		var vw: VoxelWorld = worlds[d]
+		vw.view_radius = view_radius()
+		vw.max_point_lights = [6, 10, 14, 20][clampi(GraphicsQuality.level("effects"), 0, 3)]
 
 
 func _make_ui() -> CanvasLayer:

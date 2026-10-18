@@ -179,23 +179,213 @@ func _page(title: String) -> VBoxContainer:
 	return box
 
 
+var _gfx_preset: OptionButton
+var _gfx_page: VBoxContainer
+
+
 func _build_graphics() -> void:
-	var p := _page("Graphics")
-	_heading(p, "Rendering")
-	_option(p, "graphics", "quality", "Quality preset", UiContext.settings_const("QUALITY_NAMES"),
-			"Low and Medium skip global illumination and reflections. High and Ultra add them.")
+	_gfx_page = _page("Graphics")
+	_fill_graphics(_gfx_page)
+
+
+## Every graphics option. Preset-driven options show what is in effect; changing
+## one makes the preset read "Custom". Hints name the performance cost.
+func _fill_graphics(p: VBoxContainer) -> void:
+	var levels4: Array = ["Low", "Medium", "High", "Ultra"]
+	_heading(p, "Quality")
+	var preset_hint := "Sets every option below at once. High targets 60 FPS on an Apple M4 class GPU; Ultra is for faster GPUs. Changing any single option makes this Custom."
+	var row := _row(p, "Quality preset", preset_hint)
+	_gfx_preset = OptionButton.new()
+	_gfx_preset.custom_minimum_size = Vector2(300, 0)
+	_gfx_preset.add_theme_color_override("font_color", UiTheme.ACCENT)
+	_gfx_preset.add_theme_stylebox_override("normal", _key_box(false))
+	_gfx_preset.add_theme_stylebox_override("hover", _key_box(true))
+	_gfx_preset.add_theme_stylebox_override("focus", _key_box(true))
+	for n: String in UiContext.settings_const("QUALITY_NAMES") + ["Custom"]:
+		_gfx_preset.add_item(n)
+	_gfx_preset.set_item_disabled(_gfx_preset.item_count - 1, true)
+	_gfx_sync_preset()
+	_gfx_preset.item_selected.connect(func(i: int) -> void:
+		if i < 4:
+			UiContext.call_on(UiContext.autoload("Settings"), "apply_quality_preset", [i])
+			_gfx_rebuild.call_deferred())
+	_hook_hint(_gfx_preset, preset_hint)
+	row.add_child(_gfx_preset)
+
+	_heading(p, "Resolution and anti-aliasing")
+	_option_values(p, "graphics", "upscaler", "Upscaler", UiContext.settings_const("UPSCALER_NAMES"), [0, 1, 2, 3, 4, 5],
+			"How the 3D image is scaled up to the window. Automatic: MetalFX spatial on Mac, FSR 1 elsewhere (cheap). Temporal upscalers (FSR 2, MetalFX temporal) look cleaner but cost 2-15 ms more per frame on this class of GPU.")
 	var scale_names: Array = ["Follow preset", "50%", "62%", "75%", "85%", "100%"]
 	_option_values(p, "graphics", "render_scale", "3D resolution", scale_names, RENDER_SCALES,
-			"Resolution the 3D scene renders at before it is upscaled (MetalFX / FSR) to the full window. The UI is always native.")
-	_check(p, "graphics", "adaptive_resolution", "Adaptive resolution", "With Follow preset selected, adjusts 3D resolution toward 60 FPS. Does not guarantee a minimum frame rate.")
-	_check(p, "graphics", "altitude_blur", "Mountain distance blur", "Softens distant scenery as altitude increases. Turn off for a clearer view; snow remains.")
-	_slider(p, "graphics", "fov", "Field of view", 55, 100, 1, "%d°", 1.0, "How wide the camera sees.")
+			"Resolution the 3D scene renders at before upscaling. GPU cost grows with the pixel count: 100% costs about twice 70%. The UI is always native.")
+	_check(p, "graphics", "adaptive_resolution", "Adaptive resolution", "With 3D resolution on Follow preset, lowers the 3D resolution when the GPU cannot hold 60 FPS. No cost; does not help when the CPU is the limit.")
+	_slider(p, "graphics", "sharpness", "Sharpness", 0.0, 1.0, 0.05, "%d%%", 100.0, "Sharpening applied by the FSR / MetalFX upscaler. Free; no effect at native resolution.")
+	_gfx_option(p, "antialiasing", "Anti-aliasing", ["Off", "FXAA", "TAA", "MSAA 2x", "MSAA 4x"],
+			"Smooths jagged edges. FXAA: almost free, slightly soft. TAA: about 1 ms, the steadiest grass and foliage, can ghost. MSAA: geometry edges only, 2-6 ms. Ignored when a temporal upscaler is on.")
+	var hdr_ok := DisplayServer.get_name() != "headless" and DisplayServer.window_is_hdr_output_supported(0)
+	_check(p, "graphics", "hdr", "HDR output", "Sends a high dynamic range image to an HDR display (brighter highlights). No GPU cost." + ("" if hdr_ok else " This display or renderer does not report HDR support, so it has no effect here."))
+
+	_heading(p, "Lighting")
+	_gfx_option(p, "shadows", "Shadows", ["Off", "Low", "Medium", "High", "Ultra"],
+			"Sun and moon shadow resolution, softness and reach (40 m on Low to 150 m on Ultra). One of the biggest costs: High about 3-5 ms, Ultra about twice that.")
+	_gfx_option(p, "gi", "Global illumination", ["Off", "SDFGI", "SDFGI high"],
+			"Bounced light from the sun, sky and torches (SDFGI). Interiors and caves read naturally. About 3-6 ms; high uses more rays and cascades. Forward+ only.")
+	_gfx_option(p, "ssao", "Ambient occlusion", ["Off", "Low", "Medium", "High"],
+			"Contact darkening in creases, under rocks and eaves. 0.5-2.5 ms depending on level.")
+	_gfx_option(p, "ssil", "Screen-space bounce light", ["Off", "On"],
+			"Colour bleeding between nearby surfaces on top of global illumination. About 2-4 ms.")
+	_gfx_option(p, "ssr", "Reflections", ["Off", "Low", "High"],
+			"Screen-space reflections in water and wet stone. 1-3 ms. Off-screen objects fall back to the sky reflection.")
+	_gfx_option(p, "volumetric_fog", "Volumetric fog", ["Off", "Low", "High"],
+			"Light shafts through mist, halos around torches in caves, fog pooling in valleys. Low about 1-2 ms, High 3-4 ms. Distance and height fog stay on when off.")
+
+	_heading(p, "World detail")
+	var vd := int(UiContext.call_on(UiContext.autoload("Settings"), "gfx", ["view_distance"], 10))
+	_gfx_slider(p, "view_distance", "View distance", 4, 16, vd, "%d m", 16.0,
+			"Radius of fully detailed terrain around you; beyond it the distant-land horizon takes over. Large CPU and GPU cost: each step adds terrain to stream, mesh and draw.")
+	_gfx_option(p, "foliage", "Foliage", levels4,
+			"Density and draw distance of grass, flowers and bushes. One of the largest GPU costs in forests and meadows (2-10 ms).")
+	_gfx_option(p, "mesh_detail", "Mesh detail", levels4,
+			"Distance at which trees and models switch to simpler versions. Higher keeps full detail further away: 1-4 ms in forests.")
+	_gfx_option(p, "texture_quality", "Texture filtering", levels4,
+			"Texture sharpness at distance and at grazing angles (mip bias, anisotropic filtering 2x-16x). Under 1 ms; Low saves memory bandwidth on integrated GPUs.")
+	_gfx_option(p, "effects", "Effects", levels4,
+			"Particles in rain, snow, dust and embers, and how many nearby torch and fungus lights are lit. 0.5-3 ms in storms and caves.")
+
+	_heading(p, "Camera")
+	_slider(p, "graphics", "fov", "Field of view", 55, 100, 1, "%d°", 1.0, "How wide the camera sees. Wider shows more of the world at once: slightly more to draw.")
+	_slider(p, "graphics", "motion_blur", "Motion blur", 0.0, 1.0, 0.05, "%d%%", 100.0, "Blurs the image while the camera turns. Off by default. About 0.5-1 ms when on.")
+	_check(p, "graphics", "depth_of_field", "Depth of field", "Softens the far distance like a camera lens. About 1-2 ms.")
+	_check(p, "graphics", "altitude_blur", "Mountain distance blur", "Softens distant scenery as altitude increases. About 1 ms when it applies. Turn off for a clearer view.")
+
 	_heading(p, "Image")
-	_slider(p, "graphics", "brightness", "Brightness", 0.5, 1.5, 0.01, "%d%%", 100.0, "Overall brightness of the image.")
-	_slider(p, "graphics", "bloom", "Glow", 0.0, 2.0, 0.05, "%d%%", 100.0, "Bloom around fire, magic, lava and the sun.")
-	_slider(p, "graphics", "fog", "Fog", 0.0, 2.0, 0.05, "%d%%", 100.0, "Distance haze and volumetric fog.")
-	_slider(p, "graphics", "vignette", "Vignette", 0.0, 1.0, 0.01, "%d%%", 100.0, "Darkens the corners of the screen.")
-	_slider(p, "graphics", "grain", "Film grain", 0.0, 0.2, 0.005, "%d%%", 500.0, "A little noise over the image.")
+	_slider(p, "graphics", "brightness", "Brightness", 0.5, 1.5, 0.01, "%d%%", 100.0, "Overall brightness of the image. Use Calibrate to set it for your display. Free.")
+	var cal_hint := "Shows a test image to set brightness so dark caves stay dark but readable. Free."
+	var crow := _row(p, "Brightness calibration", cal_hint)
+	var cal := UiTheme.button("Calibrate…", _gfx_calibrate)
+	cal.custom_minimum_size = Vector2(220, 0)
+	_hook_hint(cal, cal_hint)
+	crow.add_child(cal)
+	_slider(p, "graphics", "bloom", "Glow", 0.0, 2.0, 0.05, "%d%%", 100.0, "Bloom around fire, magic, lava and the sun. About 0.5-1 ms when on (0% turns it off).")
+	_slider(p, "graphics", "fog", "Fog", 0.0, 2.0, 0.05, "%d%%", 100.0, "Thickness of distance haze, height fog and volumetric fog. 0% also switches volumetric fog off and saves its cost.")
+	_check(p, "graphics", "sun_shafts", "Sun shafts and lens flare", "Rays from the sun through gaps and a soft lens flare when looking towards it. About 0.5 ms while the sun is in view.")
+	_slider(p, "graphics", "chromatic_aberration", "Chromatic aberration", 0.0, 1.0, 0.05, "%d%%", 100.0, "Colour fringes towards the screen edges, like a lens. About 0.3 ms when on.")
+	_slider(p, "graphics", "vignette", "Vignette", 0.0, 1.0, 0.01, "%d%%", 100.0, "Darkens the corners of the screen. Free.")
+	_slider(p, "graphics", "grain", "Film grain", 0.0, 0.2, 0.005, "%d%%", 500.0, "A little noise over the image. Free.")
+
+
+func _gfx_rebuild() -> void:
+	if _gfx_page == null or not is_instance_valid(_gfx_page):
+		return
+	for c in _gfx_page.get_children():
+		_gfx_page.remove_child(c)
+		c.queue_free()
+	_row_index = 0
+	_fill_graphics(_gfx_page)
+
+
+## Shows the preset in effect, or Custom when options were overridden.
+func _gfx_sync_preset() -> void:
+	if _gfx_preset == null or not is_instance_valid(_gfx_preset):
+		return
+	var custom := bool(UiContext.call_on(UiContext.autoload("Settings"), "graphics_is_custom", [], false))
+	_gfx_preset.select(_gfx_preset.item_count - 1 if custom else clampi(int(UiContext.setting("graphics", "quality", 2)), 0, 3))
+
+
+## A preset-driven option: shows the level in effect, writes an override.
+func _gfx_option(parent: Control, key: String, text: String, names: Array, hint: String) -> void:
+	var row := _row(parent, text, hint)
+	var opt := OptionButton.new()
+	opt.custom_minimum_size = Vector2(300, 0)
+	opt.add_theme_color_override("font_color", UiTheme.ACCENT)
+	opt.add_theme_stylebox_override("normal", _key_box(false))
+	opt.add_theme_stylebox_override("hover", _key_box(true))
+	opt.add_theme_stylebox_override("focus", _key_box(true))
+	for n: String in names:
+		opt.add_item(n)
+	opt.select(clampi(int(UiContext.call_on(UiContext.autoload("Settings"), "gfx", [key], 0)), 0, names.size() - 1))
+	opt.item_selected.connect(func(i: int) -> void:
+		UiContext.set_setting("graphics", key, i)
+		_gfx_sync_preset())
+	opt.tooltip_text = hint
+	_hook_hint(opt, hint)
+	row.add_child(opt)
+
+
+## An integer preset-driven slider, applied when released (view distance restreams the world).
+func _gfx_slider(parent: Control, key: String, text: String, lo: float, hi: float, value: float, fmt: String, display_scale: float, hint: String) -> void:
+	var row := _row(parent, text, hint)
+	var s := HSlider.new()
+	s.min_value = lo
+	s.max_value = hi
+	s.step = 1
+	s.value = value
+	s.custom_minimum_size = Vector2(300, 24)
+	s.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var value_l := UiTheme.label(fmt % roundi(value * display_scale), UiTheme.SIZE_BODY, UiTheme.ACCENT)
+	value_l.custom_minimum_size = Vector2(64, 0)
+	value_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	s.value_changed.connect(func(v: float) -> void:
+		value_l.text = fmt % roundi(v * display_scale)
+		if not s.has_focus() or not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+			UiContext.set_setting("graphics", key, int(v))
+			_gfx_sync_preset())
+	s.drag_ended.connect(func(_changed: bool) -> void:
+		UiContext.set_setting("graphics", key, int(s.value))
+		_gfx_sync_preset())
+	_hook_hint(s, hint)
+	row.add_child(s)
+	row.add_child(value_l)
+
+
+## Brightness calibration: three marks on black at 2 %, 4 % and 8 % grey
+## (scaled by the game's brightness). The faintest should be barely visible.
+func _gfx_calibrate() -> void:
+	var layer := Control.new()
+	layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	var bg := ColorRect.new()
+	bg.color = Color.BLACK
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(bg)
+	var marks := Control.new()
+	marks.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	marks.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	marks.draw.connect(func() -> void:
+		var b := float(UiContext.setting("graphics", "brightness", 0.85)) / 0.85
+		var c := marks.size * Vector2(0.5, 0.42)
+		for i in 3:
+			var g: float = [0.02, 0.04, 0.08][i] * b
+			var col := Color(g, g, g).linear_to_srgb()
+			var at := c + Vector2((i - 1) * 220.0, 0.0)
+			marks.draw_colored_polygon(PackedVector2Array([at + Vector2(0, -70), at + Vector2(45, 40), at + Vector2(-45, 40)]), col))
+	layer.add_child(marks)
+	var box := VBoxContainer.new()
+	box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	box.offset_top = -230
+	box.offset_left = -330
+	box.offset_right = 330
+	box.add_theme_constant_override("separation", 12)
+	var tip := UiTheme.label("Adjust until the left mark is barely visible and the right one is clearly visible.", UiTheme.SIZE_BODY, UiTheme.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	tip.autowrap_mode = TextServer.AUTOWRAP_WORD
+	box.add_child(tip)
+	var s := HSlider.new()
+	s.min_value = 0.5
+	s.max_value = 1.5
+	s.step = 0.01
+	s.value = float(UiContext.setting("graphics", "brightness", 0.85))
+	s.custom_minimum_size = Vector2(600, 24)
+	s.value_changed.connect(func(v: float) -> void:
+		UiContext.set_setting("graphics", "brightness", v)
+		marks.queue_redraw())
+	box.add_child(s)
+	var done := UiTheme.button("Done", func() -> void:
+		layer.queue_free()
+		_gfx_rebuild.call_deferred())
+	box.add_child(done)
+	layer.add_child(box)
+	add_child(layer)
+	s.grab_focus.call_deferred()
 
 
 func _build_display() -> void:

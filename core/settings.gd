@@ -10,6 +10,24 @@ enum Quality { LOW, MEDIUM, HIGH, ULTRA }
 enum WindowMode { FILL_SCREEN, WINDOWED, FULLSCREEN }
 
 const QUALITY_NAMES := ["Low", "Medium", "High", "Ultra"]
+## Graphics options a quality preset decides. Stored as -1 ("follow the
+## preset") unless the player overrides them; gfx() resolves either way. Values
+## per preset, Low .. Ultra (see GraphicsQuality for what each level means).
+const GFX_PRESETS := {
+	"shadows": [1, 2, 3, 4],          # 0 off, 1 low .. 4 ultra
+	"antialiasing": [1, 1, 2, 2],     # 0 off, 1 FXAA, 2 TAA, 3 MSAA 2x, 4 MSAA 4x
+	"ssao": [0, 1, 2, 3],             # 0 off, 1 low, 2 medium, 3 high
+	"ssil": [0, 0, 0, 1],             # 0 off, 1 on
+	"ssr": [0, 0, 1, 2],              # 0 off, 1 low, 2 high
+	"gi": [0, 0, 1, 2],               # 0 off, 1 SDFGI, 2 SDFGI high
+	"volumetric_fog": [0, 1, 1, 2],   # 0 off, 1 low, 2 high
+	"view_distance": [6, 8, 10, 12],  # streamed terrain radius, chunks of 16 m
+	"foliage": [0, 1, 2, 3],          # density and draw distance of grass, plants, trees
+	"texture_quality": [0, 1, 2, 3],  # mip bias and anisotropic filtering
+	"mesh_detail": [0, 1, 2, 3],      # level-of-detail distances
+	"effects": [0, 1, 2, 3],          # particle counts (weather, ambient)
+}
+const UPSCALER_NAMES := ["Automatic", "Bilinear", "AMD FSR 1", "AMD FSR 2 (temporal)", "MetalFX spatial", "MetalFX temporal"]
 const WINDOW_MODE_NAMES := ["Fill screen", "Windowed", "Fullscreen"]
 
 const DEFAULTS := {
@@ -29,6 +47,25 @@ const DEFAULTS := {
 		"bloom": 1.0,
 		"vignette": 0.3,
 		"grain": 0.0,
+		"shadows": -1,
+		"antialiasing": -1,
+		"ssao": -1,
+		"ssil": -1,
+		"ssr": -1,
+		"gi": -1,
+		"volumetric_fog": -1,
+		"view_distance": -1,
+		"foliage": -1,
+		"texture_quality": -1,
+		"mesh_detail": -1,
+		"effects": -1,
+		"upscaler": 0,
+		"sharpness": 0.5,
+		"motion_blur": 0.0,
+		"depth_of_field": false,
+		"chromatic_aberration": 0.0,
+		"sun_shafts": true,
+		"hdr": false,
 	},
 	"audio": {
 		"master": 0.8,
@@ -125,6 +162,34 @@ func reset_section(section: String) -> void:
 	for key: String in _data[section]:
 		changed.emit(section, key)
 	save()
+
+
+## A preset-driven graphics option: the player's override, or the preset's value.
+func gfx(key: String) -> int:
+	var v := int(get_value("graphics", key))
+	if v >= 0 or not GFX_PRESETS.has(key):
+		return v
+	return int(GFX_PRESETS[key][clampi(int(get_value("graphics", "quality")), 0, 3)])
+
+
+## True when an individual option differs from what the current preset sets.
+func graphics_is_custom() -> bool:
+	var q := clampi(int(get_value("graphics", "quality")), 0, 3)
+	for key: String in GFX_PRESETS:
+		var v := int(get_value("graphics", key))
+		if v >= 0 and v != int(GFX_PRESETS[key][q]):
+			return true
+	return float(get_value("graphics", "render_scale")) > 0.0
+
+
+## Choosing a preset sets every preset-driven option back to that preset.
+func apply_quality_preset(q: int) -> void:
+	_data["graphics"]["quality"] = clampi(q, 0, 3)
+	_data["graphics"]["render_scale"] = -1.0
+	for key: String in GFX_PRESETS:
+		_data["graphics"][key] = -1
+	save()
+	changed.emit("graphics", "quality")
 
 
 ## Fraction of the logical window resolution the 3D view renders at.

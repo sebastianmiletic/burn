@@ -76,7 +76,8 @@ func setup(world_gen: WorldGen, dim: int) -> void:
 	TerrainTextures.apply(opaque_material)
 	if ResourceLoader.exists(FLORA_PATH):
 		flora = load(FLORA_PATH)
-	flora_quality = int(Settings.get_value("graphics", "quality"))
+	flora_quality = GraphicsQuality.foliage()
+	Settings.changed.connect(_on_settings_changed)
 	if DisplayServer.get_name() != "headless":
 		CaveDecor.warmup()  # cave decoration meshes (world/caves), built once on the loading screen
 	var cores := maxi(2, OS.get_processor_count() - 1)
@@ -84,6 +85,20 @@ func setup(world_gen: WorldGen, dim: int) -> void:
 	# Separate budgets: meshing must never wait behind a long generation queue.
 	_max_mesh = maxi(1, cores / 3)
 	_max_gen = maxi(1, cores - _max_mesh)
+
+
+## Graphics options apply to the chunks already built, not just new ones.
+func _on_settings_changed(section: String, _key: String) -> void:
+	if section != "graphics" or not is_inside_tree():
+		return
+	var q := GraphicsQuality.foliage()
+	flora_quality = q
+	if flora != null and dimension == 0:
+		flora.call("requalify", get_tree(), q)
+	for k: Vector3i in _meshes:
+		var m: MeshInstance3D = _meshes[k]
+		if m != null:
+			m.cast_shadow = _shadow_setting(k)
 
 
 func _exit_tree() -> void:
@@ -911,7 +926,7 @@ func _set_mesh(k: Vector3i, result: Dictionary) -> void:
 func _shadow_setting(k: Vector3i) -> int:
 	var c := Vector3(k * Chunk.SIZE) + Vector3(8, 8, 8)
 	var near := c.distance_to(focus) < GraphicsQuality.shadow_caster_distance() + 12.0
-	return GeometryInstance3D.SHADOW_CASTING_SETTING_ON if near else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return GeometryInstance3D.SHADOW_CASTING_SETTING_ON if near and GraphicsQuality.shadows_enabled() else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _unload_far(fkey: Vector3i) -> void:

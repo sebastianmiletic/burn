@@ -160,6 +160,8 @@ static func warmup() -> void:
 static func _settings_quality() -> int:
 	var loop := Engine.get_main_loop() as SceneTree
 	var s: Node = loop.root.get_node_or_null(^"Settings") if loop != null and loop.root != null else null
+	if s != null and s.has_method(&"gfx"):
+		return clampi(int(s.call(&"gfx", "foliage")), 0, 3)
 	return int(s.call(&"get_value", "graphics", "quality")) if s != null else 1
 
 
@@ -267,8 +269,9 @@ static func _apply_quality(q: int) -> void:
 	if q == _quality:
 		return
 	_quality = q
+	var md := _mesh_detail() if _warm else q
 	for kind in 4:
-		var bands := [[0.0, TREE_LOD0[q]], [TREE_LOD0[q], TREE_LOD1[q]], [TREE_LOD1[q], TREE_FAR[q]], [0.0, 100000.0]]
+		var bands := [[0.0, TREE_LOD0[md]], [TREE_LOD0[md], TREE_LOD1[md]], [TREE_LOD1[md], TREE_FAR[q]], [0.0, 100000.0]]
 		for lod in 4:
 			for m: ShaderMaterial in [_mats["bark_%d_%d" % [kind, lod]], _mats["leaves_%d_%d" % [kind, lod]]]:
 				m.set_shader_parameter(&"lod_begin", bands[lod][0])
@@ -715,57 +718,99 @@ static func build_chunk(plan: Dictionary, quality: int) -> Node3D:
 	for g: Dictionary in plan.get("groups", []):
 		var layer: int = g.layer
 		var mmi := _mmi(_layer_mesh[layer], g)
-		var mm := mmi.multimesh
-		var small: bool = layer in _GRASSY or layer in _PLANTS or layer == L.LITTER or layer == L.PEBBLES
-		if small:
-			var tiers: PackedInt32Array = g.tiers
-			var n := 0
-			for t in q + 1:
-				n += tiers[t]
-			mm.visible_instance_count = n
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var reach: float = GRASS_RANGE[q]
-		if layer in _PLANTS or layer == L.LITTER:
-			reach = PLANT_RANGE[q]
-		elif layer == L.BUSH_AUTUMN or layer == L.BUSH_GREEN:
-			reach = BUSH_RANGE[q]
-		elif layer == L.BOULDER or layer == L.LOG:
-			reach = ROCK_RANGE[q]
-		elif layer == L.PEBBLES:
-			reach = PLANT_RANGE[q] * 0.6
-		mmi.visibility_range_end = reach + CHUNK_MARGIN
+		_tag(mmi, 0, layer, g.tiers)
 		if _layer_far[layer] != null:
 			# Full clumps near the camera, sparse single-triangle clumps beyond the split.
-			mmi.visibility_range_end = GRASS_SPLIT[q] + 4.0 + CHUNK_MARGIN
 			var far := _mmi(_layer_far[layer], g)
-			far.multimesh.visible_instance_count = mm.visible_instance_count
-			far.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			far.visibility_range_begin = maxf(GRASS_SPLIT[q] - CHUNK_MARGIN, 0.0)
-			far.visibility_range_end = reach + CHUNK_MARGIN
+			_tag(far, 1, layer, g.tiers)
 			root.add_child(far)
-		if layer == L.BUSH_AUTUMN or layer == L.BUSH_GREEN:
-			# Bushes cast shadows only up close.
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if q >= 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(mmi)
 	for g: Dictionary in plan.get("trees", []):
 		var lods: Array = _tree_mesh[g.kind][g.variant]
-		var m0 := _mmi(lods[0], g)
-		m0.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		m0.visibility_range_end = TREE_LOD0[q] + CHUNK_MARGIN
-		root.add_child(m0)
-		var m1 := _mmi(lods[1], g)
-		m1.visibility_range_end = TREE_LOD1[q] + CHUNK_MARGIN
-		root.add_child(m1)
+		root.add_child(_tag(_mmi(lods[0], g), 2, -1, PackedInt32Array()))
+		root.add_child(_tag(_mmi(lods[1], g), 3, -1, PackedInt32Array()))
 	for g: Dictionary in plan.get("far", []):
-		var m2 := _mmi(_tree_mesh[g.kind][0][2], g)
-		m2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		m2.visibility_range_begin = maxf(TREE_LOD1[q] - CHUNK_MARGIN - 6.0, 0.0)
-		m2.visibility_range_end = TREE_FAR[q] + CHUNK_MARGIN
-		root.add_child(m2)
+		root.add_child(_tag(_mmi(_tree_mesh[g.kind][0][2], g), 4, -1, PackedInt32Array()))
+	_configure(root, q)
 	var info: PackedVector4Array = plan.get("tree_info", PackedVector4Array())
 	root.set_meta(&"trees", info)
 	root.add_to_group(&"flora_chunks")
 	return root
+
+
+## Re-applies a quality to every flora chunk already in the scene (the
+## graphics settings changed): instance counts, draw distances, shadows.
+static func requalify(tree: SceneTree, quality: int) -> void:
+	if not _warm:
+		return
+	_quality = -1
+	_apply_quality(quality)
+	for root: Node in tree.get_nodes_in_group(&"flora_chunks"):
+		_configure(root as Node3D, clampi(quality, 0, 3))
+
+
+## Role of a flora MultiMeshInstance3D: 0 layer (near), 1 grass far LOD,
+## 2 tree LOD0, 3 tree LOD1 (shadow caster), 4 tree far billboard.
+static func _tag(mmi: MultiMeshInstance3D, role: int, layer: int, tiers: PackedInt32Array) -> MultiMeshInstance3D:
+	mmi.set_meta(&"flora", [role, layer, tiers])
+	return mmi
+
+
+static func _configure(root: Node3D, q: int) -> void:
+	var md := _mesh_detail()
+	for c in root.get_children():
+		var mmi := c as MultiMeshInstance3D
+		if mmi == null or not mmi.has_meta(&"flora"):
+			continue
+		var tag: Array = mmi.get_meta(&"flora")
+		var role: int = tag[0]
+		var layer: int = tag[1]
+		var mm := mmi.multimesh
+		mmi.visibility_range_begin = 0.0
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		match role:
+			0, 1:
+				var small: bool = layer in _GRASSY or layer in _PLANTS or layer == L.LITTER or layer == L.PEBBLES
+				if small:
+					var tiers: PackedInt32Array = tag[2]
+					var n := 0
+					for t in q + 1:
+						n += tiers[t]
+					mm.visible_instance_count = n
+				var reach: float = GRASS_RANGE[q]
+				if layer in _PLANTS or layer == L.LITTER:
+					reach = PLANT_RANGE[q]
+				elif layer == L.BUSH_AUTUMN or layer == L.BUSH_GREEN:
+					reach = BUSH_RANGE[q]
+					# Bushes cast shadows only up close, from High.
+					if q >= 2:
+						mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+				elif layer == L.BOULDER or layer == L.LOG:
+					reach = ROCK_RANGE[q]
+					mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+				elif layer == L.PEBBLES:
+					reach = PLANT_RANGE[q] * 0.6
+				mmi.visibility_range_end = reach + CHUNK_MARGIN
+				if _layer_far[layer] != null:
+					if role == 0:
+						mmi.visibility_range_end = GRASS_SPLIT[q] + 4.0 + CHUNK_MARGIN
+					else:
+						mmi.visibility_range_begin = maxf(GRASS_SPLIT[q] - CHUNK_MARGIN, 0.0)
+			2:
+				mmi.visibility_range_end = TREE_LOD0[md] + CHUNK_MARGIN
+			3:
+				mmi.visibility_range_end = TREE_LOD1[md] + CHUNK_MARGIN
+				mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			4:
+				mmi.visibility_range_begin = maxf(TREE_LOD1[md] - CHUNK_MARGIN - 6.0, 0.0)
+				mmi.visibility_range_end = TREE_FAR[q] + CHUNK_MARGIN
+
+
+## Mesh detail (Settings.gfx "mesh_detail"): where trees switch level of detail.
+static func _mesh_detail() -> int:
+	var loop := Engine.get_main_loop() as SceneTree
+	var s: Node = loop.root.get_node_or_null(^"Settings") if loop != null and loop.root != null else null
+	return clampi(int(s.call(&"gfx", "mesh_detail")), 0, 3) if s != null and s.has_method(&"gfx") else _quality
 
 
 static func _mmi(mesh: Mesh, g: Dictionary) -> MultiMeshInstance3D:

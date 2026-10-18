@@ -33,7 +33,7 @@ func _init(k := Kind.SNOW) -> void:
 
 
 func _ready() -> void:
-	var q := int(Settings.get_value("graphics", "quality"))
+	var q := clampi(Settings.gfx("effects"), 0, 3)
 	var tint := Color(0.92, 0.94, 0.98)
 	var size := 0.07
 	match kind:
@@ -83,6 +83,20 @@ func _ready() -> void:
 	draw_pass_1 = _quad
 	_quad.material = _soft
 	amount_ratio = maxf(intensity, 0.001)
+	Settings.changed.connect(func(section: String, _k: String) -> void:
+		if section == "graphics" and is_inside_tree():
+			var n: int = _amounts()[clampi(Settings.gfx("effects"), 0, 3)]
+			if n != amount:
+				amount = n)
+
+
+func _amounts() -> Array:
+	match kind:
+		Kind.DUST:
+			return [1200, 2200, 3400, 5000]
+		Kind.ASH:
+			return [700, 1200, 1800, 2600]
+	return [1800, 3200, 4800, 7000]
 
 
 func _process(_delta: float) -> void:
