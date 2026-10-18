@@ -27,8 +27,11 @@ signal hosting_started(runes: PackedInt32Array)
 signal join_status(state: String)
 ## Host: the internet address friends outside the LAN can join with (after UPnP).
 signal public_address_changed(address: String)
+## Everyone: a player was accepted into the party (host decides, then tells all).
+signal player_joined(id: int, player_name: String)
 
-const PROTOCOL_VERSION := 4
+## 5: hello carries a server password; chat whispers / system messages.
+const PROTOCOL_VERSION := 5
 ## Hello code for players who joined by address instead of runes.
 const ADDRESS_JOIN := -1
 const MAX_PLAYERS := 8
@@ -36,6 +39,14 @@ const ENET_PORTS: Array[int] = [47211, 47212, 47213, 47214, 47215, 47216, 47217,
 const CHUNK_BYTES := 32 * 1024
 const BULK_CHANNEL := 1
 const HELLO_TIMEOUT := 10.0
+## Chat flood control per peer (host side): a burst, then one message per CHAT_REFILL s.
+const CHAT_BURST := 5
+const CHAT_REFILL := 1.2
+const CHAT_MAX := 200
+const PASSWORD_MAX := 64
+## Wrong passwords per address before the host refuses it for PASSWORD_LOCKOUT s.
+const PASSWORD_TRIES := 5
+const PASSWORD_LOCKOUT := 60.0
 const PALETTE: Array[Color] = [
 	Color(1.0, 0.55, 0.2), Color(0.3, 0.8, 0.85), Color(0.7, 0.45, 0.95), Color(0.95, 0.8, 0.3),
 	Color(0.9, 0.25, 0.3), Color(0.45, 0.85, 0.4), Color(0.45, 0.6, 1.0), Color(0.95, 0.5, 0.7),
@@ -60,6 +71,21 @@ var public_address := ""
 var _upnp_thread: Thread
 var _upnp_port := 0
 var _join_by_address := false
+## Public / listed server settings (host): {"name", "description", "password",
+## "max_players", "mode", "internet": register with the master, "lan": answer
+## LAN browsing, "dedicated": headless host without a player}. {} = rune party.
+var server_config := {}
+## Accepted players allowed (excluding a dedicated host).
+var max_players := MAX_PLAYERS
+## Headless dedicated server: the host's own player is a hidden spectator.
+var dedicated := false
+## Master server registration while hosting a public server.
+var server_list := ServerList.new()
+var _password := ""
+var _join_password := ""
+var _chat_budget := {}        # host: peer -> [tokens, last seconds]
+var _bad_password := {}       # host: ip -> [count, first failure seconds]
+var _bans := {}               # host: ip -> until (seconds)
 
 var sim_latency_ms := 0.0:
 	set(v):
@@ -89,6 +115,8 @@ var _campaign_started := false
 
 func _ready() -> void:
 	add_child(_discovery)
+	server_list.name = "ServerList"
+	add_child(server_list)
 	_discovery.found.connect(_on_found)
 	_discovery.failed.connect(_on_discovery_failed)
 	multiplayer.peer_connected.connect(_on_peer_connected)
@@ -148,12 +176,18 @@ func _default_name() -> String:
 # --- Public API -----------------------------------------------------------------
 
 ## Host a party. Returns the rune code to share ([] on failure, join_failed emitted).
-func host_party(player_name: String, forced_runes := PackedInt32Array()) -> PackedInt32Array:
+## `config`: see `server_config` (public / LAN-listed / dedicated servers).
+func host_party(player_name: String, forced_runes := PackedInt32Array(), config := {}) -> PackedInt32Array:
 	leave()
+	server_config = config.duplicate()
+	dedicated = bool(config.get("dedicated", false))
+	max_players = clampi(int(config.get("max_players", MAX_PLAYERS)), 1 if dedicated else 2, MAX_PLAYERS)
+	_password = String(config.get("password", "")).left(PASSWORD_MAX)
 	_enet = ENetMultiplayerPeer.new()
 	var err := ERR_CANT_CREATE
 	for port in ENET_PORTS:
-		err = _enet.create_server(port, MAX_PLAYERS - 1, 3)
+		# One spare slot so a full server can still tell a joiner "full".
+		err = _enet.create_server(port, max_players - (0 if dedicated else 1) + 1, 3)
 		if err == OK:
 			enet_port = port
 			break
@@ -165,13 +199,21 @@ func host_party(player_name: String, forced_runes := PackedInt32Array()) -> Pack
 	_install_peer(_enet)
 	runes = forced_runes if RuneCode.is_valid(forced_runes) else RuneCode.random()
 	players = {1: {"name": _clean_name(player_name), "color": PALETTE[0], "ready": true}}
+	if dedicated:
+		players[1]["server"] = true
 	var derr := _discovery.start_responder(RuneCode.encode(runes), enet_port, players[1]["name"], PROTOCOL_VERSION,
-			func() -> int: return players.size(), MAX_PLAYERS)
+			player_count, max_players)
 	if derr != OK:
 		push_warning("LAN discovery port busy: friends on other machines may not find this party.")
+	elif bool(config.get("lan", false)) or bool(config.get("internet", false)):
+		_discovery.listing = {"name": _server_name(), "description": String(config.get("description", "")),
+			"mode": String(config.get("mode", "Campaign")), "locked": _password != ""}
 	_campaign_started = false
 	session_info = {}
-	_open_router_port(enet_port)
+	if not dedicated or bool(config.get("upnp", false)):
+		_open_router_port(enet_port)
+	if bool(config.get("internet", false)):
+		server_list.start_hosting(listing_info)
 	hosting_started.emit(runes)
 	lobby_changed.emit()
 	return runes
@@ -192,13 +234,20 @@ func join_party(code: PackedInt32Array, player_name: String) -> void:
 
 ## Join a party over the internet (or a LAN without broadcast) by address,
 ## "host:port" or a bare host (default port). Runes are optional here: an
-## address is already private enough to share between friends.
-func join_address(address: String, player_name: String, code := PackedInt32Array()) -> void:
+## address is already private enough to share between friends. Public servers
+## may need `password`.
+func join_address(address: String, player_name: String, code := PackedInt32Array(), password := "") -> void:
 	leave()
+	_join_password = password.left(PASSWORD_MAX)
 	var host := address.strip_edges()
 	var port := ENET_PORTS[0]
 	var colon := host.rfind(":")
-	if colon > 0 and host.count(":") == 1:
+	if host.begins_with("[") and host.contains("]"):  # [ipv6]:port
+		var close := host.find("]")
+		if host.substr(close + 1).begins_with(":"):
+			port = int(host.substr(close + 2))
+		host = host.substr(1, close - 1)
+	elif colon > 0 and host.count(":") == 1:
 		port = int(host.substr(colon + 1))
 		host = host.substr(0, colon)
 	if host == "" or port <= 0:
@@ -214,7 +263,7 @@ func join_address(address: String, player_name: String, code := PackedInt32Array
 ## Ask the router (UPnP) to forward the game port so friends can join over the
 ## internet. Runs on a thread: discovery can take a few seconds.
 func _open_router_port(port: int) -> void:
-	if DisplayServer.get_name() == "headless" or OS.has_feature("web"):
+	if (DisplayServer.get_name() == "headless" and not dedicated) or OS.has_feature("web"):
 		return
 	_close_router_port()
 	_upnp_port = port
@@ -257,6 +306,7 @@ func _close_router_port() -> void:
 
 ## Leave the party (or stop hosting) and return to solo.
 func leave() -> void:
+	server_list.stop_hosting()
 	_close_router_port()
 	_join_by_address = false
 	_discovery.stop_responder()
@@ -275,8 +325,13 @@ func set_ready(ready: bool) -> void:
 		_rpc_set_ready.rpc_id(1, ready)
 
 
-func kick(peer_id: int, reason := "You were removed from the party.") -> void:
+## Host: remove a player. `ban_seconds` > 0 refuses their address for that long.
+func kick(peer_id: int, reason := "You were removed from the party.", ban_seconds := 0.0) -> void:
 	if is_online() and is_server() and peer_id != 1:
+		if ban_seconds > 0.0:
+			var ip := _peer_ip(peer_id)
+			if ip != "":
+				_bans[ip] = _now() + ban_seconds
 		_reject(peer_id, reason)
 
 
@@ -309,15 +364,82 @@ func start_campaign(info: Dictionary) -> void:
 
 
 func send_chat(text: String) -> void:
-	var t := _clean_chat(text)
+	var t := clean_chat(text)
 	if t == "":
 		return
 	if not is_online():
 		_emit_chat(_my_name(), t)
 	elif is_server():
-		_rpc_chat.rpc(players.get(1, {}).get("name", "Host"), t)
+		_to_party(&"_rpc_chat", [players.get(1, {}).get("name", "Host"), t])
 	else:
 		_rpc_chat_request.rpc_id(1, t)
+
+
+## Private message routed by the host. Errors come back as system messages.
+func send_whisper(target_name: String, text: String) -> void:
+	var t := clean_chat(text)
+	if t == "" or target_name.strip_edges() == "":
+		return
+	if not is_online():
+		_emit_system("Whispers reach other players in online games.")
+	elif is_server():
+		_route_whisper(1, target_name, t)
+	else:
+		_rpc_whisper_request.rpc_id(1, target_name.left(40), t)
+
+
+## Tell the party this player fell (host broadcasts a system line).
+func announce_death(cause: String) -> void:
+	if not is_online():
+		return
+	if is_server():
+		_broadcast_death(1, cause)
+	else:
+		_rpc_death.rpc_id(1, cause.left(60))
+
+
+## Host: a system line for everyone in the party (and the host).
+func broadcast_system(text: String) -> void:
+	if is_server():
+		_to_party(&"_rpc_system", [clean_chat(text)])
+
+
+## Peer id of the player with this name (case-insensitive; a unique prefix also matches). -1 if none.
+func find_player(player_name: String) -> int:
+	var want := player_name.strip_edges().to_lower()
+	if want == "":
+		return -1
+	var prefix := []
+	for id: int in players:
+		var n := String(players[id]["name"]).to_lower()
+		if n == want:
+			return id
+		if n.begins_with(want):
+			prefix.append(id)
+	return prefix[0] if prefix.size() == 1 else -1
+
+
+## Players in the party, not counting a dedicated server's host.
+func player_count() -> int:
+	return players.size() - (1 if dedicated and players.has(1) else 0)
+
+
+## The public listing of this server (master registration, LAN browsing).
+func listing_info() -> Dictionary:
+	return {"name": _server_name(), "description": String(server_config.get("description", "")).left(160),
+		"version": String(ProjectSettings.get_setting("application/config/version", "")).left(24),
+		"protocol": PROTOCOL_VERSION, "region": String(server_config.get("region", "")).left(16),
+		"mode": String(server_config.get("mode", "Campaign")).left(24), "port": enet_port,
+		"players": player_count(), "max_players": max_players, "password": _password != ""}
+
+
+func _server_name() -> String:
+	var n := String(server_config.get("name", "")).strip_edges().left(48)
+	return n if n != "" else "%s's fire" % String(players.get(1, {}).get("name", "Wanderer"))
+
+
+func is_public() -> bool:
+	return not server_config.is_empty()
 
 
 func is_online() -> bool:
@@ -394,6 +516,11 @@ func _go_offline() -> void:
 	_clock_offset = 0.0
 	_campaign_started = false
 	enet_port = 0
+	server_config = {}
+	dedicated = false
+	max_players = MAX_PLAYERS
+	_password = ""
+	_chat_budget.clear()
 
 
 func _on_found(address: String, port: int, host_name: String) -> void:
@@ -413,7 +540,8 @@ func _on_discovery_failed(reason: String) -> void:
 
 func _on_connected_to_server() -> void:
 	var code := RuneCode.encode(_joining_runes) if RuneCode.is_valid(_joining_runes) else ADDRESS_JOIN
-	_rpc_hello.rpc_id(1, _joining_name, PROTOCOL_VERSION, code)
+	_rpc_hello.rpc_id(1, _joining_name, PROTOCOL_VERSION, code, _join_password)
+	_join_password = ""
 
 
 func _on_connection_failed() -> void:
@@ -450,6 +578,7 @@ func _tune_enet_peer(id: int) -> void:
 func _on_peer_disconnected(id: int) -> void:
 	_pending_hello.erase(id)
 	_ping.erase(id)
+	_chat_budget.erase(id)
 	if not is_server() or not players.has(id):
 		return
 	var who: String = players[id]["name"]
@@ -482,24 +611,48 @@ func _process(delta: float) -> void:
 
 # --- Lobby (host authoritative) -----------------------------------------------------
 
+## `password` defaults so a protocol-4 client's 3-argument hello still gets
+## the "different version" answer instead of an RPC error.
 @rpc("any_peer", "call_remote", "reliable")
-func _rpc_hello(requested_name: String, version: int, code: int) -> void:
+func _rpc_hello(requested_name: String, version: int, code: int, password := "") -> void:
 	if not is_server():
 		return
 	var id := multiplayer.get_remote_sender_id()
+	if players.has(id) or not _pending_hello.has(id):
+		return  # a second hello (or one after the timeout) is ignored
 	_pending_hello.erase(id)
+	var ip := _peer_ip(id)
+	var now := _now()
+	if float(_bans.get(ip, 0.0)) > now:
+		_reject(id, "You were removed from this server. Try again later.")
+		return
 	if version != PROTOCOL_VERSION:
 		_reject(id, "That party is running a different version of Burn.")
 		return
 	if code != RuneCode.encode(runes) and code != ADDRESS_JOIN:
 		_reject(id, "No party with those runes was found on your network.")
 		return
-	if players.size() >= MAX_PLAYERS:
+	if _password != "":
+		var tries: Array = _bad_password.get(ip, [0, now])
+		if now - float(tries[1]) > PASSWORD_LOCKOUT:
+			tries = [0, now]
+		if int(tries[0]) >= PASSWORD_TRIES:
+			_reject(id, "Too many wrong passwords. Try again in a minute.")
+			return
+		if password.left(PASSWORD_MAX) != _password:
+			_bad_password[ip] = [int(tries[0]) + 1, float(tries[1])]
+			_reject(id, "Wrong password." if password != "" else "This server needs a password.")
+			return
+		_bad_password.erase(ip)
+	if player_count() >= max_players:
 		_reject(id, "That party is full.")
 		return
-	players[id] = {"name": _unique_name(_clean_name(requested_name)), "color": _free_color(), "ready": false}
+	var who := _unique_name(_clean_name(requested_name))
+	players[id] = {"name": who, "color": _free_color(), "ready": false}
 	_broadcast_lobby()
 	lobby_changed.emit()
+	broadcast_system("%s joined." % who)
+	player_joined.emit(id, who)
 	if _campaign_started:
 		var info: Dictionary = late_join_info.call() if late_join_info.is_valid() else session_info
 		_send_session(id, info)
@@ -581,12 +734,64 @@ func _free_color() -> Color:
 
 
 static func _clean_name(n: String) -> String:
-	var s := n.strip_edges().replace("|", "/").left(20)
+	var s := _strip_controls(n.left(64)).replace("|", "/").replace("[", "(").replace("]", ")").strip_edges().left(20)
 	return s if s != "" else "Wanderer"
 
 
-static func _clean_chat(t: String) -> String:
-	return t.strip_edges().replace("\n", " ").left(200)
+## Chat text as the host relays it: one line, no control characters, no
+## BBCode tags (displays escape `[` as well), at most CHAT_MAX characters.
+static func clean_chat(t: String) -> String:
+	var s := _strip_controls(t.left(CHAT_MAX * 4))
+	var re := RegEx.create_from_string("\\[/?[A-Za-z_][A-Za-z0-9_]*(=[^\\]]*)?( [^\\]]*)?\\]")
+	s = re.sub(s, "", true)
+	return s.strip_edges().left(CHAT_MAX)
+
+
+static func _strip_controls(t: String) -> String:
+	var out := ""
+	for i in t.length():
+		var c := t.unicode_at(i)
+		out += " " if c < 32 or c == 127 or (c >= 0x200B and c <= 0x200F) or (c >= 0x202A and c <= 0x202E) else t[i]
+	return out
+
+
+func _peer_ip(id: int) -> String:
+	if _enet == null:
+		return ""
+	var p := _enet.get_peer(id)
+	return p.get_remote_address() if p != null else ""
+
+
+static func _now() -> float:
+	return Time.get_ticks_msec() / 1000.0
+
+
+## Host: true when `id` may send another chat message now (token bucket).
+func _chat_allowed(id: int) -> bool:
+	var now := _now()
+	var b: Array = _chat_budget.get(id, [float(CHAT_BURST), now])
+	var tokens := minf(float(CHAT_BURST), float(b[0]) + (now - float(b[1])) / CHAT_REFILL)
+	if tokens < 1.0:
+		_chat_budget[id] = [tokens, now]
+		return false
+	_chat_budget[id] = [tokens - 1.0, now]
+	return true
+
+
+## Host: call an authority RPC on every accepted player, and locally.
+func _to_party(method: StringName, args: Array) -> void:
+	for id: int in players:
+		if id != 1:
+			callv("rpc_id", [id, method] + args)
+	callv(method, args)
+
+
+## Host: call an authority RPC on one player (or locally for the host).
+func _deliver(id: int, method: StringName, args: Array) -> void:
+	if id == 1:
+		callv(method, args)
+	elif players.has(id):
+		callv("rpc_id", [id, method] + args)
 
 
 func _my_name() -> String:
@@ -604,12 +809,71 @@ func _rpc_chat_request(text: String) -> void:
 	var id := multiplayer.get_remote_sender_id()
 	if not players.has(id):
 		return
-	var t := _clean_chat(text)
-	if t != "":
-		_rpc_chat.rpc(players[id]["name"], t)
+	var t := clean_chat(text)
+	if t == "":
+		return
+	if not _chat_allowed(id):
+		_deliver(id, &"_rpc_system", ["You are sending messages too fast. Wait a moment."])
+		return
+	_to_party(&"_rpc_chat", [players[id]["name"], t])
 
 
-@rpc("authority", "call_local", "reliable")
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_whisper_request(target_name: String, text: String) -> void:
+	var id := multiplayer.get_remote_sender_id()
+	if is_server() and players.has(id):
+		_route_whisper(id, target_name.left(40), text)
+
+
+func _route_whisper(from_id: int, target_name: String, text: String) -> void:
+	var t := clean_chat(text)
+	if t == "":
+		return
+	if from_id != 1 and not _chat_allowed(from_id):
+		_deliver(from_id, &"_rpc_system", ["You are sending messages too fast. Wait a moment."])
+		return
+	var to := find_player(target_name)
+	if to < 0 or (dedicated and to == 1):
+		_deliver(from_id, &"_rpc_system", ["Nobody called \"%s\" is here." % _clean_name(target_name)])
+		return
+	if to == from_id:
+		_deliver(from_id, &"_rpc_system", ["You mutter to yourself."])
+		return
+	_deliver(to, &"_rpc_whisper", [player_name(from_id), t, false])
+	_deliver(from_id, &"_rpc_whisper", [player_name(to), t, true])
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_whisper(other: String, text: String, outgoing: bool) -> void:
+	var ev := get_node_or_null("/root/Events")
+	if ev != null:
+		ev.chat_message.emit(other, text, "whisper_out" if outgoing else "whisper")
+
+
+@rpc("authority", "call_remote", "reliable")
+func _rpc_system(text: String) -> void:
+	_emit_system(text)
+
+
+func _emit_system(text: String) -> void:
+	var ev := get_node_or_null("/root/Events")
+	if ev != null:
+		ev.chat_message.emit("", text, "system")
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func _rpc_death(cause: String) -> void:
+	var id := multiplayer.get_remote_sender_id()
+	if is_server() and players.has(id) and _chat_allowed(id):
+		_broadcast_death(id, cause)
+
+
+func _broadcast_death(id: int, cause: String) -> void:
+	var c := clean_chat(cause).left(60)
+	broadcast_system("%s fell%s." % [player_name(id), (" (%s)" % c) if c != "" else ""])
+
+
+@rpc("authority", "call_remote", "reliable")
 func _rpc_chat(from_name: String, text: String) -> void:
 	_emit_chat(from_name, text)
 

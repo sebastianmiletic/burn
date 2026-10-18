@@ -86,8 +86,8 @@ func _now() -> float:
 # --- Players ------------------------------------------------------------------------
 
 func _send_local_state() -> void:
-	if not Net.is_online():
-		return
+	if not Net.is_online() or (Net.dedicated and Net.is_server()):
+		return  # a dedicated server's own player is a hidden spectator
 	var p := gw().local_player
 	var state := [p.dimension, p.global_position, p.yaw, p.anim, p.anim_time, p.held_item(), p.health, p.max_health,
 			(2 if p.downed else 1) if p.dead else 0, p.display_name, p.offhand_light]

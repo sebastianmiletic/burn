@@ -6,6 +6,7 @@ extends Node
 enum State { BOOT, INTRO, MENU, LOBBY, LOADING, PLAYING }
 
 const PARTY_SLOT := 9            ## the host's shared party world
+const ONLINE_SLOT := 7           ## a new public / dedicated server world
 const AUTOSAVE_SECONDS := 300.0
 var CHARACTER_PATH := RuntimePaths.file("saves/party_character.burn")
 
@@ -16,6 +17,8 @@ var world: GameWorld
 var _screen: Node
 var _loading: Node
 var _autosave := AUTOSAVE_SECONDS
+## The save slot the host's party world lives in (a public server can run one of the player's own runs).
+var _host_slot := PARTY_SLOT
 
 
 func _ready() -> void:
@@ -29,11 +32,33 @@ func _ready() -> void:
 	Net.session_started.connect(_on_session_started)
 	Net.join_failed.connect(_on_join_failed)
 	Events.campaign_won.connect(_on_campaign_won)
+	Net.server_list.registration_changed.connect(_on_registration)
+
+
+## Public hosting feedback in the chat: listed or not, and whether the master
+## could reach the game port.
+func _on_registration(st: String, detail: String) -> void:
+	var text := ""
+	if st == "failed":
+		text = "Not listed online: %s Players on your network can still join." % detail
+	elif st == "registered":
+		var v: Variant = Net.server_list.verified
+		if v == true:
+			text = "Your server is listed online and reachable at %s." % detail
+		elif v == false:
+			text = "Listed online, but the server list could not reach UDP port %d. Others may not be able to join: forward the port or enable UPnP on your router." % Net.enet_port
+		else:
+			text = "Your server is listed online (%s)." % detail
+	if text != "":
+		Events.chat_message.emit("", text, "system")
 
 
 ## Called by the main scene.
 func boot() -> void:
 	var args := Array(OS.get_cmdline_user_args())
+	if "--dedicated" in args:
+		start_dedicated()
+		return
 	if "--solo" in args or "--playtest" in args or args.any(func(a: String) -> bool: return a.begins_with("--capture-game")):
 		start_solo(int(_arg("--slot", "8")), not "--continue" in args)
 		return
@@ -99,6 +124,7 @@ func show_menu() -> void:
 
 func open_lobby_host() -> void:
 	state = State.LOBBY
+	_host_slot = PARTY_SLOT
 	Net.host_party(String(Settings.get_value("gameplay", "player_name")))
 	_set_screen(_ui("res://ui/lobby_screen.gd", [true]))
 
@@ -106,6 +132,63 @@ func open_lobby_host() -> void:
 func open_lobby_join() -> void:
 	state = State.LOBBY
 	_set_screen(_ui("res://ui/lobby_screen.gd", [false]))
+
+
+## The online server browser (public servers from the master list + LAN).
+func open_server_browser() -> void:
+	state = State.MENU
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_set_screen(_ui("res://ui/server_browser.gd"))
+	Audio.set_music("menu")
+
+
+## Host a public (or LAN-listed) server from the browser and go straight into
+## the world; others join while it runs. config: Net.server_config plus
+## "slot" (a save slot to run; -1 = a new world in ONLINE_SLOT).
+func host_public(config: Dictionary) -> bool:
+	var slot := int(config.get("slot", -1))
+	if slot < 0:
+		slot = ONLINE_SLOT
+		SaveSystem.delete(ONLINE_SLOT)
+	var cfg := config.duplicate()
+	cfg.erase("slot")
+	var code: PackedInt32Array = Net.host_party(String(Settings.get_value("gameplay", "player_name")), PackedInt32Array(), cfg)
+	if code.is_empty():
+		return false
+	_host_slot = slot
+	state = State.LOADING
+	start_campaign()
+	return true
+
+
+## Headless dedicated server:
+##   godot --headless --path . -- --dedicated [--run=<slot>|new] [--public] [--name=..]
+##     [--description=..] [--password=..] [--max-players=8] [--master=URL] [--upnp]
+## Hosts with a hidden spectator player and starts the campaign at once.
+func start_dedicated() -> void:
+	var run := _arg("--run", "")
+	var slot := ONLINE_SLOT
+	if run == "new":
+		SaveSystem.delete(ONLINE_SLOT)
+	elif run.is_valid_int():
+		slot = int(run)
+	var args := OS.get_cmdline_user_args()
+	var cfg := {"dedicated": true, "lan": true, "internet": "--public" in args, "upnp": "--upnp" in args,
+		"name": _arg("--name", "Burn dedicated server"), "description": _arg("--description", ""),
+		"password": _arg("--password", ""), "max_players": int(_arg("--max-players", "8")), "mode": "Campaign"}
+	var code := Net.host_party("Server", PackedInt32Array(), cfg)
+	if code.is_empty():
+		push_error("Dedicated server: could not open a game port.")
+		get_tree().quit(1)
+		return
+	Events.chat_message.connect(func(from: String, text: String, channel: String) -> void:
+		print("[chat:%s] %s%s" % [channel, (from + ": ") if from != "" else "", text]))
+	Net.server_list.registration_changed.connect(func(st: String, detail: String) -> void:
+		print("BURN_MASTER %s %s (verified=%s)" % [st, detail, str(Net.server_list.verified)]))
+	print("BURN_DEDICATED port=%d slot=%d public=%s" % [Net.enet_port, slot, str(cfg["internet"])])
+	_host_slot = slot
+	state = State.LOADING
+	start_campaign()
 
 
 # --- Saves ------------------------------------------------------------------------
@@ -129,7 +212,8 @@ func save_game() -> void:
 		return
 	var slot := int(session.get("slot", 0))
 	SaveSystem.write(slot, world.save_data())
-	if Net.is_online():
+	# A public server run from a solo save keeps that run's character there.
+	if Net.is_online() and slot == PARTY_SLOT:
 		_save_character()
 	Events.notify.emit("Game saved.", "info")
 
@@ -171,7 +255,7 @@ func start_solo(slot: int, new_game: bool) -> void:
 
 ## Host pressed "Begin campaign" in the lobby.
 func start_campaign() -> void:
-	var save := SaveSystem.read(PARTY_SLOT)
+	var save := SaveSystem.read(_host_slot)
 	var seed_value := int(save.get("seed", randi()))
 	# Clients loading with the host need the saved generation revision too,
 	# not just late joiners. Otherwise an old host world and new client differ.
@@ -194,7 +278,7 @@ func _on_session_started(info: Dictionary) -> void:
 	var host := Net.is_server()
 	var save := {}
 	if host:
-		save = SaveSystem.read(PARTY_SLOT)
+		save = SaveSystem.read(_host_slot)
 	else:
 		# Clients bring their own character; the world state comes from the host.
 		var character := _load_character()
@@ -210,7 +294,7 @@ func _on_session_started(info: Dictionary) -> void:
 		save["ryft_unlocked"] = js.get("ryft_unlocked", false)
 		save["time_of_day"] = js.get("time_of_day", 8.5)
 		save["day"] = js.get("day", 1)
-	_load_world({"seed": int(info.get("seed", 1)), "mode": "host" if host else "client", "slot": PARTY_SLOT, "save": save})
+	_load_world({"seed": int(info.get("seed", 1)), "mode": "host" if host else "client", "slot": _host_slot if host else PARTY_SLOT, "save": save})
 
 
 ## The host sends this to players who join a campaign already in progress.

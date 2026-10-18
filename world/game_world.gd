@@ -401,7 +401,7 @@ func entities_near(pos: Vector3, radius: float, dim: int, team := -1) -> Array[E
 func players_in(dim: int) -> Array[Player]:
 	var out: Array[Player] = []
 	for e: Entity in _entities.values():
-		if e is Player and (dim < 0 or e.dimension == dim):
+		if e is Player and (dim < 0 or e.dimension == dim) and not (Net.dedicated and e == local_player):
 			out.append(e)
 	return out
 
