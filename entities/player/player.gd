@@ -64,6 +64,32 @@ var _was_on_floor := true
 var _rustle := 0.0
 var _model_steps := false   # the model reports foot plants (footstep signal)
 
+# --- Swimming and (hidden) breath ----------------------------------------------------
+const SWIM_SPEED := 3.0
+const SWIM_SPRINT := 4.4
+const SWIM_VERTICAL := 2.6
+## Feet this far below the water surface float (chest-deep); treading keeps the eyes just above it.
+const SWIM_DEPTH := 1.2
+const TREAD_DEPTH := 1.42
+## Seconds the head can stay under before blacking out (never shown to the player).
+const BREATH_TIME := 36.0
+## The last seconds of air: vision closes in from the edges, blurs, sound muffles, the heart pounds.
+const BREATH_FADE := 12.0
+var swimming := false
+var head_under := false
+## Water surface height above the feet column (-INF when not in water).
+var water_surface := -INF
+var air := BREATH_TIME
+## 0..1: how close to blacking out (drives UnderwaterFx).
+var suffocation := 0.0
+## Audio muffling requested by the player (LocationTracker combines it with caves).
+var audio_muffle := 0.0
+var _drown_pending := false
+var _heartbeat := 0.0
+var _vault_cd := 0.0
+var _remote_swim := false
+var _water_fx: UnderwaterFx
+
 
 func _init() -> void:
 	kind = "player"
@@ -98,6 +124,9 @@ func _ready() -> void:
 		var vm := Viewmodel.new()
 		vm.player = self
 		camera.add_child(vm)
+		_water_fx = UnderwaterFx.new()
+		_water_fx.player = self
+		add_child(_water_fx)
 		var look := LookInspector.new()
 		look.player = self
 		add_child(look)
@@ -203,6 +232,8 @@ func _process(delta: float) -> void:
 		if bleed_left <= 0.0:
 			Events.notify.emit("You bled out and rise at your shrine.", "warn")
 			request_respawn(true)
+	_water_update(vw)
+	_breath_update(delta)
 	if not dead:
 		_move(delta, vw)
 		_combat_update(delta)
@@ -247,9 +278,14 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 		accel = 6.0
 		target_vel *= 0.6
 	var hv := Vector3(body.velocity.x, 0, body.velocity.z)
-	hv = hv.lerp(target_vel, 1.0 - exp(-accel * delta))
-	body.velocity.x = hv.x
-	body.velocity.z = hv.z
+	body.swimming = swimming
+	if swimming:
+		_swim(delta, input, sprint)
+		hv = Vector3(body.velocity.x, 0, body.velocity.z)
+	else:
+		hv = hv.lerp(target_vel, 1.0 - exp(-accel * delta))
+		body.velocity.x = hv.x
+		body.velocity.z = hv.z
 	# Jump buffering (a press just before landing still counts) and coyote time
 	# (a jump just after running off an edge still works); holding the key
 	# doesn't bunny-hop.
@@ -257,7 +293,9 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	_jump_buffer += delta
 	if _input_enabled and Input.is_action_just_pressed("jump"):
 		_jump_buffer = 0.0
-	if _input_enabled and _jump_buffer < 0.14 and (body.on_floor or _coyote < 0.12) and body.velocity.y <= 0.5 and body.in_liquid == 0:
+	if swimming:
+		pass  # swim() handles up/down
+	elif _input_enabled and _jump_buffer < 0.14 and (body.on_floor or _coyote < 0.12) and body.velocity.y <= 0.5 and body.in_liquid == 0:
 		_jump_buffer = 1.0
 		_coyote = 1.0
 		body.velocity.y = JUMP_VELOCITY
@@ -271,9 +309,10 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	if body.stepped > 0.0:
 		_visual_offset -= body.stepped
 	_visual_offset = lerpf(_visual_offset, 0.0, 1.0 - exp(-delta * 14.0))
-	# Fall damage (not while waiting for the world to stream in).
-	if not vw.is_area_loaded(global_position):
+	# Fall damage (not while waiting for the world to stream in, and deep water breaks any fall).
+	if not vw.is_area_loaded(global_position) or swimming:
 		_fall_speed = 0.0
+		_air_time = 0.0
 	elif not body.on_floor:
 		_air_time += delta
 		_fall_speed = minf(_fall_speed, falling)
@@ -310,6 +349,156 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 			var under := ground_block(vw)
 			if under == Blocks.GRASS or under == Blocks.DRY_GRASS:
 				Audio.play("rustle", global_position, -16.0 + minf(_move_speed, 7.0), randf_range(0.85, 1.15))
+
+
+# --- Swimming ------------------------------------------------------------------------
+
+## Height of the water surface over the body's column (top of the highest
+## connected water block, as the liquid mesher draws it), or -INF.
+static func water_surface_at(vw: VoxelWorld, feet: Vector3) -> float:
+	var y := floori(feet.y + 0.05)
+	var found := false
+	for i in 2:
+		if vw.get_block(Vector3i(floori(feet.x), y - i, floori(feet.z))) == Blocks.WATER:
+			found = true
+			y -= i
+			break
+	if not found:
+		var mid := vw.get_block(Vector3i(floori(feet.x), floori(feet.y + 1.0), floori(feet.z)))
+		if mid != Blocks.WATER:
+			return -INF
+		y = floori(feet.y + 1.0)
+	var top := y
+	while top < y + 24 and vw.get_block(Vector3i(floori(feet.x), top + 1, floori(feet.z))) == Blocks.WATER:
+		top += 1
+	# Covered water (a flooded tunnel) is full to its ceiling; open water's
+	# drawn surface sits a little below the block top.
+	var above := vw.get_block(Vector3i(floori(feet.x), top + 1, floori(feet.z)))
+	return float(top) + (0.88 if above == Blocks.AIR or above < 0 else 1.0)
+
+
+func _water_update(vw: VoxelWorld) -> void:
+	if vw == null:
+		return
+	water_surface = water_surface_at(vw, global_position)
+	var depth := water_surface - global_position.y if water_surface > -INF else 0.0
+	var was := swimming
+	if dead:
+		swimming = false
+	elif swimming:
+		swimming = depth > SWIM_DEPTH - 0.35  # hysteresis: wade out on the shallows
+	else:
+		swimming = depth > SWIM_DEPTH and not (body.on_floor and depth < SWIM_DEPTH + 0.25)
+	head_under = water_surface > -INF and global_position.y + 1.56 < water_surface
+	if swimming and not was:
+		var impact := -minf(body.velocity.y, _fall_speed)
+		Audio.play("splash_big" if impact > 9.0 else ("splash" if impact > 3.0 else "splash_small"), global_position + Vector3(0, 1.0, 0), -4.0 + minf(impact, 14.0) * 0.3)
+		body.velocity.y *= 0.35
+		if impact > 9.0 and camera != null:
+			camera.add_trauma(0.12)
+
+
+## Breaststroke where you look: forward follows the view (pitch included),
+## jump rises, dodge (Ctrl) dives; with no input the body floats up to tread
+## water with the eyes just above the surface.
+func _swim(delta: float, input: Vector2, sprint: bool) -> void:
+	var look := Basis(Vector3.UP, camera.yaw) * Basis(Vector3.RIGHT, camera.pitch)
+	var wish := look * Vector3(input.x, 0, input.y)
+	var speed := (SWIM_SPRINT if sprint else SWIM_SPEED) * armour_swim_factor()
+	var target := wish * speed
+	var up := 0.0
+	if _input_enabled and Input.is_action_pressed("jump"):
+		up += 1.0
+	if _input_enabled and Input.is_action_pressed("dodge"):
+		up -= 1.0
+	var tread_y := water_surface - TREAD_DEPTH
+	if up != 0.0:
+		target.y = clampf(target.y + up * SWIM_VERTICAL, -speed, speed)
+		if up > 0.0 and global_position.y > tread_y - 0.05:
+			target.y = minf(target.y, (tread_y + 0.15 - global_position.y) * 4.0 + 0.3)
+	elif absf(wish.y) < 0.25:
+		# Buoyancy: drift up, then hold at treading depth (bobbing gently).
+		var bob := sin(Time.get_ticks_msec() / 1000.0 * 1.7) * 0.04
+		target.y += clampf((tread_y + bob - global_position.y) * 2.2, -1.4, 0.9)
+	body.velocity = body.velocity.lerp(target, 1.0 - exp(-3.2 * delta))
+	# Out onto a ledge or shore: swimming into a bank at the surface hauls you up.
+	_vault_cd -= delta
+	if body.hit_wall and input.y < -0.3 and _vault_cd <= 0.0 and global_position.y > water_surface - 1.75:
+		_vault_cd = 0.6
+		body.velocity.y = 6.4
+		Audio.play("splash_small", global_position + Vector3(0, 1.2, 0), -6.0)
+
+
+## Heavy armour drags in the water (up to 30 % slower).
+func armour_swim_factor() -> float:
+	var total := 0.0
+	for slot: String in inventory.equipment:
+		var it: Dictionary = inventory.equipment[slot]
+		if not it.is_empty():
+			total += float(ItemDB.info(String(it.get("id", ""))).get("armor", 0.0))
+	return 1.0 - clampf(total / 150.0, 0.0, 0.3)
+
+
+## Seconds of air the body holds (water-breathing gear adds to it, if any exists).
+func breath_capacity() -> float:
+	var bonus := 0.0
+	for slot: String in inventory.equipment:
+		var it: Dictionary = inventory.equipment[slot]
+		if not it.is_empty():
+			bonus += float(ItemDB.info(String(it.get("id", ""))).get("water_breathing", 0.0))
+	return BREATH_TIME * (1.0 + bonus)
+
+
+## Hidden breath: nothing on the HUD. Running low only shows as the screen
+## closing in; surfacing recovers gradually.
+func _breath_update(delta: float) -> void:
+	var cap := breath_capacity()
+	if head_under and not dead and not creative:
+		air = maxf(0.0, air - delta)
+	else:
+		air = minf(cap, air + delta * 5.0)
+	var want := clampf(1.0 - air / BREATH_FADE, 0.0, 1.0)
+	if dead and not head_under:
+		want = 0.0
+	# Slow both ways: it creeps in, and lifts over a few breaths.
+	suffocation = move_toward(suffocation, want, delta * (0.25 if want > suffocation else 0.3))
+	audio_muffle = maxf(1.0 if head_under else 0.0, suffocation)
+	if suffocation > 0.25 and not dead:
+		_heartbeat -= delta
+		if _heartbeat <= 0.0:
+			_heartbeat = lerpf(1.1, 0.55, suffocation)
+			var vol := lerpf(-20.0, -6.0, suffocation)
+			Audio.play("land", global_position, vol, 0.42)
+			get_tree().create_timer(0.17).timeout.connect(func() -> void:
+				if is_instance_valid(self):
+					Audio.play("land", global_position, vol - 4.0, 0.38))
+	if air <= 0.0 and suffocation >= 0.999 and not dead and not _drown_pending:
+		_drown_pending = true
+		var w := world()
+		if w != null and w.replicator != null:
+			w.replicator.request_drown_outcome()
+		else:
+			on_drown_outcome(false)
+
+
+## The host decided: the sea keeps you (death, with the usual multiplayer
+## downed rules) or, rarely, gives you back on Ogygia.
+func on_drown_outcome(rescued: bool) -> void:
+	_drown_pending = false
+	if dead:
+		return
+	if rescued:
+		air = breath_capacity()
+		suffocation = 1.0  # wake from the dark
+		Ogygia.arrive(world())
+	else:
+		_die("Drowned in the dark water.")
+
+
+func reset_breath() -> void:
+	air = breath_capacity()
+	suffocation = 0.0
+	_drown_pending = false
 
 
 func _on_model_footstep(strength: float) -> void:
@@ -888,6 +1077,7 @@ func request_respawn(force := false) -> void:
 		world().travel(respawn_dimension)
 	global_position = respawn_point if respawn_point != Vector3.ZERO else world().default_spawn(dimension)
 	body.velocity = Vector3.ZERO
+	reset_breath()
 	invulnerable_until = Time.get_ticks_msec() / 1000.0 + 3.0
 	_model_call("set_dead", [false])
 	_action = ""
@@ -903,6 +1093,7 @@ func revive(helper_name: String) -> void:
 	downed = false
 	dead = false
 	health = max_health * 0.35
+	reset_breath()
 	invulnerable_until = Time.get_ticks_msec() / 1000.0 + 2.0
 	_model_call("set_dead", [false])
 	_action = ""
@@ -993,7 +1184,9 @@ func _animate(_delta: float) -> void:
 	if "move_speed" in model:
 		model.set("move_speed", _move_speed)
 	if "grounded" in model:
-		model.set("grounded", body.on_floor)
+		model.set("grounded", body.on_floor if is_local else not _remote_swim)
+	if "swimming" in model:
+		model.set("swimming", swimming if is_local else _remote_swim)
 	if "velocity" in model:
 		model.set("velocity", body.velocity if is_local else _remote_velocity)
 	if "sprinting" in model:
@@ -1027,6 +1220,7 @@ func apply_remote_state(state: Array, time: float) -> void:
 		_model_call("set_dead", [dead])
 	display_name = String(state[9])
 	offhand_light = bool(state[10])
+	_remote_swim = state.size() > 11 and bool(state[11])
 
 
 func _process_remote(delta: float) -> void:

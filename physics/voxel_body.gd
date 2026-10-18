@@ -23,6 +23,7 @@ var climb_step := MAX_STEP
 var can_step := true       ## walk up one-block ledges without jumping
 var max_fall_speed := 40.0
 var fly := false           ## flying creatures ignore gravity
+var swimming := false      ## the owner steers in water itself (no gravity or water drag)
 var collides := true
 ## Set when the body stepped up this frame; owners can smooth the visual.
 var stepped := 0.0
@@ -43,10 +44,10 @@ func step(owner: Node3D, world: VoxelWorld, delta: float) -> void:
 		var mid := world.get_block(Vector3i((pos + Vector3(0, half_extents.y, 0)).floor()))
 		if mid > 0 and Blocks.is_liquid(mid):
 			in_liquid = mid
-	if not fly:
+	if not fly and not swimming:
 		var g := gravity * (0.25 if in_liquid != 0 else 1.0)
 		velocity.y = maxf(velocity.y - g * delta, -max_fall_speed * (0.2 if in_liquid != 0 else 1.0))
-	if in_liquid != 0:
+	if in_liquid != 0 and not swimming:
 		velocity.x *= 1.0 - minf(1.0, delta * 3.0)
 		velocity.z *= 1.0 - minf(1.0, delta * 3.0)
 	if world == null or not collides:

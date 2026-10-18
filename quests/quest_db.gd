@@ -158,10 +158,30 @@ static func side_quests_for(village: String) -> Array[Dictionary]:
 	return out
 
 
+## Journal entries recorded (already complete) when something rare happens.
+const LORE := [
+	{
+		"id": "lore_ogygia", "title": "Ogygia", "giver": "",
+		"description": "The sea took you, and then, against all custom, gave you back. You woke on Ogygia, the island of the nymph Calypso, far from every chart: violets and wild parsley, cypress and poplar, a spring, and a grotto where her fire never goes out. She mended your sail. The gods do not do this twice for anyone lightly.",
+		"objectives": [{"type": "dimension", "key": "3", "count": 1, "text": "Wake on Calypso's island"}],
+		"rewards": {},
+	},
+	{
+		"id": "lore_calypso_gift", "title": "Calypso's Gift", "giver": "",
+		"description": "Before you left her island, Calypso pressed a phoenix draught into your hands: for the next time the dark comes.",
+		"objectives": [{"type": "talk", "key": "calypso", "count": 1, "text": "Accept Calypso's gift"}],
+		"rewards": {},
+	},
+]
+
+
 static func any(id: String) -> Dictionary:
 	var q := main_quest(id)
 	if not q.is_empty():
 		return q
+	for l: Dictionary in LORE:
+		if l["id"] == id:
+			return l
 	for v: String in VILLAGES:
 		for s in side_quests_for(v):
 			if s["id"] == id:

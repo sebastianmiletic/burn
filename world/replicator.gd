@@ -90,7 +90,7 @@ func _send_local_state() -> void:
 		return
 	var p := gw().local_player
 	var state := [p.dimension, p.global_position, p.yaw, p.anim, p.anim_time, p.held_item(), p.health, p.max_health,
-			(2 if p.downed else 1) if p.dead else 0, p.display_name, p.offhand_light]
+			(2 if p.downed else 1) if p.dead else 0, p.display_name, p.offhand_light, p.swimming]
 	if Net.is_server():
 		_relay_player_state(multiplayer.get_unique_id(), state)
 	else:
@@ -109,14 +109,14 @@ func _player_state(state: Array) -> void:
 
 
 static func valid_player_state(state: Array) -> bool:
-	if state.size() != 11 or not state[0] is int or not state[1] is Vector3:
+	if (state.size() != 11 and state.size() != 12) or not state[0] is int or not state[1] is Vector3:
 		return false
 	if not (state[1] as Vector3).is_finite() or (state[1] as Vector3).length() > 20000:
 		return false
 	for index in [2, 3, 4, 6, 7, 8]:
 		if not (state[index] is float or state[index] is int) or not is_finite(float(state[index])):
 			return false
-	return state[5] is String and state[9] is String and state[10] is bool and String(state[9]).length() <= 64 and float(state[7]) > 0 and float(state[7]) <= 10000 and float(state[6]) >= 0 and float(state[6]) <= float(state[7])
+	return state[5] is String and state[9] is String and state[10] is bool and (state.size() == 11 or state[11] is bool) and String(state[9]).length() <= 64 and float(state[7]) > 0 and float(state[7]) <= 10000 and float(state[6]) >= 0 and float(state[6]) <= float(state[7])
 
 func _relay_player_state(peer: int, state: Array) -> void:
 	_peer_dim[peer] = int(state[0])
@@ -616,6 +616,8 @@ func _resolve_dig(peer: int, point: Vector3, radius: float, seconds: float, item
 	if now - float(_dig_at.get(peer, -100.0)) < 0.32:
 		return
 	_dig_at[peer] = now
+	if dim == Ogygia.DIM:
+		return  # Calypso's island does not yield to the pick.
 	var vw := w.world_for(dim)
 	var allowed_radius := 0.8 + int(info.get("mine_tier", 1)) * 0.06
 	var plan := vw.plan_dig(point, clampf(radius, 0.3, allowed_radius), clampf(seconds, 0.0, Player.STRIKE_TIME), item_id)
@@ -629,6 +631,46 @@ func _resolve_dig(peer: int, point: Vector3, radius: float, seconds: float, item
 		if drop != "":
 			w.drop_item(point, drop, int(removed[b]), dim)
 		w.replicator.notify_mined(peer, b, int(removed[b]))
+
+
+## Drowning: the host rolls whether the sea gives this player back (Ogygia).
+var drown_rng := RandomNumberGenerator.new()
+## Tests and captures: -1 rolls, 0 always drowns, 1 always rescues.
+var force_drown_outcome := -1
+
+
+func request_drown_outcome() -> void:
+	if Net.is_server():
+		_resolve_drown(multiplayer.get_unique_id())
+	else:
+		_request_drown.rpc_id(1)
+
+
+@rpc("any_peer", "reliable")
+func _request_drown() -> void:
+	if multiplayer.is_server():
+		_resolve_drown(multiplayer.get_remote_sender_id())
+
+
+func _resolve_drown(peer: int) -> void:
+	var w := gw()
+	var p := w.entity(player_net_id(peer)) as Player
+	if p == null or p.dead:
+		return
+	var rescued := Ogygia.rolls_rescue(drown_rng) if force_drown_outcome < 0 else force_drown_outcome == 1
+	if rescued:
+		Ogygia.ensure_residents(w)
+	if peer == multiplayer.get_unique_id():
+		_drown_outcome(rescued)
+	else:
+		_drown_outcome.rpc_id(peer, rescued)
+
+
+@rpc("authority", "reliable")
+func _drown_outcome(rescued: bool) -> void:
+	var p := gw().local_player
+	if p != null:
+		p.on_drown_outcome(rescued)
 
 
 ## Building up the ground with dirt, stone, sand...
@@ -648,7 +690,7 @@ func _request_fill(point: Vector3, radius: float, block: int, dim: int) -> void:
 func _resolve_fill(peer: int, point: Vector3, radius: float, block: int, dim: int) -> void:
 	var w := gw()
 	var p := w.entity(player_net_id(peer)) as Player
-	if p == null or p.dead or p.dimension != dim or block <= 0 or block >= Blocks.COUNT or not point.is_finite() or not is_finite(radius) or not Blocks.is_smooth(block):
+	if p == null or p.dead or p.dimension != dim or dim == Ogygia.DIM or block <= 0 or block >= Blocks.COUNT or not point.is_finite() or not is_finite(radius) or not Blocks.is_smooth(block):
 		return
 	if point.distance_to(p.global_position + Vector3(0, 1.4, 0)) > MAX_REACH:
 		return
