@@ -25,7 +25,7 @@ const HIPS := 6
 const NECK_LEN := 3.4
 const NECK_BONES := 6
 ## Fraction of an action at which the blow lands (the boss times telegraphs to these).
-const IMPACT := {"bite": 0.5, "lunge": 0.45, "slam": 0.55, "pounce": 0.78}
+const IMPACT := {"bite": 0.5, "lunge": 0.45, "slam": 0.55, "pounce": 0.78, "rake": 0.5, "kick": 0.5, "combo": 0.82}
 ## Breath: fire from BREATH_ON to BREATH_OFF of the action.
 const BREATH_ON := 0.28
 const BREATH_OFF := 0.88
@@ -70,6 +70,9 @@ var _pitch_h := [0.0, 0.0, 0.0]
 var _throat := [0.3, 0.3, 0.3]
 var _rage := 0.0
 var _prev_root := Vector3.INF
+## Heading change measured from the model itself (turning steps on clients too).
+var _prev_yaw := NAN
+var _yaw_rate := 0.0
 var _vel := Vector3.ZERO
 var _last_ground := 0.0
 var _impact_done := false
@@ -88,6 +91,12 @@ func _init() -> void:
 	durations["lunge"] = 1.0
 	durations["slam"] = 1.6
 	durations["summon"] = 2.0
+	durations["rake"] = 1.1
+	durations["kick"] = 1.1
+	durations["charge"] = 2.2
+	durations["spit"] = 1.6
+	durations["combo"] = 2.0
+	durations["phase"] = 2.2
 
 
 func _ember_extents() -> Vector3:
@@ -371,6 +380,10 @@ func _animate(delta: float) -> void:
 		_prev_root = root.origin
 	_vel = _vel.lerp((root.origin - _prev_root) / maxf(delta, 0.001), 1.0 - exp(-6.0 * delta))
 	_prev_root = root.origin
+	var yaw_now := atan2(-fwd.x, -fwd.z)
+	if not is_nan(_prev_yaw):
+		_yaw_rate = lerpf(_yaw_rate, angle_difference(_prev_yaw, yaw_now) / maxf(delta, 0.001), 1.0 - exp(-6.0 * delta))
+	_prev_yaw = yaw_now
 	var p := action_progress()
 	var w := action_weight(0.1, 0.2)
 	var act := _action if p >= 0.0 else ""
@@ -379,7 +392,7 @@ func _animate(delta: float) -> void:
 		_last_ground = root.origin.y
 	var speed := Vector2(_vel.x, _vel.z).length()
 	_walk = damp(_walk, clampf(maxf(speed, move_speed) / 5.0, 0.0, 1.0), 5.0, delta)
-	var rate := maxf(speed, move_speed) / 4.2 + absf(turn_rate) * 0.3
+	var rate := maxf(speed, move_speed) / 4.2 + maxf(absf(turn_rate), absf(_yaw_rate)) * 0.3
 	_gait += delta * clampf(rate, 0.0, 2.2)
 	_rage = damp(_rage, rage, 1.0, delta)
 	var breathe := sin(_time * 1.6)
@@ -488,6 +501,84 @@ func _animate(delta: float) -> void:
 				jaw_t[k] = lerpf(0.35 * wind, 0.85, fire)
 				throat_t[k] = 0.5 + 2.8 * maxf(wind, fire)
 				breath_t[k] = p > BREATH_ON and p < BREATH_OFF
+		"rake":
+			# Right forepaw raised, then swept across the front.
+			var up := keys(p, [[0, 0], [0.35, 1.0], [0.5, 0.3], [1, 0]])
+			var sweep := keys(p, [[0, 0], [0.4, 0.0], [0.55, 1.0], [0.8, 1.0], [1, 0]])
+			t_roll = 0.12 * up - 0.1 * sweep
+			t_rear = 0.15 * up
+			t_lunge = 0.6 * sweep
+			for k in 3:
+				head_t[k] = head_t[k] + Vector3(-0.8, 0.4, 0.4) * up + Vector3(1.0, -0.6, -0.6) * sweep
+				jaw_t[k] = 0.3 + 0.6 * maxf(up, sweep)
+			if p > IMPACT["rake"] and not _impact_done:
+				_impact_done = true
+				_fx("ash_cloud", Vector3(-1.5, 0, -6.5), 1.0)
+				_quake(root * Vector3(0, 0, -6.0), 0.25)
+		"kick":
+			# Hind legs buck out behind; the heads drop.
+			var coil := keys(p, [[0, 0], [0.35, 1.0], [0.48, 0.0], [1, 0]])
+			var buck := keys(p, [[0, 0], [0.42, 0.0], [0.52, 1.0], [0.75, 0.7], [1, 0]])
+			t_pitch = 0.12 * coil - 0.32 * buck
+			t_crouch = 0.4 * coil
+			for k in 3:
+				head_t[k] = head_t[k] + Vector3(0, -1.4, -0.6) * buck
+				pitch_t[k] -= 0.3 * buck
+				jaw_t[k] = 0.3 + 0.5 * buck
+			if p > IMPACT["kick"] and not _impact_done:
+				_impact_done = true
+				_fx("ash_cloud", Vector3(0, 0, 7.0), 1.3)
+				_quake(root * Vector3(0, 0, 6.0), 0.3)
+		"charge":
+			# Wind-up crouch, then a headlong gallop with the heads low.
+			var wind := keys(p, [[0, 0], [0.3, 1.0], [0.45, 0.0], [1, 0]])
+			var run := keys(p, [[0, 0], [0.4, 0.0], [0.5, 1.0], [0.85, 1.0], [1, 0]])
+			t_crouch = 0.9 * wind + 0.3 * run
+			t_pitch = -0.1 * run
+			t_lunge = 0.8 * run
+			_gait += delta * 2.2 * run
+			for k in 3:
+				head_t[k] = head_t[k].lerp(Vector3((k - 1) * 1.7, 2.6, -8.5), run) + Vector3(0, -0.8, 0.6) * wind
+				jaw_t[k] = 0.4 + 0.6 * run
+				pitch_t[k] = lerpf(pitch_t[k], -0.5, run)
+				throat_t[k] = 0.5 + run
+		"spit":
+			# Each head in turn rears back and spits a gout of fire.
+			for k in 3:
+				var off := [0.0, 0.25, 0.5][k] as float
+				var lp := clampf((p - off) / 0.4, 0.0, 1.0)
+				var back := keys(lp, [[0, 0], [0.5, 1.0], [0.65, 0.0], [1, 0]])
+				var spit := keys(lp, [[0, 0], [0.55, 0.0], [0.7, 1.0], [1, 0]])
+				head_t[k] = head_t[k] + Vector3(0, 0.9, 1.3) * back + Vector3(0, -0.4, -1.4) * spit
+				pitch_t[k] += 0.5 * back - 0.3 * spit
+				jaw_t[k] = maxf(0.3 * back, 1.0 * spit)
+				throat_t[k] = 0.5 + 2.5 * maxf(back, spit)
+		"combo":
+			# The heads strike one after another: left, centre, right.
+			for k in 3:
+				var off := [0.0, 0.3, 0.6][k] as float
+				var lp := clampf((p - off) / 0.4, 0.0, 1.0)
+				var wind := keys(lp, [[0, 0], [0.45, 1.0], [0.55, 0.0], [1, 0]])
+				var strike := keys(lp, [[0, 0], [0.5, 0.0], [0.6, 1.0], [0.8, 1.0], [1, 0]])
+				var tgt := Vector3((k - 1) * 3.8, 1.9, -8.6)
+				head_t[k] = (head_t[k] + Vector3(0, 0.9, 1.3) * wind).lerp(tgt, strike)
+				jaw_t[k] = keys(lp, [[0, 0.1], [0.5, 1.0], [0.62, 0.0], [1, 0.1]])
+				pitch_t[k] = lerpf(pitch_t[k], -0.55, strike) + 0.25 * wind
+			t_lunge = 0.6 * w
+			t_roll = 0.06 * sin(p * TAU)
+		"phase":
+			# Rears onto its hind legs, all three heads howling, the cracks blazing.
+			t_rear = 0.5 * w
+			t_crouch = -0.1 * w
+			for k in 3:
+				head_t[k] = head_t[k] + Vector3((k - 1) * 0.9, 2.2, 1.2) * w
+				pitch_t[k] = lerpf(pitch_t[k], 1.0, w)
+				jaw_t[k] = lerpf(jaw_t[k], 0.95 + sin(_time * 30.0 + k) * 0.05, w)
+				throat_t[k] = 0.4 + 2.4 * w
+			if p > 0.3 and not _impact_done:
+				_impact_done = true
+				_fx("embers", Vector3(0, 0.5, -2.0), 3.0)
+				_quake(root.origin, 0.5)
 		"hit":
 			var s := sin(PI * p)
 			t_roll = 0.08 * s
@@ -718,6 +809,18 @@ func _pose_legs(_delta: float, root: Transform3D, basis: Basis, chest_w: Vector3
 			var struck := root * Vector3(side * 1.4, 0.0, -3.8)
 			struck.y = ground
 			foot_w = foot_w.lerp(struck, keys(p, [[0, 0], [0.5, 0.0], [0.56, 1.0], [0.85, 1.0], [1, 0]])).lerp(raised, up)
+		# Rake: the right forepaw lifts and sweeps from right to left.
+		if front and act == "rake" and side > 0.0:
+			var up := keys(p, [[0, 0], [0.35, 1.0], [0.55, 0.6], [0.8, 0.2], [1, 0]])
+			var sweep := keys(p, [[0, 0], [0.4, 0.0], [0.55, 1.0], [1, 1.0]])
+			var paw := root * Vector3(lerpf(2.6, -2.2, sweep), 0.4 + 2.6 * up, -5.2 - 1.2 * up)
+			paw.y = maxf(paw.y, ground)
+			foot_w = foot_w.lerp(paw, keys(p, [[0, 0], [0.2, 1.0], [0.85, 1.0], [1, 0]]))
+		# Kick: both hind legs thrown out behind.
+		if not front and act == "kick":
+			var buck := keys(p, [[0, 0], [0.42, 0.0], [0.52, 1.0], [0.75, 0.7], [1, 0]])
+			var out := root * Vector3(side * 1.3, 2.2, rest.z + 3.4)
+			foot_w = foot_w.lerp(out, buck)
 		if act == "pounce" and _stretch > 0.01:
 			var reach := (chest_w if front else pelvis_w) + basis * (body_rot * (Vector3(side * 1.2, -2.6, -3.0) if front else Vector3(side * 1.2, -2.4, 3.2)))
 			foot_w = foot_w.lerp(reach, _stretch)
