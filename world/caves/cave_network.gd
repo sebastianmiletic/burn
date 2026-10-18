@@ -11,9 +11,9 @@ extends RefCounted
 ## WorldGen evaluates them per chunk on worker threads with carve_chunk(), which only
 ## visits the voxels inside each carver's bounding box. Read-only after plan().
 
-enum Type { WORM, DRIFT, ROOM, FUNNEL, BLOB }
+enum Type { WORM, DRIFT, ROOM, FUNNEL, BLOB, SLOT }
 
-const STRIDE := 16
+const STRIDE := 17
 const F_TYPE := 0
 const F_AX := 1
 const F_AY := 2
@@ -30,6 +30,8 @@ const F_ORE_CHANCE := 12
 const F_LUMP := 13
 const F_FLOOR := 14
 const F_EXTRA := 15
+## Revision 5: a CaveBiomes.Kind whose rock lines the carver (0 = the ordinary shell).
+const F_SCHEME := 16
 const NO_WATER := -100000.0
 ## Voxels this far outside a carver still record it (ore shells, floors, flood guards).
 const SHELL := 2.5
@@ -106,6 +108,20 @@ func add_funnel(center_xz: Vector2, top_y: float, top_r: float, depth: float, bo
 func add_blob(center: Vector3, radii: Vector3, lump := 1.0, water := NO_WATER, fill := Blocks.WATER) -> int:
 	var r := radii + Vector3.ONE * (lump + SHELL)
 	return _add([Type.BLOB, center.x, center.y, center.z, radii.x, radii.y, radii.z, 0, 0, water, fill, 0, 0, lump, 0, 0], AABB(center - r, r * 2.0))
+
+
+## A fissure (revision 5): a tall, narrow slot along a -> b (floor heights), `half_width` at
+## its widest, pinching shut `height` above the floor; rough walls.
+func add_slot(a: Vector3, b: Vector3, half_width: float, height: float, lump := 1.0) -> int:
+	var r := half_width + lump + SHELL + 1.0
+	var lo := Vector3(minf(a.x, b.x) - r, minf(a.y, b.y) - SHELL - 1.0, minf(a.z, b.z) - r)
+	var hi := Vector3(maxf(a.x, b.x) + r, maxf(a.y, b.y) + height + SHELL, maxf(a.z, b.z) + r)
+	return _add([Type.SLOT, a.x, a.y, a.z, b.x, b.y, b.z, half_width, height, NO_WATER, 0, 0, 0, lump, 0, 0], AABB(lo, hi - lo))
+
+
+## Lines carver `i` with the rock of a cave biome (CaveBiomes.Kind, see UndergroundPlan.shell_block).
+func set_scheme(i: int, kind: int) -> void:
+	_data[i * STRIDE + F_SCHEME] = kind
 
 
 ## Adds every carver of another network (mine workings planned with their location).
@@ -283,6 +299,35 @@ func carve_chunk(o: Vector3i, ids: PackedInt32Array, lump: PackedByteArray, sdf:
 							if d < sdf[vi]:
 								sdf[vi] = d
 								owner[vi] = i
+			Type.SLOT:
+				var dir := Vector2(bb.x - a.x, bb.z - a.z)
+				var length := maxf(dir.length(), 0.001)
+				dir /= length
+				for y in range(y0, y1 + 1):
+					var py := float(o.y + y) + 0.5
+					for z in range(z0, z1 + 1):
+						var rz := float(o.z + z) + 0.5 - a.z
+						for x in range(x0, x1 + 1):
+							var rx := float(o.x + x) + 0.5 - a.x
+							var d := _slot(rx, rz, py, dir, length, a.y, bb.y, r0, r1)
+							if not lump.is_empty():
+								d += (float(lump[x + y * 16 + z * 256]) - 127.5) * lump_amp
+							var vi := x + z * 16 + y * 256
+							if d < sdf[vi]:
+								sdf[vi] = d
+								owner[vi] = i
+
+
+## Fissure distance (approximate): lens-shaped cross-section, flat floor, rounded ends.
+static func _slot(rx: float, rz: float, py: float, dir: Vector2, length: float, ya: float, yb: float, hw: float, height: float) -> float:
+	var along := rx * dir.x + rz * dir.y
+	var lat := absf(rx * dir.y - rz * dir.x)
+	var t := clampf(along / length, 0.0, 1.0)
+	var v := py - lerpf(ya, yb, t)
+	var f := (v - 0.35 * height) / (0.65 * height)
+	var w := hw * sqrt(maxf(0.0, 1.0 - f * f)) * (0.55 + 0.45 * sin(t * PI))
+	var d := maxf(lat - w, -v)
+	return maxf(d, maxf(-along - hw, along - length - hw))
 
 
 ## Single-point signed distance (no wall noise).
@@ -331,6 +376,10 @@ func _sdf(i: int, p: Vector3, _noise: float) -> float:
 			var radii := Vector3(bb.x, bb.y, bb.z)
 			var q := (p - a) / radii
 			return maxf((q.length() - 1.0) * minf(radii.x, minf(radii.y, radii.z)), -(q.y + 0.6) * radii.y)
+		Type.SLOT:
+			var dir := Vector2(bb.x - a.x, bb.z - a.z)
+			var length := maxf(dir.length(), 0.001)
+			return _slot(p.x - a.x, p.z - a.z, p.y, dir / length, length, a.y, bb.y, r0, r1)
 	return INF
 
 

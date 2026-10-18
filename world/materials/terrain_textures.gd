@@ -79,6 +79,12 @@ static func _table() -> Dictionary:
 	t[Blocks.ALPINE_ROCK] = [L.CLIFF, L.CLIFF, 0.1, 1.0, Color(0.78, 0.82, 0.9), ASCII_SOLID]
 	t[Blocks.CORAL_ROCK] = [L.LIMESTONE, L.SANDSTONE, 0.32, 0.9, Color(1.12, 0.92, 0.86), ASCII_SOLID]
 	t[Blocks.SILT] = [L.MUD, L.SAND, 0.28, 0.8, Color(0.82, 0.9, 0.82), ASCII_GROUND]
+	# World revision 5: cave biome rock and moss.
+	t[Blocks.CAVE_MOSS] = [L.MOSSY, L.MOSSY_WALL, 0.32, 0.9, Color(0.78, 1.0, 0.62), ASCII_GROUND]
+	t[Blocks.OCHRE_ROCK] = [L.RED_CLIFF, L.SANDSTONE, 0.12, 1.0, Color(1.3, 1.0, 0.52), ASCII_SOLID]
+	t[Blocks.RUST_ROCK] = [L.RED_CLIFF, L.RED_CLIFF, 0.13, 0.95, Color(0.95, 0.48, 0.32), ASCII_SOLID, Color(0.55, 0.16, 0.06), 0.18, Color(0, 0, 0), 0.2]
+	t[Blocks.TEAL_ROCK] = [L.CLIFF, L.CLIFF, 0.12, 0.85, Color(0.42, 0.82, 0.78), ASCII_SOLID, Color(0.2, 0.75, 0.62), 0.22, Color(0.0, 0.05, 0.04), 0.1]
+	t[Blocks.VIOLET_ROCK] = [L.BASALT_ROCK, L.DARK, 0.14, 0.8, Color(1.05, 0.72, 1.35), ASCII_SOLID, Color(0.62, 0.3, 0.9), 0.16, Color(0.06, 0.02, 0.1), 0.0]
 	t[SmoothMesher.CODE_FOREST_FLOOR] = [L.FOREST, L.DIRT, 0.3, 1.0, Color(1.0, 0.93, 0.85), ASCII_GROUND]
 	t[SmoothMesher.CODE_HELL_ASH] = [L.ASH, L.DARK, 0.25, 1.0, Color(0.75, 0.55, 0.5), ASCII_GROUND]
 	t[SmoothMesher.CODE_PEAK_GRASS] = [L.LUSH, L.ROCK, 0.28, 1.0, Color(0.78, 0.82, 0.72), ASCII_GROUND]

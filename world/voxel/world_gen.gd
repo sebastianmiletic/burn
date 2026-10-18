@@ -37,7 +37,7 @@ const FOREST_COLORS := [Color(0.42, 0.36, 0.18), Color(0.22, 0.36, 0.31), Color(
 
 ## New worlds use the latest revision; saves keep the revision they were made with.
 ## Revision 4 adds the ocean biomes, sea structures and the ocean bosses' lairs (new worlds only).
-const LATEST_REVISION := 4
+const LATEST_REVISION := 5
 const SEA_LEVEL := 12
 const LAVA_LEVEL := 0  ## hell
 const COARSE := 4      ## metres per coarse map cell
@@ -248,6 +248,11 @@ func prepare(progress: Callable = Callable(), timing := false) -> void:
 		for loc in locations:
 			if loc.has_meta(&"carvers"):
 				caves.merge(loc.get_meta(&"carvers") as CaveNetwork)
+		CaveBiomes.revision = revision
+		CaveBiomes.zones = []
+		CaveBiomes.special_cells = {}
+		if revision >= 5:
+			UndergroundPlan.plan(self)  # varied caves, the Everbloom cavern, Hearthold (world/underground)
 		caves.build_index()
 		var boxes: Array[AABB] = []
 		for loc in locations:
@@ -1231,6 +1236,10 @@ func cave_name_at(pos: Vector3) -> String:
 	if revision < 2 or pos.y >= -8.0:
 		var depth := ground_level(pos.x, pos.z) - pos.y
 		return "Shallow Caves" if depth < 25.0 else "Caverns"
+	if revision >= 5:
+		var zone := CaveBiomes.zone_at(pos)
+		if not zone.is_empty():
+			return String(zone[2])
 	var kind := CaveBiomes.kind_at(pos, world_seed, revision)
 	if kind != CaveBiomes.Kind.KARST:
 		return CaveBiomes.NAMES[kind]
@@ -1990,7 +1999,7 @@ func _generate_overworld_v3(key: Vector3i) -> Array:
 	var chamber := CaveBiomes.region(Vector3(o) + Vector3(8, 8, 8), world_seed, revision)
 	var kind := int(chamber["kind"])
 	var cc: Vector3 = chamber["center"]
-	var cr := CaveBiomes.RADII
+	var cr := CaveBiomes.radii_of(chamber)
 	var has_chamber := o.y < -8 and absf(o.x + 8 - cc.x) < cr.x * 1.25 + 8 and absf(o.y + 8 - cc.y) < cr.y * 1.25 + 8 and absf(o.z + 8 - cc.z) < cr.z * 1.25 + 8
 	var pool := CaveBiomes.pool_level(chamber)
 	var pool_block := Blocks.LAVA if kind == CaveBiomes.Kind.MAGMA else Blocks.WATER
@@ -2116,6 +2125,9 @@ static func q_floor(chamber_distance: float, wy: int, cc: Vector3, cr: Vector3) 
 
 ## Material next to a carved feature: ore seams in mine stopes, gravel mine floors.
 func _carver_shell(cid: int, csd: float, b: int, x: int, y: int, z: int, o2: int) -> int:
+	var scheme := int(caves.field(cid, CaveNetwork.F_SCHEME))
+	if scheme > 0:
+		return UndergroundPlan.shell_block(caves, cid, scheme, b, x, y, z, world_seed)
 	var floor_block := int(caves.field(cid, CaveNetwork.F_FLOOR))
 	if floor_block > 0 and csd < 1.3:
 		var t := int(caves.field(cid, CaveNetwork.F_TYPE))

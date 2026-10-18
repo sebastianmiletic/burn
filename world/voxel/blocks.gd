@@ -97,7 +97,18 @@ const ALPINE_ROCK := 74
 const CORAL_ROCK := 75
 ## Soft grey-green sea-bed silt (seagrass meadows, the deep).
 const SILT := 76
-const COUNT := 77
+# World revision 5: the underground (cave biomes, the Everbloom, Hearthold).
+## Springy green moss carpeting lush caves.
+const CAVE_MOSS := 77
+## Yellow-brown iron-stained rock of the ochre caverns.
+const OCHRE_ROCK := 78
+## Deep rust-red rock banded through the ochre caverns.
+const RUST_ROCK := 79
+## Copper-stained blue-green rock of the verdigris grottos.
+const TEAL_ROCK := 80
+## Dusky purple rock around the amethyst deeps.
+const VIOLET_ROCK := 81
+const COUNT := 82
 
 ## Block shape families used by the mesher.
 enum Shape { CUBE, NONE, SMALL }
@@ -183,6 +194,11 @@ const DATA := [
 	["Mountain rock", Color(0.52, 0.53, 0.55), AsciiMaterialId.SOLID, 1.5, 1, "stone", 0.0, true, true, false, Shape.CUBE],
 	["Coral rock", Color(0.86, 0.74, 0.66), AsciiMaterialId.SOLID, 0.9, 1, "limestone", 0.0, true, true, false, Shape.CUBE],
 	["Silt", Color(0.36, 0.38, 0.33), AsciiMaterialId.GROUND, 0.4, 0, "clay", 0.0, true, true, false, Shape.CUBE],
+	["Cave moss", Color(0.24, 0.36, 0.14), AsciiMaterialId.GROUND, 0.45, 0, "dirt", 0.0, true, true, false, Shape.CUBE],
+	["Ochre rock", Color(0.7, 0.5, 0.22), AsciiMaterialId.SOLID, 1.0, 1, "stone", 0.0, true, true, false, Shape.CUBE],
+	["Rust rock", Color(0.5, 0.22, 0.13), AsciiMaterialId.SOLID, 1.1, 1, "stone", 0.0, true, true, false, Shape.CUBE],
+	["Verdigris rock", Color(0.22, 0.46, 0.42), AsciiMaterialId.SOLID, 1.2, 1, "stone", 0.0, true, true, false, Shape.CUBE],
+	["Violet rock", Color(0.34, 0.24, 0.42), AsciiMaterialId.SOLID, 1.3, 1, "stone", 0.0, true, true, false, Shape.CUBE],
 ]
 
 ## Blocks drawn as the smooth terrain surface.
@@ -191,7 +207,7 @@ const SMOOTH_BLOCKS := [STONE, DIRT, GRASS, SAND, SNOW, ICE, GRAVEL, COAL_ORE, I
 		GRANITE, SANDSTONE, MARBLE, SLATE, CLAY, LIMESTONE, COPPER_ORE, TIN_ORE, SILVER_ORE, MITHRIL_ORE,
 		ADAMANTITE_ORE, RUBY_ORE, SAPPHIRE_ORE, AMETHYST, THATCH,
 		RED_ROCK, RED_SAND, SCORIA, PERMAFROST, UMBER_ROCK, FLOWSTONE, GEYSERITE, MYCELIUM, MAGMA_ROCK, SCREE, ALPINE_ROCK,
-		CORAL_ROCK, SILT]
+		CORAL_ROCK, SILT, CAVE_MOSS, OCHRE_ROCK, RUST_ROCK, TEAL_ROCK, VIOLET_ROCK]
 
 static var _solid := PackedByteArray()
 static var _opaque := PackedByteArray()
