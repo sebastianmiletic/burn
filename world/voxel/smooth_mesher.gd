@@ -169,6 +169,9 @@ static func build(neighbours: Array, densities: Array, surface: PackedInt32Array
 	var f_norms := PackedVector3Array()
 	var f_blocks := PackedByteArray()
 	var f_sky := PackedFloat32Array()
+	var f_wet := PackedByteArray()
+	var liquid := Blocks.family_table()
+	var liquid_fam := Blocks.Family.LIQUID
 	var quad := PackedInt32Array()
 	quad.resize(4)
 	for sy in 16:
@@ -258,6 +261,9 @@ static func build(neighbours: Array, densities: Array, surface: PackedInt32Array
 							f_norms.append(face_n)
 							f_blocks.append(_block_of_code(vcode[ia]))
 							f_sky.append((vsky[ia] + vsky[ib] + vsky[ic]) / 3.0)
+							# Under water (sea, lakes, flooded caves): the open sample next to the face is liquid.
+							var open_i := pn if s_here == 1 else pi
+							f_wet.append(1 if liquid[pb[open_i]] == liquid_fam else 0)
 	if verts.is_empty():
 		return out
 	var arrays := []
@@ -268,7 +274,7 @@ static func build(neighbours: Array, densities: Array, surface: PackedInt32Array
 	arrays[Mesh.ARRAY_TEX_UV2] = uv2s
 	arrays[Mesh.ARRAY_CUSTOM0] = custom
 	out["terrain"] = arrays
-	out["flora_surface"] = {"tris": f_tris, "normals": f_norms, "blocks": f_blocks, "sky": f_sky}
+	out["flora_surface"] = {"tris": f_tris, "normals": f_norms, "blocks": f_blocks, "sky": f_sky, "wet": f_wet}
 	return out
 
 

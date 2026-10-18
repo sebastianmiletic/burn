@@ -2008,7 +2008,8 @@ func _place_trees(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, det
 			var ground := int(column(rx, rz, detail, ridge).x)
 			if ground + 6 < o.y or ground + 1 >= o.y + Chunk.SIZE:
 				continue
-			if ground <= SEA_LEVEL and biome != Biome.MARSH:
+			# Never in water: the sea (marsh pools included) floods every column at or below SEA_LEVEL.
+			if ground <= SEA_LEVEL:
 				continue
 			if biome == Biome.PEAKS and ground > 70:
 				continue
@@ -2143,9 +2144,13 @@ func _place_trees_v3(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, 
 				continue
 			if ground + 8 < o.y or ground + 1 >= o.y + Chunk.SIZE:
 				continue
-			if ground <= SEA_LEVEL and biome != Biome.MARSH:
+			# Never in water: the sea (marsh pools included) floods every column at or below
+			# SEA_LEVEL, lakes up to their level, and neither may reach the root cell.
+			if ground <= SEA_LEVEL or water[ci] > float(ground) - 0.5:
 				continue
-			if water[ci] > float(ground) or tops[ci] == Blocks.SNOW and biome != Biome.TUNDRA:
+			if tops[ci] == Blocks.SNOW and biome != Biome.TUNDRA:
+				continue
+			if _flooded_near(rx, ground + 1, rz):
 				continue
 			var root := Vector3i(rx, ground + 1, rz)
 			var lx := rx - o.x
@@ -2162,6 +2167,19 @@ func _place_trees_v3(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, 
 				if data[di] == Blocks.AIR or data[di] == Blocks.WATER:
 					data[di] = trunk
 					dens[di] = mini(dens[di], 127)
+
+
+## True when a cave carver floods (or carves away) the ground at a tree root: decided from the
+## column alone, so every chunk a trunk spans agrees (no floating trunk halves).
+func _flooded_near(x: int, root_y: int, z: int) -> bool:
+	if caves == null:
+		return false
+	var p := Vector3(x + 0.5, root_y - 0.5, z + 0.5)
+	for i in caves.chunk_carvers(Vector3i(x >> 4, floori(p.y / 16.0), z >> 4)):
+		var d := caves._sdf(i, p, 0.0)
+		if d < 2.5 and caves.field(i, CaveNetwork.F_WATER) >= float(root_y) - 1.5:
+			return true
+	return false
 
 
 static func _set_if(data: PackedByteArray, o: Vector3i, p: Vector3i, block: int, overwrite: bool) -> void:

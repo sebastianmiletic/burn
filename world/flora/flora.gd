@@ -490,12 +490,16 @@ static func plan_chunk(origin: Vector3i, surface: Dictionary, trees: Array, dime
 	var normals: PackedVector3Array = surface.get("normals", PackedVector3Array())
 	var blocks: PackedByteArray = surface.get("blocks", PackedByteArray())
 	var sky: PackedFloat32Array = surface.get("sky", PackedFloat32Array())
+	# Under water (sea, lakes, flooded caves) no land cover grows: no grass, bushes, logs or boulders.
+	var wet: PackedByteArray = surface.get("wet", PackedByteArray())
 	var rules_by_block: Dictionary = RULES_HELL if hell else RULES
 	var ntri := mini(tris.size() / 3, mini(normals.size(), mini(blocks.size(), sky.size())))
 	var cells := {}
 	for i in ntri:
 		var sk := sky[i]
 		if sk < 0.3:
+			continue
+		if i < wet.size() and wet[i] != 0:
 			continue
 		var nrm := normals[i]
 		if nrm.y < 0.5:

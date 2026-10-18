@@ -94,3 +94,16 @@ func test_hell_grows_asphodel() -> void:
 		layers.append(g.layer)
 	check(Flora.L.SOUL_GRASS in layers, "pale soul grass in the underworld")
 	check(not (Flora.L.GRASS in layers), "no overworld grass in hell")
+
+
+func test_no_cover_under_water() -> void:
+	var s := _surface()
+	var dry := Flora.plan_chunk(Vector3i.ZERO, s, [], 0, 9)
+	var wet_s := s.duplicate()
+	var wet := PackedByteArray()
+	wet.resize((s["tris"] as PackedVector3Array).size() / 3)
+	wet.fill(1)
+	wet_s["wet"] = wet
+	var drowned := Flora.plan_chunk(Vector3i.ZERO, wet_s, [], 0, 9)
+	check(not dry.groups.is_empty(), "dry ground grows cover")
+	check(drowned.groups.is_empty(), "flooded ground grows no land flora")

@@ -17,8 +17,15 @@ func _process(_delta: float) -> bool:
 func _run() -> void:
 	var dir := DirAccess.open("res://tests/unit")
 	var files := PackedStringArray()
+	# --only=a,b runs just tests/unit/test_a.gd and test_b.gd (for iterating).
+	var only := PackedStringArray()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--only="):
+			only = a.trim_prefix("--only=").split(",", false)
 	for f in dir.get_files():
 		if f.begins_with("test_") and f.ends_with(".gd"):
+			if not only.is_empty() and not f.trim_prefix("test_").trim_suffix(".gd") in only:
+				continue
 			files.append(f)
 	files.sort()
 
