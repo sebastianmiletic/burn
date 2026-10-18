@@ -186,6 +186,9 @@ func _run() -> void:
 				PackedStringArray(["Iron? Aye, I can work iron. Bring me five ore and three coal and you'll have a pickaxe that bites gold."]),
 				[{"text": "Show me what you can forge.", "id": "shop"}, {"text": "Any work for a wanderer?", "id": "quest"}, {"text": "Farewell.", "id": "leave"}])],
 		["journal", func() -> void: hud.quest_log.open()],
+		["journal_path", func() -> void:
+			hud.quest_log.open()
+			hud.quest_log.call("_set_tab", QuestLogScreen.Tab.PATH)],
 		["map", func() -> void: hud.map_screen.open()],
 		["pause", func() -> void: hud.pause_menu.open()],
 		["death", func() -> void: ev.emit_signal("player_died", "Burned by the Mountain King's hearthfire")],
