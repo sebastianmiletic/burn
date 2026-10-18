@@ -484,6 +484,7 @@ func _open_overlay(title: String, subtitle: String) -> VBoxContainer:
 	var panel := MenuPanel.new(title)
 	panel.subtitle = subtitle
 	panel.custom_minimum_size = Vector2(560, 0)
+	panel.background = Color(0.016, 0.012, 0.011, 1.0)
 	c.add_child(panel)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)

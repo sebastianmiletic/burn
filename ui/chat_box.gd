@@ -76,6 +76,8 @@ func _ready() -> void:
 	es.border_width_bottom = 1
 	_edit.add_theme_stylebox_override("normal", es)
 	_edit.add_theme_stylebox_override("focus", es)
+	if always_open:
+		_edit.placeholder_text = "chat…   /help"
 	_edit.visible = always_open
 	_edit.text_submitted.connect(_submit)
 	col.add_child(_edit)

@@ -117,7 +117,7 @@ func _ready() -> void:
 	chat.offset_left = 26
 	chat.offset_right = 486
 	chat.offset_top = 252
-	chat.offset_bottom = -192
+	chat.offset_bottom = -250  # clear of the hotbar and its item-name label
 	root.add_child(chat)
 	chat.typing_changed.connect(func(on: bool) -> void:
 		if not on and not any_screen_open():
