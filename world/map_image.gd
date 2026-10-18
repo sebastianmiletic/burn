@@ -113,6 +113,9 @@ static func build(gen: WorldGen) -> Image:
 				# The sea floor (the shader lays the water and beaches over it).
 				if h < sea:
 					c = SAND.lerp(Color(0.3, 0.32, 0.3), smoothstep(sea, sea - 16.0, h))
+					# Revision 4: each ocean biome tints its sea bed (reefs, kelp, ice, vents, the trench).
+					if not gen._ocean.is_empty() and gen._ocean[i] != 0:
+						c = c.lerp(WorldGen.SEA_COLORS[gen._ocean[i]] * 1.3, 0.3)
 			var hl := heights[maxi(x - 2, 0) + z * n]
 			var hr := heights[mini(x + 2, n - 1) + z * n]
 			var hu := heights[x + zu]

@@ -495,11 +495,13 @@ static func plan_chunk(origin: Vector3i, surface: Dictionary, trees: Array, dime
 	var rules_by_block: Dictionary = RULES_HELL if hell else RULES
 	var ntri := mini(tris.size() / 3, mini(normals.size(), mini(blocks.size(), sky.size())))
 	var cells := {}
+	var flooded := PackedInt32Array()
 	for i in ntri:
 		var sk := sky[i]
 		if sk < 0.3:
 			continue
 		if i < wet.size() and wet[i] != 0:
+			flooded.append(i)
 			continue
 		var nrm := normals[i]
 		if nrm.y < 0.5:
@@ -638,7 +640,9 @@ static func plan_chunk(origin: Vector3i, surface: Dictionary, trees: Array, dime
 	for tp: Array in tree_pts:
 		var r: Vector3 = tp[0]
 		tree_info.append(Vector4(r.x, r.y, r.z, float(tp[1]) + minf(tp[2], 99.0) / 100.0))
-	return {"groups": groups, "trees": tgroups, "far": fgroups, "tree_info": tree_info, "dimension": dimension}
+	# Under water: kelp, seagrass, corals and anemones instead (world/flora/sea_flora.gd).
+	var sea: Array = SeaFlora.plan(o, tris, normals, blocks, flooded, rng) if not flooded.is_empty() and not hell else []
+	return {"groups": groups, "trees": tgroups, "far": fgroups, "tree_info": tree_info, "dimension": dimension, "sea": sea}
 
 
 static func _in_trunk(p: Vector3, trunks: Array) -> bool:
@@ -766,6 +770,7 @@ static func build_chunk(plan: Dictionary, quality: int) -> Node3D:
 		m2.visibility_range_begin = maxf(TREE_LOD1[q] - CHUNK_MARGIN - 6.0, 0.0)
 		m2.visibility_range_end = TREE_FAR[q] + CHUNK_MARGIN
 		root.add_child(m2)
+	SeaFlora.build(plan.get("sea", []), q, root)
 	var info: PackedVector4Array = plan.get("tree_info", PackedVector4Array())
 	root.set_meta(&"trees", info)
 	root.add_to_group(&"flora_chunks")

@@ -72,6 +72,8 @@ func _process(delta: float) -> void:
 				subtitle = "%d m beneath %s" % [int(depth), above.name]
 		else:
 			var biome := g.biome_at(int(pos.x), int(pos.z))
+			if biome == WorldGen.Biome.OCEAN and g.sea_at(pos.x, pos.z) != WorldGen.Sea.NONE:
+				biome = 100 + g.sea_at(pos.x, pos.z)  # each ocean biome is learnt on its own
 			if biome != _last_biome:
 				_last_biome = biome
 				_biome_time = 0.0
@@ -79,7 +81,7 @@ func _process(delta: float) -> void:
 				if not _known_biomes.has(biome):
 					_known_biomes[biome] = true
 					first = true
-				title = WorldGen.FOREST_NAMES[g.forest_region(int(pos.x), int(pos.z))] if biome == WorldGen.Biome.FOREST else WorldGen.BIOME_NAMES[biome]
+				title = g.region_name(pos.x, pos.z)
 				subtitle = "Underworld" if dim == 1 else "Wilds"
 			else:
 				title = "Unknown Biome"

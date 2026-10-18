@@ -5,7 +5,7 @@ extends TestCase
 ## hostile creatures notice / attack / leash / die, wildlife flees and flocks
 ## startle. Skipped (not failed) when autoloads are missing (see test_boss_sim).
 
-const MODEL_KINDS := ["leviathan", "sea_serpent", "broodmother", "giant_spider", "spiderling", "scorpion",
+const MODEL_KINDS := ["leviathan", "kraken", "charybdis", "sea_serpent", "broodmother", "giant_spider", "spiderling", "scorpion",
 	"wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "deer", "stag", "rabbit", "goat", "boar", "bog_lurker",
 	"cave_bat", "bird_flock", "crow_flock", "gull_flock", "fish_school", "bat_swarm", "rock_golem", "fire_elemental",
 	"cave_crawler", "shark", "drowned", "bog_hag", "skeleton", "archer", "ghoul", "troll"]
@@ -158,7 +158,7 @@ func test_new_bosses_simulate() -> void:
 	if tree == null:
 		return
 	var boss_script: GDScript = load("res://entities/bosses/boss.gd")
-	for kind: String in ["leviathan", "broodmother", "bog_hag"]:
+	for kind: String in ["leviathan", "broodmother", "bog_hag", "kraken", "charybdis"]:
 		var sim := SimWorld.new()
 		var arena := Node3D.new()
 		tree.root.add_child(arena)
@@ -169,7 +169,7 @@ func test_new_bosses_simulate() -> void:
 		boss.sim_world = sim
 		boss.body.gravity = 0.0
 		arena.add_child(boss)
-		boss.global_position = Vector3.ZERO if kind != "leviathan" else boss.global_position
+		boss.global_position = Vector3.ZERO if not kind in ["leviathan", "kraken", "charybdis"] else boss.global_position
 		var dt := 1.0 / 30.0
 		var max_phase := 1
 		var acc := 0.0
@@ -208,6 +208,10 @@ func test_new_bosses_simulate() -> void:
 			check(sim.spawned > 0, "leviathan summoned thralls")
 		if kind == "broodmother":
 			check(sim.spawned > 0, "broodmother hatched spiderlings")
+		if kind in ["kraken", "charybdis"]:
+			check(surfaced_time > 10.0 and surfaced_time < sim.now * 0.95, "%s rises and sinks (risen %.0fs of %.0fs)" % [kind, surfaced_time, sim.now])
+			check(sim.projectiles > 0, "%s hurled wreckage" % kind)
+			check(sim.spawned > 0, "%s called up the drowned" % kind)
 		print("      %-12s phases→%d  telegraphs %d  hits %d  summons %d  projectiles %d  fight %.0fs" % [kind, max_phase, sim.telegraphs.size(), sim.hits.size(), sim.spawned, sim.projectiles, sim.now])
 		arena.queue_free()
 
@@ -217,7 +221,7 @@ func test_new_bosses_reset_when_abandoned() -> void:
 	if tree == null:
 		return
 	var boss_script: GDScript = load("res://entities/bosses/boss.gd")
-	for kind: String in ["leviathan", "broodmother", "bog_hag"]:
+	for kind: String in ["leviathan", "broodmother", "bog_hag", "kraken", "charybdis"]:
 		var sim := SimWorld.new()
 		var arena := Node3D.new()
 		tree.root.add_child(arena)
@@ -378,7 +382,7 @@ func test_lairs_planned() -> void:
 		by_id[loc.id] = loc
 		for s in loc.spawns_of("boss"):
 			bosses[s["kind"]] = loc
-	for kind: String in ["leviathan", "broodmother", "bog_hag"]:
+	for kind: String in ["leviathan", "broodmother", "bog_hag", "kraken", "charybdis"]:
 		check(bosses.has(kind), "%s has a lair" % kind)
 	if by_id.has(&"drowned_spire"):
 		var spire: Location = by_id[&"drowned_spire"]

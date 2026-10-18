@@ -132,6 +132,10 @@ static func create(boss_kind: String) -> Boss:
 			return RyftSentinelBoss.new()
 		"void_sovereign":
 			return VoidSovereignBoss.new()
+		"kraken":
+			return KrakenBoss.new()
+		"charybdis":
+			return CharybdisBoss.new()
 	push_error("Unknown boss kind %s" % boss_kind)
 	return WardenBoss.new()
 

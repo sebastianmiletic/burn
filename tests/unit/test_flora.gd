@@ -107,3 +107,32 @@ func test_no_cover_under_water() -> void:
 	var drowned := Flora.plan_chunk(Vector3i.ZERO, wet_s, [], 0, 9)
 	check(not dry.groups.is_empty(), "dry ground grows cover")
 	check(drowned.groups.is_empty(), "flooded ground grows no land flora")
+	check(drowned.trees.is_empty(), "and no trees")
+
+
+func test_sea_bed_grows_sea_plants() -> void:
+	# A flat silt and coral-rock sea bed 6 m under the surface.
+	var tris := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var blocks := PackedByteArray()
+	var wet := PackedByteArray()
+	var y := float(WorldGen.SEA_LEVEL) - 5.0
+	for z in 16:
+		for x in 16:
+			for t in 2:
+				var a := Vector3(x, y, z)
+				tris.append_array([a, a + (Vector3(1, 0, 0) if t == 0 else Vector3(1, 0, 1)), a + (Vector3(1, 0, 1) if t == 0 else Vector3(0, 0, 1))])
+				normals.append(Vector3.UP)
+				blocks.append(Blocks.SILT if x < 8 else Blocks.CORAL_ROCK)
+				wet.append(1)
+	var sky := PackedFloat32Array()
+	sky.resize(blocks.size())
+	sky.fill(1.0)
+	var plan := Flora.plan_chunk(Vector3i.ZERO, {"tris": tris, "normals": normals, "blocks": blocks, "sky": sky, "wet": wet}, [], 0, 3)
+	check(plan.groups.is_empty(), "no land cover on the sea bed")
+	var layers := {}
+	for g: Dictionary in plan.sea:
+		layers[int(g["sea"])] = int(g["count"])
+		check_eq((g["buf"] as PackedFloat32Array).size(), int(g["count"]) * Flora.FLOATS, "sea buffer size")
+	check(layers.get(SeaFlora.S.SEAGRASS, 0) > 50, "silt grows a seagrass meadow")
+	check(layers.has(SeaFlora.S.CORAL_BRANCH) and layers.has(SeaFlora.S.CORAL_BRAIN), "reef rock grows corals")

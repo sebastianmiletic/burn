@@ -107,3 +107,72 @@ func test_no_tree_stands_in_water() -> void:
 		checked += roots.size()
 		check_eq(bad, 0, "revision %d seed %d: no trunk base in or under water (%d trees)" % [spec[0], spec[1], roots.size()])
 	check(checked > 100, "enough shoreline trees were sampled (%d)" % checked)
+
+
+func test_sea_lairs_are_planned_with_reachable_decks() -> void:
+	for seed_value: int in [4321, 77]:
+		var g := gen(WorldGen.LATEST_REVISION, seed_value)
+		var found := {}
+		for loc in g.locations:
+			for s in loc.spawns_of("boss"):
+				found[String(s["kind"])] = loc
+		for kind: String in ["kraken", "charybdis"]:
+			check(found.has(kind), "seed %d: the %s has a lair" % [seed_value, kind])
+			if not found.has(kind):
+				continue
+			var loc: Location = found[kind]
+			var prop: Dictionary = ArenaDirector.arena_props(loc)[0]
+			check(prop.has("causeway"), "%s's lair is joined to the shore by a causeway" % kind)
+			# The deck under the inner edge is solid collision, open above (fightable without swimming).
+			var c: Vector3 = prop["center"]
+			var inner := float(prop.get("pool", prop.get("inner", 10.0)))
+			var hit := 0
+			for k in 24:
+				var p := c + Vector3(cos(TAU * k / 24.0), 0, sin(TAU * k / 24.0)) * (inner + 1.5)
+				var cell := Vector3i(floori(p.x), floori(c.y) - 1, floori(p.z))
+				var data: PackedByteArray = g.generate(Vector3i(cell.x >> 4, cell.y >> 4, cell.z >> 4))[0]
+				var l := cell - Vector3i(cell.x >> 4, cell.y >> 4, cell.z >> 4) * 16
+				if data[l.x + l.z * 16 + l.y * 256] == Blocks.STRUCTURE:
+					hit += 1
+			check(hit >= 14, "%s: most of the inner deck edge is walkable (%d/24)" % [kind, hit])
+	# Older revisions never get them.
+	for loc in gen(3).locations:
+		check(not loc.id in [&"kraken_graveyard", &"maw_of_the_sea"], "revision 3 worlds keep their places")
+
+
+func test_new_worlds_have_ocean_biomes() -> void:
+	var g := gen(WorldGen.LATEST_REVISION, 4321)
+	var depth := {}
+	var cells := {}
+	for z in range(8, g.size, 24):
+		for x in range(8, g.size, 24):
+			var sk := g.sea_at(x, z)
+			if sk == WorldGen.Sea.NONE:
+				continue
+			cells[sk] = int(cells.get(sk, 0)) + 1
+			depth[sk] = float(depth.get(sk, 0.0)) + (WorldGen.SEA_LEVEL - g.smooth_height(x, z))
+	for sk in [WorldGen.Sea.GREY, WorldGen.Sea.SHELF, WorldGen.Sea.REEF, WorldGen.Sea.SEAGRASS, WorldGen.Sea.KELP,
+			WorldGen.Sea.FROZEN, WorldGen.Sea.VENTS, WorldGen.Sea.ABYSS, WorldGen.Sea.MAELSTROM]:
+		check(int(cells.get(sk, 0)) > 3, "%s exists" % WorldGen.SEA_NAMES[sk])
+	var mean := func(sk: int) -> float: return float(depth.get(sk, 0.0)) / maxf(1.0, float(cells.get(sk, 0)))
+	check(mean.call(WorldGen.Sea.REEF) < mean.call(WorldGen.Sea.GREY), "reefs are shallower than the open sea")
+	check(mean.call(WorldGen.Sea.ABYSS) > 50.0, "the trench is deep (%.0f m)" % mean.call(WorldGen.Sea.ABYSS))
+	check(g.region_name(250, 3000) != "", "ocean regions are named")
+	check(gen(3).sea_at(250, 3000) == WorldGen.Sea.NONE, "older worlds have no ocean biomes")
+	# Materials: reef rock on the reefs, ice floes on the Rime Sea.
+	var found := {}
+	for z in range(8, g.size, 96):
+		for x in range(8, g.size, 96):
+			var sk := g.sea_at(x, z)
+			if not sk in [WorldGen.Sea.REEF, WorldGen.Sea.FROZEN]:
+				continue
+			var h := g.surface_height(x, z)
+			for key: Vector3i in [Vector3i(x >> 4, floori(h / 16.0), z >> 4), Vector3i(x >> 4, 0, z >> 4)]:
+				var data: PackedByteArray = g.generate(key)[0]
+				for b: int in [Blocks.CORAL_ROCK, Blocks.ICE]:
+					if data.find(b) >= 0:
+						found[b] = true
+			if found.size() == 2:
+				break
+	check(found.has(Blocks.CORAL_ROCK), "reefs are built of coral rock")
+	check(found.has(Blocks.ICE), "ice floes drift on the Rime Sea")

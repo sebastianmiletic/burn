@@ -77,6 +77,8 @@ static func _table() -> Dictionary:
 	t[Blocks.MAGMA_ROCK] = [L.DARK, L.DARK, 0.25, 0.9, Color(0.5, 0.36, 0.32), ASCII_SOLID, Color(1.0, 0.38, 0.08), 0.62, Color(3.2, 0.95, 0.18), 0.0]
 	t[Blocks.SCREE] = [L.SCREE, L.CLIFF, 0.3, 1.0, Color(0.95, 0.96, 1.0), ASCII_GROUND]
 	t[Blocks.ALPINE_ROCK] = [L.CLIFF, L.CLIFF, 0.1, 1.0, Color(0.78, 0.82, 0.9), ASCII_SOLID]
+	t[Blocks.CORAL_ROCK] = [L.LIMESTONE, L.SANDSTONE, 0.32, 0.9, Color(1.12, 0.92, 0.86), ASCII_SOLID]
+	t[Blocks.SILT] = [L.MUD, L.SAND, 0.28, 0.8, Color(0.82, 0.9, 0.82), ASCII_GROUND]
 	t[SmoothMesher.CODE_FOREST_FLOOR] = [L.FOREST, L.DIRT, 0.3, 1.0, Color(1.0, 0.93, 0.85), ASCII_GROUND]
 	t[SmoothMesher.CODE_HELL_ASH] = [L.ASH, L.DARK, 0.25, 1.0, Color(0.75, 0.55, 0.5), ASCII_GROUND]
 	t[SmoothMesher.CODE_PEAK_GRASS] = [L.LUSH, L.ROCK, 0.28, 1.0, Color(0.78, 0.82, 0.72), ASCII_GROUND]

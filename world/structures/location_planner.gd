@@ -123,6 +123,8 @@ func _plan_overworld() -> Array[Location]:
 					break
 	if gen.revision >= 3:
 		out.append_array(_plan_new_lands(out))
+	if gen.revision >= 4:
+		out.append_array(_plan_sea(out))
 	# The endgame gateway exists from the start, visibly sealed until Hades falls.
 	var hub := out[0]
 	hub.add_spawn("portal", hub.center + Vector3(0, 1, -12), {"to": 2, "size": Vector2(3, 5)})
@@ -527,6 +529,77 @@ static func roads(world_gen: WorldGen, locs: Array[Location] = []) -> Array[Pack
 		pts.append(end)
 		out.append(pts)
 	return out
+
+
+# --- Revision 4: the sea -----------------------------------------------------------------------
+
+## The ocean bosses' lairs, planned on their own random stream after everything else.
+func _plan_sea(existing: Array[Location]) -> Array[Location]:
+	var out: Array[Location] = []
+	var srng := RandomNumberGenerator.new()
+	srng.seed = gen.world_seed * 2750159 + 47
+	var all: Array[Location] = existing.duplicate()
+	for spec: Array in [[&"kraken_graveyard", "The Kraken's Graveyard", gen.KRAKEN_SITE, 30.0, &"wreckwatch_shrine", "Wreckwatch Shrine"],
+			[&"maw_of_the_sea", "The Maw of the Sea", gen.MAELSTROM_SITE, 34.0, &"maelstrom_shrine", "Maelstrom Shrine"]]:
+		var site := sea_lair_site(spec[2], float(spec[3]), all)
+		if site.is_empty():
+			continue
+		var c: Vector2 = site["center"]
+		var land: Vector2 = site["land"]
+		var to_coast := (land - c).normalized()
+		var loc := Location.new(spec[0], spec[1], Location.Kind.RUIN, Vector3(c.x, WorldGen.SEA_LEVEL + 2, c.y))
+		loc.major = true
+		var rim := 18.0
+		if spec[0] == &"kraken_graveyard":
+			SeaLairs.kraken(loc, to_coast, srng)
+		else:
+			SeaLairs.charybdis(loc, to_coast, srng)
+			rim = 21.0
+		# The causeway runs from the beach to the platform rim.
+		Lairs.causeway(loc, land, c + to_coast * (rim - 1.5), srng)
+		var shrine := _shrine(spec[4], spec[5], land + to_coast * 8.0)
+		out.append(loc)
+		out.append(shrine)
+		all.append(loc)
+		all.append(shrine)
+	return out
+
+
+## A spot of open deep water near `nominal` (searched outwards) with a coast within reach:
+## {"center": Vector2, "land": Vector2 (the beach the causeway starts from)}, or {}.
+func sea_lair_site(nominal: Vector2, open_radius: float, others: Array[Location]) -> Dictionary:
+	for ring in 16:
+		var r := ring * 45.0
+		var n := maxi(1, ring * 8)
+		for k in n:
+			var c := nominal + Vector2.from_angle(TAU * k / n + ring * 0.37) * r
+			if not _inside(c, 120.0) or not _far_from(others, c, 230.0):
+				continue
+			var open := true
+			for j in 16:
+				var q := c + Vector2.from_angle(TAU * j / 16.0) * open_radius
+				if gen.smooth_height(q.x, q.y) > WorldGen.SEA_LEVEL - 8 or gen.smooth_height(c.x, c.y) > WorldGen.SEA_LEVEL - 8:
+					open = false
+					break
+			if not open:
+				continue
+			# The nearest beach along 24 headings, 45-170 m away.
+			var best := Vector2(-1, -1)
+			var best_d := INF
+			for j in 24:
+				var dir := Vector2.from_angle(TAU * j / 24.0)
+				var d := open_radius + 15.0
+				while d < 170.0:
+					var q := c + dir * d
+					if gen.smooth_height(q.x, q.y) > WorldGen.SEA_LEVEL + 2:
+						if d < best_d:
+							best_d = d
+							best = q
+						break
+					d += 4.0
+			if best_d < INF and _far_from(others, best, 90.0):
+				return {"center": c, "land": best}
+	return {}
 
 
 # --- Hell ----------------------------------------------------------------------

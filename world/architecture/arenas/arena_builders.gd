@@ -24,4 +24,8 @@ static func run(b: ArenaBuild) -> void:
 			LairArenas.hagsfen(b)
 		"ryft_lair":
 			RyftArena.build(b)
+		"kraken_lair":
+			SeaArenas.kraken(b)
+		"charybdis_maw":
+			SeaArenas.charybdis(b)
 	b.finish()

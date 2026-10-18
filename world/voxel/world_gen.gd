@@ -36,7 +36,8 @@ const FOREST_NAMES := ["Emberwood", "Northern Pinewoods", "Crimson Grove", "Oldg
 const FOREST_COLORS := [Color(0.42, 0.36, 0.18), Color(0.22, 0.36, 0.31), Color(0.51, 0.25, 0.19), Color(0.25, 0.32, 0.16)]
 
 ## New worlds use the latest revision; saves keep the revision they were made with.
-const LATEST_REVISION := 3
+## Revision 4 adds the ocean biomes, sea structures and the ocean bosses' lairs (new worlds only).
+const LATEST_REVISION := 4
 const SEA_LEVEL := 12
 const LAVA_LEVEL := 0  ## hell
 const COARSE := 4      ## metres per coarse map cell
@@ -96,12 +97,36 @@ const PEAKS := [
 ## The Brimstone caldera volcano: x, z, height, radius; caldera radius and depth.
 const VOLCANO := Vector4(1250, 2620, 225, 560)
 const CALDERA := Vector2(82, 78)
+## Revision 4: where the ocean bosses' lairs are searched for (the trench, the maelstrom).
+const KRAKEN_SITE := Vector2(3350, 2640)
+const MAELSTROM_SITE := Vector2(1420, 4280)
 ## Kaldfjord inlets: polylines from the open sea inland (x, z, half width).
 const FJORDS := [
 	[Vector3(4460, 1030, 60), Vector3(4230, 1070, 52), Vector3(4060, 1010, 44), Vector3(3880, 1060, 34), Vector3(3760, 1010, 22)],
 	[Vector3(4420, 1360, 62), Vector3(4200, 1390, 50), Vector3(4010, 1330, 42), Vector3(3850, 1400, 30)],
 	[Vector3(4300, 1690, 55), Vector3(4110, 1640, 44), Vector3(3960, 1700, 30), Vector3(3840, 1650, 20)],
 ]
+## Revision 4 ocean biomes (sea columns only; biome_at() still says OCEAN): HUD names,
+## map tints, and [depth below the surface, sea-bed relief] blended between the seeds.
+enum Sea { NONE, GREY, SHELF, REEF, SEAGRASS, KELP, FROZEN, VENTS, ABYSS, MAELSTROM }
+const SEA_NAMES := ["", "The Grey Sea", "The Pale Shelf", "The Shimmering Shallows", "The Drowned Meadows",
+		"The Kelpwood Deep", "The Rime Sea", "The Boiling Shoals", "The Abyssal Trench", "The Maelstrom"]
+const SEA_COLORS := [Color(0, 0, 0), Color(0.08, 0.12, 0.16), Color(0.2, 0.32, 0.34), Color(0.16, 0.52, 0.54), Color(0.12, 0.3, 0.26),
+		Color(0.1, 0.22, 0.2), Color(0.42, 0.5, 0.56), Color(0.18, 0.13, 0.12), Color(0.02, 0.04, 0.08), Color(0.06, 0.1, 0.16)]
+const SEA_SHAPE := [Vector2(26, 3), Vector2(26, 3), Vector2(12, 2), Vector2(5.2, 1.4), Vector2(6.5, 1.0), Vector2(17, 3.5),
+		Vector2(20, 3), Vector2(21, 4), Vector2(30, 3), Vector2(30, 2)]
+const SEA_SEEDS := [
+	[Vector2(250, 3000), Sea.REEF], [Vector2(300, 3750), Sea.REEF], [Vector2(1100, 4380), Sea.REEF], [Vector2(1950, 4250), Sea.REEF], [Vector2(130, 2450), Sea.REEF],
+	[Vector2(2150, 1550), Sea.SEAGRASS], [Vector2(2250, 1950), Sea.SEAGRASS], [Vector2(2450, 3200), Sea.SEAGRASS], [Vector2(2550, 3750), Sea.SEAGRASS],
+	[Vector2(2250, 2450), Sea.KELP], [Vector2(60, 1100), Sea.KELP], [Vector2(100, 600), Sea.KELP], [Vector2(1500, 100), Sea.KELP], [Vector2(2050, 300), Sea.KELP], [Vector2(4350, 2350), Sea.KELP],
+	[Vector2(4470, 300), Sea.FROZEN], [Vector2(4500, 900), Sea.FROZEN], [Vector2(4520, 1550), Sea.FROZEN], [Vector2(3800, 90), Sea.FROZEN], [Vector2(3000, 80), Sea.FROZEN], [Vector2(4480, 2000), Sea.FROZEN],
+	[Vector2(650, 2180), Sea.VENTS], [Vector2(1750, 2230), Sea.VENTS],
+	[Vector2(3400, 3300), Sea.GREY], [Vector2(4200, 3500), Sea.GREY], [Vector2(3000, 4300), Sea.GREY], [Vector2(4300, 4350), Sea.GREY],
+	[Vector2(2200, 1200), Sea.GREY], [Vector2(600, 4400), Sea.GREY], [Vector2(60, 1900), Sea.GREY], [Vector2(700, 60), Sea.GREY],
+]
+## The Abyssal Trench: polyline (x, z, half width) through the south-eastern deep.
+const TRENCH := [Vector3(2850, 2800, 55), Vector3(3350, 2700, 80), Vector3(3800, 2850, 85), Vector3(4150, 3250, 85), Vector3(4450, 3900, 70)]
+
 ## Ravines: how strongly each biome is cut by them (0 never).
 const RAVINE_ALLOWANCE := [0.0, 0.45, 0.7, 0.3, 0.0, 0.55, 0.0, 0.0, 0.0, 0.0, 1.0, 0.85, 0.35, 0.35, 0.5, 0.25]
 
@@ -139,6 +164,10 @@ var _b_w := PackedColorArray()
 var _b_s := PackedFloat32Array()
 var _b_near := PackedInt32Array()
 var _b_warp := PackedVector2Array()
+# Revision 4 sea: blended [depth, relief] and the nearest sea seed per blend cell; sea biome per COARSE cell.
+var _b_sea := PackedVector2Array()
+var _b_sea_near := PackedInt32Array()
+var _ocean := PackedByteArray()
 ## While locations are planned the ravines are not cut yet (they avoid the planned sites).
 var _planning := false
 var _seed_pos := PackedVector2Array()
@@ -371,6 +400,10 @@ func _build_maps_v3() -> void:
 	_b_s.resize(_bn * _bn)
 	_b_near.resize(_bn * _bn * 2)
 	_b_warp.resize(_bn * _bn)
+	if revision >= 4:
+		_b_sea.resize(_bn * _bn)
+		_b_sea_near.resize(_bn * _bn)
+		_ocean.resize(_coarse_n * _coarse_n)
 	_seed_pos.clear()
 	_seed_biome.clear()
 	for sd: Array in _biome_seeds:
@@ -465,6 +498,22 @@ func _blend_rows(row: int) -> void:
 		_b_warp[i] = wo
 		_b_near[i * 2] = i1
 		_b_near[i * 2 + 1] = i2
+		if revision >= 4:
+			var sw := 0.0
+			var sea := Vector2.ZERO
+			var sb := 1e20
+			var si := 0
+			for k in SEA_SEEDS.size():
+				var sd: Array = SEA_SEEDS[k]
+				var d2 := wp.distance_squared_to(sd[0])
+				var wt := 1.0 / (d2 * d2 + 1.0)
+				sw += wt
+				sea += (SEA_SHAPE[int(sd[1])] as Vector2) * wt
+				if d2 < sb:
+					sb = d2
+					si = k
+			_b_sea[i] = sea / sw
+			_b_sea_near[i] = si
 
 
 ## One row of the 4 m terrain maps: the blend grid interpolated, the nearest biome resolved at
@@ -525,6 +574,31 @@ func _rows_v3(row: int) -> void:
 		# Inlets cut the land; out at sea they just merge with the open water.
 		var fj := _fjord_mask(p) * (1.0 - smoothstep(0.35, 0.95, t))
 		var ocean: Vector3 = BIOME_SHAPE[Biome.OCEAN]
+		var sea_kind := 0
+		if revision >= 4:
+			# Revision 4: the sea bed of the nearest ocean biome, shelving away from the coast,
+			# the trench and the maelstrom's bowl cut into it.
+			var sea := (_b_sea[i00] * (1.0 - tx) + _b_sea[i10] * tx) * (1.0 - tz) + (_b_sea[i01] * (1.0 - tx) + _b_sea[i11] * tx) * tz
+			# The coastline itself stays where revision 3 drew it: the new sea bed only takes
+			# over beyond the shore slope (t ~ 1), shelving in over the first ~100 m.
+			var tr := _trench(p)
+			var md := p.distance_to(MAELSTROM_SITE)
+			var depth := sea.x + tr * 72.0 + 14.0 * (1.0 - smoothstep(60.0, 260.0, md))
+			var take := smoothstep(0.85, 1.0, t) * smoothstep(30.0, 130.0, s)
+			ocean = Vector3(lerpf(ocean.x, SEA_LEVEL - depth, take), lerpf(ocean.y, sea.y, take), 0.0)
+			var best_sea := 1e20
+			for ci in [i00, i10, i01, i11]:
+				var sd: Array = SEA_SEEDS[_b_sea_near[ci]]
+				var d2 := wp.distance_squared_to(sd[0])
+				if d2 < best_sea:
+					best_sea = d2
+					sea_kind = int(sd[1])
+			if tr > 0.3:
+				sea_kind = Sea.ABYSS
+			elif md < 240.0:
+				sea_kind = Sea.MAELSTROM
+			elif sea_kind == Sea.GREY and s < 200.0:
+				sea_kind = Sea.SHELF
 		base = lerpf(base, ocean.x, t)
 		var amp := lerpf(shape.y, ocean.y, t)
 		var ridge := lerpf(shape.z, ocean.z, t)
@@ -543,6 +617,8 @@ func _rows_v3(row: int) -> void:
 		_amp[i] = amp
 		_ridge[i] = ridge
 		_biome[i] = biome
+		if revision >= 4:
+			_ocean[i] = sea_kind if biome == Biome.OCEAN else 0
 		_mtn[i] = wc.r * (1.0 - t) * (1.0 - fj)
 		var allow: float = RAVINE_ALLOWANCE[biome] * (1.0 - t) * (1.0 - fj) * smoothstep(SEA_LEVEL + 10.0, SEA_LEVEL + 28.0, base)
 		allow *= 1.0 - smoothstep(0.3, 0.8, wc.r) * 0.6
@@ -620,6 +696,97 @@ func _fjord_mask(p: Vector2) -> float:
 			var d := p.distance_to(q)
 			best = maxf(best, 1.0 - smoothstep(hw, hw + 38.0, d))
 	return best
+
+
+## 0..1: inside the Abyssal Trench (steep walls, revision 4).
+func _trench(p: Vector2) -> float:
+	if p.x < 2700.0 or p.y < 2600.0:
+		return 0.0
+	var best := 0.0
+	for k in TRENCH.size() - 1:
+		var a: Vector3 = TRENCH[k]
+		var b: Vector3 = TRENCH[k + 1]
+		var ab := Vector2(b.x - a.x, b.y - a.y)
+		var t := clampf((p - Vector2(a.x, a.y)).dot(ab) / ab.length_squared(), 0.0, 1.0)
+		var hw := lerpf(a.z, b.z, t)
+		var d := p.distance_to(Vector2(a.x, a.y) + ab * t)
+		best = maxf(best, 1.0 - smoothstep(hw * 0.5, hw, d))
+	return best
+
+
+## Revision 4: the ocean biome of a sea column (Sea.NONE on land and in older worlds).
+func sea_at(x: float, z: float) -> int:
+	if _ocean.is_empty():
+		return Sea.NONE
+	var ix := clampi(int(x / COARSE), 0, _coarse_n - 1)
+	var iz := clampi(int(z / COARSE), 0, _coarse_n - 1)
+	return _ocean[ix + iz * _coarse_n]
+
+
+## What the HUD calls a place in the wilds: the forest stand, the ocean biome or the biome.
+func region_name(x: float, z: float) -> String:
+	var biome := biome_at(int(x), int(z))
+	if biome == Biome.FOREST:
+		return FOREST_NAMES[forest_region(int(x), int(z))]
+	var sk := sea_at(x, z)
+	if biome == Biome.OCEAN and sk != Sea.NONE:
+		return SEA_NAMES[sk]
+	return BIOME_NAMES[biome]
+
+
+## Sea-bed relief per ocean biome on top of the blended floor (revision 4): reef heads,
+## sand ripples, kelp-forest boulders, vent chimneys.
+func _seabed(x: int, z: int, h: float, sk: int) -> float:
+	match sk:
+		Sea.REEF:
+			var m := _vnoise(x, z, 7.0, world_seed + 81)
+			if m > 0.58 and h < SEA_LEVEL - 1.6:
+				h = minf(h + (m - 0.58) / 0.42 * 4.5, SEA_LEVEL - 1.6)
+		Sea.SHELF, Sea.SEAGRASS, Sea.GREY:
+			h += sin(x * 0.6 + z * 0.21 + _vnoise(x, z, 17.0, world_seed + 83) * 7.0) * 0.22
+		Sea.KELP, Sea.FROZEN, Sea.MAELSTROM:
+			h += maxf(0.0, _vnoise(x, z, 5.0, world_seed + 85) - 0.55) * 7.0
+		Sea.VENTS:
+			var cx := floori(x / 22.0)
+			var cz := floori(z / 22.0)
+			var hs := _hash3(cx, 7, cz, world_seed + 89)
+			if hs & 3 != 0:
+				var vx := cx * 22.0 + 5.0 + float(hs >> 4 & 15) * 0.8
+				var vz := cz * 22.0 + 5.0 + float(hs >> 8 & 15) * 0.8
+				var d := Vector2(x - vx, z - vz).length()
+				if d < 4.5:
+					h += 6.5 * pow(1.0 - d / 4.5, 1.6)
+	return h
+
+
+## Sea-floor surface (low byte) and subsoil (high byte) per ocean biome (revision 4).
+func _sea_floor(x: int, z: int, h: int, n: float) -> int:
+	match sea_at(x, z):
+		Sea.REEF:
+			return (Blocks.CORAL_ROCK | (Blocks.LIMESTONE << 8)) if n < 0.55 else (Blocks.SAND | (Blocks.SAND << 8))
+		Sea.SEAGRASS:
+			return (Blocks.SILT | (Blocks.SILT << 8)) if n < 0.78 else (Blocks.SAND | (Blocks.SAND << 8))
+		Sea.SHELF:
+			return (Blocks.SAND | (Blocks.SANDSTONE << 8)) if n < 0.8 else (Blocks.GRAVEL | (Blocks.SAND << 8))
+		Sea.KELP, Sea.MAELSTROM:
+			return (Blocks.GRAVEL | (Blocks.STONE << 8)) if n < 0.55 else (Blocks.STONE | (Blocks.STONE << 8))
+		Sea.FROZEN:
+			return (Blocks.GRAVEL | (Blocks.SILT << 8)) if n < 0.5 else ((Blocks.SILT if n < 0.8 else Blocks.STONE) | (Blocks.STONE << 8))
+		Sea.VENTS:
+			if _vnoise(x, z, 4.0, world_seed + 91) > 0.82:
+				return Blocks.MAGMA_ROCK | (Blocks.BASALT << 8)
+			return (Blocks.BASALT if n < 0.6 else Blocks.SCORIA) | (Blocks.BASALT << 8)
+		Sea.ABYSS:
+			return (Blocks.SILT if n < 0.7 else Blocks.MUD) | (Blocks.SLATE << 8)
+	return (Blocks.SILT if n < 0.35 else Blocks.SAND) | (Blocks.SANDSTONE << 8)
+
+
+## Ice floe density 0..0.5 over a Rime Sea column (0 = open water), revision 4.
+func _floe(x: int, z: int, h: int) -> float:
+	if h > SEA_LEVEL - 2 or sea_at(x, z) != Sea.FROZEN:
+		return 0.0
+	var f := _vnoise(x, z, 13.0, world_seed + 87) * 0.75 + _vnoise(x, z, 41.0, world_seed + 88) * 0.25
+	return clampf((f - 0.5) * 4.0, 0.0, 0.5)
 
 
 ## Glacial lakes in the Alps, frozen ponds on the tundra, a lava lake in the caldera and a few
@@ -840,6 +1007,10 @@ func raw_height(x: int, z: int, detail: FastNoiseLite, ridge: FastNoiseLite) -> 
 			var allow := _coarse_sample8(_rav, x, z)
 			if allow > 0.01:
 				h -= _ravine(x, z, h, allow)
+		if not _ocean.is_empty():
+			var sk := sea_at(x, z)
+			if sk != Sea.NONE:
+				h = _seabed(x, z, h, sk)
 	return h
 
 
@@ -1591,6 +1762,14 @@ func _columns_v3(cx: int, cz: int) -> Array:
 			wblock[i] = int(lv.y)
 			max_w = maxf(max_w, water[i])
 	var result := [hf, hi, top, sub, rock, biomes, slope, roads, water, wblock, max_h, min_h, max_w]
+	if not _ocean.is_empty():
+		# Revision 4: ice floes on the Rime Sea.
+		var floe := PackedFloat32Array()
+		floe.resize(256)
+		for i in 256:
+			if biomes[i] == Biome.OCEAN:
+				floe[i] = _floe(o.x + (i & 15), o.y + (i >> 4), hi[i])
+		result.append(floe)
 	_col_mutex.lock()
 	var slot := _col_next % COLUMN_CACHE
 	var old := _col_ring[slot]
@@ -1638,6 +1817,8 @@ func _surface_v3(x: int, z: int, h: int, biome: int, road: int, s: float) -> int
 	var steep := s > 1.05
 	if s > 0.95 + (_vnoise(x, z, 6.0, 41) - 0.5) * 0.3 and biome != Biome.MARSH and not beach:
 		return FACE | (FACE << 8)
+	if biome == Biome.OCEAN and revision >= 4 and h < SEA_LEVEL - 2:
+		return _sea_floor(x, z, h, n)
 	match biome:
 		Biome.PLAINS:
 			if beach:
@@ -1797,6 +1978,7 @@ func _generate_overworld_v3(key: Vector3i) -> Array:
 	var max_h: int = cols[10]
 	var min_h: int = cols[11]
 	var max_w: float = cols[12]
+	var floe: PackedFloat32Array = cols[13] if cols.size() > 13 else PackedFloat32Array()
 
 	var bps := _blueprints_for(key)
 	var carvers := caves.chunk_carvers(key) if caves != null else PackedInt32Array()
@@ -1910,6 +2092,9 @@ func _generate_overworld_v3(key: Vector3i) -> Array:
 						b = Blocks.WATER
 				elif wy <= SEA_LEVEL:
 					b = Blocks.WATER
+					if wy == SEA_LEVEL and not floe.is_empty() and floe[ci] > 0.0:
+						b = Blocks.ICE
+						d = 0.5 + floe[ci]
 				elif fy <= water[ci]:
 					b = wblock[ci]
 					if b == Blocks.ICE and fy < water[ci] - 1.0:
