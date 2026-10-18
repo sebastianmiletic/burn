@@ -147,6 +147,31 @@ func _ready() -> void:
 		_last_ratio = r
 		_low = clampf((0.35 - r) / 0.35, 0.0, 1.0))
 	UiContext.on("shop_open", func(_k: String) -> void: _close_screens(shop_screen))
+	var settings := UiContext.autoload("Settings")
+	if settings != null:
+		settings.connect(&"changed", func(section: String, _key: String) -> void:
+			if section == "hud" or section == "accessibility":
+				_apply_options())
+	_apply_options()
+
+
+## Settings > Gameplay (HUD elements) and Accessibility (high-contrast HUD).
+func _apply_options() -> void:
+	minimap.visible = bool(UiContext.setting("hud", "minimap", true))
+	quests.visible = bool(UiContext.setting("hud", "quest_tracker", true))
+	damage_numbers.visible = bool(UiContext.setting("hud", "damage_numbers", true))
+	var hc := bool(UiContext.setting("accessibility", "high_contrast", false))
+	if hc:
+		# Every HUD label gets a heavy dark outline so text reads over any scene.
+		var t := UiTheme.theme().duplicate() as Theme
+		for type: String in ["Label", "RichTextLabel"]:
+			t.set_color("font_outline_color", type, Color(0, 0, 0, 1))
+			t.set_constant("outline_size", type, 6)
+		t.set_color("font_color", "Label", Color(1, 1, 1))
+		root.theme = t
+	else:
+		root.theme = UiTheme.theme()
+	crosshair.queue_redraw()
 
 
 var _last_ratio := 1.0
@@ -170,7 +195,7 @@ func _process(delta: float) -> void:
 	_time += delta
 	_hit = maxf(0.0, _hit - delta * 2.2)
 	_vignette_mat.set_shader_parameter(&"low", _low)
-	_vignette_mat.set_shader_parameter(&"hit", _hit)
+	_vignette_mat.set_shader_parameter(&"hit", _hit * float(UiContext.call_on(UiContext.autoload("Settings"), "flash_scale", [], 1.0)))
 	_vignette_mat.set_shader_parameter(&"time", _time)
 	# Keep the boss bar centred but clear of the minimap / status block.
 	var w := root.size.x

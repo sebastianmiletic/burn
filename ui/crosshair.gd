@@ -34,13 +34,29 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var c := (size * 0.5).round()
-	var col := Color(1, 0.9, 0.75, 0.85)
+	# Settings > Gameplay: reticle style and colour; Accessibility: high contrast.
+	var style := int(UiContext.setting("hud", "crosshair", 0))
+	var colors: Array = UiContext.settings_const("CROSSHAIR_COLORS")
+	var ci := int(UiContext.setting("hud", "crosshair_color", 0))
+	var col: Color = colors[ci] if ci >= 0 and ci < colors.size() else Color(1, 0.9, 0.75)
+	col.a = 0.85
+	var high := bool(UiContext.setting("accessibility", "high_contrast", false))
+	var shade := Color(0, 0, 0, 0.95 if high else 0.6)
+	var w := 2.0 if high else 1.0
 	var gap := 4.0
 	var len := 5.0
-	for d: Vector2 in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
-		draw_line(c + d * gap, c + d * (gap + len), Color(0, 0, 0, 0.6), 3.0)
-		draw_line(c + d * gap, c + d * (gap + len), col, 1.0)
-	draw_rect(Rect2(c - Vector2(1, 1), Vector2(2, 2)), col)
+	if style == 0 or style == 3:
+		for d: Vector2 in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+			draw_line(c + d * gap, c + d * (gap + len), shade, w + 2.0)
+			draw_line(c + d * gap, c + d * (gap + len), col, w)
+	if style == 2:
+		draw_arc(c, 6.0, 0, TAU, 32, shade, w + 2.0, true)
+		draw_arc(c, 6.0, 0, TAU, 32, col, w, true)
+	if style != 4:
+		var dot := 2.0 if style == 0 else 3.0
+		if style != 0:
+			draw_rect(Rect2(c - Vector2(dot, dot) * 0.5 - Vector2(1, 1), Vector2(dot + 2, dot + 2)), shade)
+		draw_rect(Rect2(c - Vector2(dot, dot) * 0.5, Vector2(dot, dot)), col)
 	if _hit_marker > 0.0:
 		var hc := Color(1, 0.6, 0.3, _hit_marker)
 		for d: Vector2 in [Vector2(1, 1), Vector2(-1, 1), Vector2(1, -1), Vector2(-1, -1)]:

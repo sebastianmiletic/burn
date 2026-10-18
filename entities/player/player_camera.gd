@@ -28,6 +28,7 @@ var _bob := 0.0
 var _dip := 0.0
 var _dip_v := 0.0
 var _eye := Vector3.ZERO
+var _look_pending := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -59,14 +60,53 @@ func _ready() -> void:
 
 
 func add_trauma(amount: float) -> void:
-	_trauma = clampf(_trauma + amount * float(Settings.get_value("gameplay", "camera_shake")), 0.0, 1.0)
+	_trauma = clampf(_trauma + amount * float(Settings.get_value("gameplay", "camera_shake")) * Settings.motion_scale(), 0.0, 1.0)
+	# Controller rumble follows hits and shakes (Settings > Controls).
+	var rumble := float(Settings.get_value("input", "pad_vibration"))
+	if rumble > 0.0:
+		var k := clampf(amount, 0.0, 1.0) * rumble
+		for pad in Input.get_connected_joypads():
+			Input.start_joy_vibration(pad, clampf(k * 0.8, 0.0, 1.0), clampf(k, 0.0, 1.0), 0.12 + k * 0.25)
 
 
+## Mouse look. With smoothing on, the movement is eased in over a few frames.
 func look(delta_mouse: Vector2) -> void:
-	var sens := 0.0025 * float(Settings.get_value("gameplay", "mouse_sensitivity"))
-	var inv := -1.0 if Settings.get_value("gameplay", "invert_y") else 1.0
-	yaw -= delta_mouse.x * sens
-	pitch = clampf(pitch - delta_mouse.y * sens * inv, -1.5 if first_person else -1.35, 1.5 if first_person else 1.1)
+	if bool(Settings.get_value("input", "mouse_smoothing")):
+		_look_pending += delta_mouse
+		return
+	_turn(delta_mouse, float(Settings.get_value("gameplay", "mouse_sensitivity")), bool(Settings.get_value("gameplay", "invert_y")))
+
+
+func _turn(delta_px: Vector2, sensitivity: float, invert: bool) -> void:
+	var sens := 0.0025 * sensitivity
+	var inv := -1.0 if invert else 1.0
+	yaw -= delta_px.x * sens
+	pitch = clampf(pitch - delta_px.y * sens * inv, -1.5 if first_person else -1.35, 1.5 if first_person else 1.1)
+
+
+## Smoothed mouse and the right stick, once per frame before placing the camera.
+func _frame_look(delta: float) -> void:
+	if _look_pending != Vector2.ZERO:
+		var step := _look_pending * (1.0 - exp(-delta * 28.0))
+		if _look_pending.length() < 0.05:
+			step = _look_pending
+		_look_pending -= step
+		_turn(step, float(Settings.get_value("gameplay", "mouse_sensitivity")), bool(Settings.get_value("gameplay", "invert_y")))
+	if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		_look_pending = Vector2.ZERO
+		return
+	var stick := Vector2.ZERO
+	for pad in Input.get_connected_joypads():
+		stick += Vector2(Input.get_joy_axis(pad, JOY_AXIS_RIGHT_X), Input.get_joy_axis(pad, JOY_AXIS_RIGHT_Y))
+	var dz := clampf(float(Settings.get_value("input", "pad_deadzone")), 0.05, 0.6)
+	var mag := minf(stick.length(), 1.0)
+	if mag <= dz:
+		return
+	# Radial dead zone with a squared response: fine aim near the centre.
+	var k := pow((mag - dz) / (1.0 - dz), 2.0)
+	var rate := stick.normalized() * k * 2.6 * float(Settings.get_value("input", "pad_look_sensitivity")) * delta
+	# Expressed in mouse pixels at sensitivity 1 so _turn's clamps apply.
+	_turn(rate / 0.0025, 1.0, bool(Settings.get_value("input", "pad_invert_y")))
 
 
 ## Landing: the view dips with the impact and springs back.
@@ -79,6 +119,7 @@ func zoom(step: float) -> void:
 
 
 func follow(world: VoxelWorld, focus: Vector3, delta: float) -> void:
+	_frame_look(delta)
 	if first_person:
 		_follow_first_person(world, focus, delta)
 		return
@@ -122,8 +163,9 @@ func _follow_first_person(world: VoxelWorld, focus: Vector3, delta: float) -> vo
 		_dip += _dip_v * h
 		left -= h
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
-	var bob := Vector3(cos(_bob_phase) * 0.035, absf(sin(_bob_phase)) * 0.05 - 0.025, 0.0) * _bob
-	var target := focus + Vector3(0, eye_height + _dip, 0) + Basis(Vector3.UP, yaw) * Vector3(0, 0, -0.06)
+	var bob_k := _bob * float(Settings.get_value("gameplay", "head_bob")) * (0.0 if Settings.motion_scale() < 1.0 else 1.0)
+	var bob := Vector3(cos(_bob_phase) * 0.035, absf(sin(_bob_phase)) * 0.05 - 0.025, 0.0) * bob_k
+	var target := focus + Vector3(0, eye_height + _dip * Settings.motion_scale(), 0) + Basis(Vector3.UP, yaw) * Vector3(0, 0, -0.06)
 	# Smooth vertical steps (stairs, terrain) without lagging horizontally.
 	if _eye == Vector3.ZERO or _eye.distance_to(target) > 3.0:
 		_eye = target
@@ -135,7 +177,7 @@ func _follow_first_person(world: VoxelWorld, focus: Vector3, delta: float) -> vo
 	if world != null:
 		eye = _clear_of_ground(world, eye, focus + Vector3(0, 1.0, 0))
 	global_transform = Transform3D(basis, eye)
-	rotate_object_local(Vector3.FORWARD, sin(_bob_phase) * 0.006 * _bob)
+	rotate_object_local(Vector3.FORWARD, sin(_bob_phase) * 0.006 * bob_k)
 	_trauma = maxf(0.0, _trauma - delta * 1.4)
 	_shake_t += delta
 	if _trauma > 0.0:

@@ -229,7 +229,7 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var cam_basis := Basis(Vector3.UP, camera.yaw)
 	var wish := cam_basis * Vector3(input.x, 0, input.y)
-	var sprint := _input_enabled and Input.is_action_pressed("sprint") and input.y < 0.0
+	var sprint := _input_enabled and Settings.action_held("sprint") and input.y < 0.0
 	_sprinting = sprint and body.on_floor
 	var speed := SPRINT_SPEED if sprint else WALK_SPEED
 	if _action == "attack" or _action == "attack2" or _action == "cast":
@@ -288,7 +288,7 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	_move_speed = hv.length()
 	# Face where we're going; face the camera while fighting or mining.
 	var face_dir := hv
-	if _action in ["attack", "attack2", "cast", "mine"] or Input.is_action_pressed("attack"):
+	if _action in ["attack", "attack2", "cast", "mine"] or Settings.action_held("attack"):
 		face_dir = -cam_basis.z
 	if camera.first_person and _action != "dodge":
 		# First person: the body always faces where you look.
@@ -403,7 +403,7 @@ func _combat_update(delta: float) -> void:
 	var holding := inventory.selected_item()
 	var info := ItemDB.info(holding)
 	var is_tool: bool = info.get("category", "") == "tool"
-	if _input_enabled and Input.is_action_pressed("attack") and _action == "":
+	if _input_enabled and Settings.action_held("attack") and _action == "":
 		var target := _block_target()
 		if is_tool and not target.is_empty():
 			pass  # mining handled in _mining_update
@@ -469,7 +469,7 @@ func _mining_update(delta: float, vw: VoxelWorld) -> void:
 	var target := _block_target()
 	var holding_block := info.has("place_block")
 	_highlight.show_target(target, info.get("category", "") == "tool" or holding_block)
-	if target.is_empty() or info.get("category", "") != "tool" or not _input_enabled or not Input.is_action_pressed("attack"):
+	if target.is_empty() or info.get("category", "") != "tool" or not _input_enabled or not Settings.action_held("attack"):
 		if _mine_progress > 0.0:
 			_mine_progress = 0.0
 			_highlight.set_crack(0.0)
@@ -833,7 +833,7 @@ func receive_damage(amount: float, from: Vector3, kind: String, source_name: Str
 	var now := Time.get_ticks_msec() / 1000.0
 	if now < invulnerable_until:
 		return
-	amount *= inventory.damage_taken_multiplier(kind)
+	amount *= inventory.damage_taken_multiplier(kind) * Game.damage_taken_scale()
 	health = maxf(0.0, health - amount)
 	_last_damage_time = now
 	Events.damage_number.emit(center() + Vector3(0, 0.7, 0), int(round(amount)), false, "player")

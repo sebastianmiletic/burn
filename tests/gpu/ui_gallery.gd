@@ -45,12 +45,12 @@ func _run() -> void:
 		add_child(menu)
 		await _wait(1.2)
 		await _shot("menu")
-		menu.call("_show_solo")
+		menu.call("_show_runs")
 		await _wait(0.4)
-		await _shot("menu_solo")
-		menu.call("_show_multiplayer")
+		await _shot("menu_runs")
+		menu.call("_show_credits")
 		await _wait(0.4)
-		await _shot("menu_multiplayer")
+		await _shot("menu_credits")
 		menu.queue_free()
 
 	if _wants("settings"):

@@ -22,7 +22,14 @@ func _run() -> void:
 			only = a.get_slice("=", 1).split(",", false)
 	var dir := DirAccess.open("res://tests/unit")
 	var files := PackedStringArray()
+	# --only=ui_logic,map_ui runs just those files (test_<name>.gd).
+	var only := PackedStringArray()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--only="):
+			only = a.trim_prefix("--only=").split(",", false)
 	for f in dir.get_files():
+		if not only.is_empty() and not f.trim_prefix("test_").trim_suffix(".gd") in only:
+			continue
 		if f.begins_with("test_") and f.ends_with(".gd"):
 			if not only.is_empty() and not Array(only).any(func(w: String) -> bool: return f.contains(w)):
 				continue

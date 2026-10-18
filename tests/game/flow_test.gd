@@ -60,6 +60,7 @@ func _process(delta: float) -> bool:
 		5:
 			if int(game.get("state")) == 5:
 				_check(true, "continue loads the saved game")
+				_check(str(game.get("session").get("slot")) == "slot_5", "quitting saved into the run that was played (slot 5), got %s" % str(game.get("session").get("slot")))
 				return _done()
 			elif _t > 90.0:
 				_check(false, "continue loads the saved game")
