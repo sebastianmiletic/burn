@@ -408,7 +408,9 @@ func entities_near(pos: Vector3, radius: float, dim: int, team := -1) -> Array[E
 			continue
 		if team >= 0 and e.team != team:
 			continue
-		if e.global_position.distance_squared_to(pos) <= r2:
+		# Large bodies (sea bosses) count from their surface, not their anchor point.
+		var reach := r2 if e.hit_radius <= 1.5 else (radius + e.hit_radius) * (radius + e.hit_radius)
+		if e.global_position.distance_squared_to(pos) <= reach:
 			out.append(e)
 	return out
 

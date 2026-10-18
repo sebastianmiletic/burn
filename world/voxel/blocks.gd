@@ -92,7 +92,12 @@ const MAGMA_ROCK := 72
 const SCREE := 73
 ## Fractured grey cliff rock of the high mountains.
 const ALPINE_ROCK := 74
-const COUNT := 75
+# World revision 4: sea beds.
+## Pale, porous reef rock (coral reefs and lagoons).
+const CORAL_ROCK := 75
+## Soft grey-green sea-bed silt (seagrass meadows, the deep).
+const SILT := 76
+const COUNT := 77
 
 ## Block shape families used by the mesher.
 enum Shape { CUBE, NONE, SMALL }
@@ -176,6 +181,8 @@ const DATA := [
 	["Magma rock", Color(0.9, 0.32, 0.08), AsciiMaterialId.EMISSIVE, 1.8, 2, "basalt", 1.4, true, true, false, Shape.CUBE],
 	["Scree", Color(0.5, 0.5, 0.49), AsciiMaterialId.GROUND, 0.6, 0, "gravel", 0.0, true, true, false, Shape.CUBE],
 	["Mountain rock", Color(0.52, 0.53, 0.55), AsciiMaterialId.SOLID, 1.5, 1, "stone", 0.0, true, true, false, Shape.CUBE],
+	["Coral rock", Color(0.86, 0.74, 0.66), AsciiMaterialId.SOLID, 0.9, 1, "limestone", 0.0, true, true, false, Shape.CUBE],
+	["Silt", Color(0.36, 0.38, 0.33), AsciiMaterialId.GROUND, 0.4, 0, "clay", 0.0, true, true, false, Shape.CUBE],
 ]
 
 ## Blocks drawn as the smooth terrain surface.
@@ -183,7 +190,8 @@ const SMOOTH_BLOCKS := [STONE, DIRT, GRASS, SAND, SNOW, ICE, GRAVEL, COAL_ORE, I
 		OBSIDIAN, BEDROCK, BASALT, ASH, BONE, HELLSTONE, DRY_GRASS, CRYSTAL, DEEPSLATE, MUD, SOUL_SAND,
 		GRANITE, SANDSTONE, MARBLE, SLATE, CLAY, LIMESTONE, COPPER_ORE, TIN_ORE, SILVER_ORE, MITHRIL_ORE,
 		ADAMANTITE_ORE, RUBY_ORE, SAPPHIRE_ORE, AMETHYST, THATCH,
-		RED_ROCK, RED_SAND, SCORIA, PERMAFROST, UMBER_ROCK, FLOWSTONE, GEYSERITE, MYCELIUM, MAGMA_ROCK, SCREE, ALPINE_ROCK]
+		RED_ROCK, RED_SAND, SCORIA, PERMAFROST, UMBER_ROCK, FLOWSTONE, GEYSERITE, MYCELIUM, MAGMA_ROCK, SCREE, ALPINE_ROCK,
+		CORAL_ROCK, SILT]
 
 static var _solid := PackedByteArray()
 static var _opaque := PackedByteArray()

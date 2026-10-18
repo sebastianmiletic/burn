@@ -76,8 +76,7 @@ func _rebuild(w: GameWorld, pos: Vector3, cave: bool, r: Dictionary) -> void:
 				_add_mesh(_vent_mesh(), vent + Vector3(0, -0.35, 0), CaveDecor.material(CaveDecor.T.R_SINTER))
 				_make_steam(vent + Vector3(0, 0.6, 0))
 				_vent_glow(vent + Vector3(0, 0.9, 0))
-	elif w.local_dimension == 0 and pos.y < WorldGen.SEA_LEVEL + 15:
-		_ocean(w.gen_for(0), pos)
+	# Kelp and the other sea plants are per-chunk SeaFlora now (world/flora/sea_flora.gd).
 
 static var _vent: ArrayMesh
 
@@ -154,38 +153,3 @@ func _make_steam(at: Vector3) -> void:
 	particles.visibility_aabb = AABB(Vector3(-4, -2, -4), Vector3(8, 25, 8))
 	_root.add_child(particles)
 	_steam.append(particles)
-
-func _ocean(gen: WorldGen, pos: Vector3) -> void:
-	var cell := Vector2i(pos.x / 48, pos.z / 48)
-	var transforms: Array[Transform3D] = []
-	for dz in range(-1, 2):
-		for dx in range(-1, 2):
-			var key := cell + Vector2i(dx, dz)
-			var rng := RandomNumberGenerator.new()
-			rng.seed = WorldGen._hash3(key.x, 0, key.y, gen.world_seed)
-			for i in 20:
-				var x := key.x * 48 + rng.randf_range(0, 48)
-				var z := key.y * 48 + rng.randf_range(0, 48)
-				var ground := gen.ground_level(x, z)
-				if ground > WorldGen.SEA_LEVEL - 3 or not gen.in_bounds(int(x), int(z)):
-					continue
-				var height := minf(rng.randf_range(2, 7), WorldGen.SEA_LEVEL - ground - 1)
-				transforms.append(Transform3D(Basis.from_euler(Vector3(0, rng.randf() * TAU, 0)).scaled(Vector3(1, height, 1)), Vector3(x, ground, z)))
-	if transforms.is_empty():
-		return
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	var plant := QuadMesh.new()
-	plant.size = Vector2(0.9, 1)
-	plant.center_offset.y = 0.5
-	mm.mesh = plant
-	mm.instance_count = transforms.size()
-	for i in transforms.size():
-		mm.set_instance_transform(i, transforms[i])
-	var mi := MultiMeshInstance3D.new()
-	mi.multimesh = mm
-	var mat := ShaderMaterial.new()
-	mat.shader = preload("res://world/materials/kelp.gdshader")
-	mi.material_override = mat
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_root.add_child(mi)

@@ -6,7 +6,8 @@ static var _gen: WorldGen
 
 ## Boss arenas still built from blueprints by their own owner.
 const BOSS_LOCATIONS := [&"silent_crypt", &"crypt_depths", &"mountain_hall", &"dragons_keep", &"gates_of_hades",
-	&"tartarus", &"throne_of_hades", &"drowned_spire", &"weeping_hollow", &"broodmother_lair", &"hagsfen"]
+	&"tartarus", &"throne_of_hades", &"drowned_spire", &"weeping_hollow", &"broodmother_lair", &"hagsfen",
+	&"kraken_graveyard", &"maw_of_the_sea"]
 
 
 func _world() -> WorldGen:

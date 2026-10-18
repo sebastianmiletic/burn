@@ -17,11 +17,13 @@ const BOSS_ICONS := {
 	"warden": &"skull", "leviathan": &"serpent", "sea_serpent": &"serpent", "dragon": &"dragon",
 	"ashvane": &"dragon", "broodmother": &"spider", "mountain_king": &"crown", "hades": &"flame",
 	"cerberus": &"hound", "bog_hag": &"witch", "prism_sentinel": &"crystal", "void_sovereign": &"crystal",
+	"kraken": &"kraken", "charybdis": &"whirlpool",
 }
 const BOSS_NAMES := {
 	"warden": "The Warden", "leviathan": "The Leviathan", "dragon": "Ashvane", "broodmother": "Vexhira the Broodmother",
 	"mountain_king": "The Mountain King", "hades": "Hades", "cerberus": "Cerberus", "bog_hag": "Old Mother Mire",
 	"prism_sentinel": "The Prism Sentinel", "void_sovereign": "The Void Sovereign",
+	"kraken": "The Abyssal Kraken", "charybdis": "Charybdis",
 }
 
 const BONE := Color(0.95, 0.9, 0.8)
@@ -272,6 +274,26 @@ static func draw_glyph(ci: CanvasItem, icon: StringName, at: Vector2, r: float, 
 			_poly(ci, _pts(&"fish"), at, r, fill, outline)
 			ci.draw_circle(at + Vector2(-0.5, -0.06) * r, 0.09 * r, ink, true, -1.0, true)
 			ci.draw_arc(at + Vector2(-0.3, 0.0) * r, 0.2 * r, -1.2, 1.2, 8, ink, maxf(1.0, r * 0.07), true)
+		&"kraken":
+			# A mantle over curling arms.
+			for k in 5:
+				var x := -0.6 + k * 0.3
+				var arm := PackedVector2Array()
+				for j in 6:
+					var t := float(j) / 5.0
+					arm.append(at + Vector2(x * (1.0 + t * 0.5) + sin(t * 4.0 + k) * 0.12, 0.05 + t * 0.85) * r)
+				if outline.a > 0.0:
+					ci.draw_polyline(arm, outline, w * 1.1 + 2.0, true)
+				ci.draw_polyline(arm, fill, w * 1.1, true)
+			_ellipse(ci, at + Vector2(0, -0.32) * r, Vector2(0.5, 0.62) * r, fill, outline)
+			for x in [-0.2, 0.2]:
+				ci.draw_circle(at + Vector2(x, -0.06) * r, 0.09 * r, ink, true, -1.0, true)
+		&"whirlpool":
+			_circle(ci, at, 0.9 * r, fill, outline)
+			for k in 3:
+				var rr := (0.72 - k * 0.22) * r
+				ci.draw_arc(at, rr, k * 1.4, k * 1.4 + 4.6, 16, ink, maxf(1.0, r * 0.09), true)
+			ci.draw_circle(at, 0.12 * r, ink, true, -1.0, true)
 		&"dragon":
 			_poly(ci, _pts(&"dragon"), at, r, fill, outline)
 			ci.draw_circle(at + Vector2(-0.2, -0.08) * r, 0.09 * r, ink, true, -1.0, true)

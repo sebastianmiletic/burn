@@ -117,12 +117,17 @@ func _plan_overworld() -> Array[Location]:
 			if h < WorldGen.SEA_LEVEL - 4 and h > -16 and _far_from(out, p, 100):
 				var wreck := Location.new(StringName("wreck_%d" % wreck_count), ["The Cinderwake", "Saltbound Wreck", "The Lost Lantern", "Reefrunner's Rest"][wreck_count], Location.Kind.RUIN, Vector3(p.x, h + 1, p.y))
 				ExplorationSites.shipwreck(wreck)
+				if gen.revision >= 4:
+					for prop: Dictionary in wreck.props:
+						prop["sunken"] = true  # coral and weed on the old wrecks too (visual only)
 				out.append(wreck)
 				wreck_count += 1
 				if wreck_count == 4:
 					break
 	if gen.revision >= 3:
 		out.append_array(_plan_new_lands(out))
+	if gen.revision >= 4:
+		out.append_array(_plan_sea(out))
 	# The endgame gateway exists from the start, visibly sealed until Hades falls.
 	var hub := out[0]
 	hub.add_spawn("portal", hub.center + Vector3(0, 1, -12), {"to": 2, "size": Vector2(3, 5)})
@@ -527,6 +532,133 @@ static func roads(world_gen: WorldGen, locs: Array[Location] = []) -> Array[Pack
 		pts.append(end)
 		out.append(pts)
 	return out
+
+
+# --- Revision 4: the sea -----------------------------------------------------------------------
+
+## The ocean bosses' lairs, planned on their own random stream after everything else.
+func _plan_sea(existing: Array[Location]) -> Array[Location]:
+	var out: Array[Location] = []
+	var srng := RandomNumberGenerator.new()
+	srng.seed = gen.world_seed * 2750159 + 47
+	var all: Array[Location] = existing.duplicate()
+	for spec: Array in [[&"kraken_graveyard", "The Kraken's Graveyard", gen.KRAKEN_SITE, 30.0, &"wreckwatch_shrine", "Wreckwatch Shrine"],
+			[&"maw_of_the_sea", "The Maw of the Sea", gen.MAELSTROM_SITE, 34.0, &"maelstrom_shrine", "Maelstrom Shrine"]]:
+		var site := sea_lair_site(spec[2], float(spec[3]), all)
+		if site.is_empty():
+			continue
+		var c: Vector2 = site["center"]
+		var land: Vector2 = site["land"]
+		var to_coast := (land - c).normalized()
+		var loc := Location.new(spec[0], spec[1], Location.Kind.RUIN, Vector3(c.x, WorldGen.SEA_LEVEL + 2, c.y))
+		loc.major = true
+		var rim := 18.0
+		if spec[0] == &"kraken_graveyard":
+			SeaLairs.kraken(loc, to_coast, srng)
+		else:
+			SeaLairs.charybdis(loc, to_coast, srng)
+			rim = 21.0
+		# The causeway runs from the beach to the platform rim.
+		Lairs.causeway(loc, land, c + to_coast * (rim - 1.5), srng)
+		var shrine := _shrine(spec[4], spec[5], land + to_coast * 8.0)
+		out.append(loc)
+		out.append(shrine)
+		all.append(loc)
+		all.append(shrine)
+	# Wrecks with their cargo, and drowned ruins crusted with coral, on the sea beds.
+	for spec: Array in SEA_SITES:
+		var p := _seabed_site(spec[2], spec[3], all, srng)
+		if p.x < 0.0:
+			continue
+		var h := _ground(p.x, p.y)
+		var loc := Location.new(spec[0], spec[1], Location.Kind.RUIN, Vector3(p.x, h + 1, p.y))
+		loc.major = true
+		if String(spec[0]).begins_with("wreck"):
+			ExplorationSites.shipwreck(loc)
+			for prop: Dictionary in loc.props:
+				prop["sunken"] = true
+			loc.add_spawn("chest", loc.center + Vector3(-1, 1.2, 1), {"tier": 3 if spec[2] in [WorldGen.Sea.ABYSS, WorldGen.Sea.FROZEN, WorldGen.Sea.VENTS] else 2})
+		else:
+			loc.center.y = h
+			loc.ground_y = h
+			Structures.ruin(loc, srng)
+			for prop: Dictionary in loc.props:
+				prop["sunken"] = true
+			loc.add_spawn("chest", loc.center + Vector3(2.5, 1.0, 2.5), {"tier": 2})
+			loc.add_spawn("enemy", loc.center + Vector3(-4, 1, 3), {"kind": "drowned"})
+		out.append(loc)
+		all.append(loc)
+	return out
+
+
+## Sea-bed sites (revision 4): id, name, ocean biome, nominal position.
+const SEA_SITES := [
+	[&"wreck_gilded_gull", "Wreck of the Gilded Gull", WorldGen.Sea.REEF, Vector2(300, 3100)],
+	[&"wreck_widows_keel", "Wreck of the Widow's Keel", WorldGen.Sea.KELP, Vector2(2250, 2450)],
+	[&"wreck_frostbound", "Wreck of the Frostbound", WorldGen.Sea.FROZEN, Vector2(4470, 1000)],
+	[&"wreck_ashen_barque", "Wreck of the Ashen Barque", WorldGen.Sea.VENTS, Vector2(700, 2200)],
+	[&"wreck_lantern_queen", "Wreck of the Lantern Queen", WorldGen.Sea.ABYSS, Vector2(3800, 2900)],
+	[&"sunken_chapel", "The Sunken Chapel", WorldGen.Sea.SEAGRASS, Vector2(2250, 1900)],
+	[&"drowned_manor", "The Drowned Manor", WorldGen.Sea.REEF, Vector2(1150, 4350)],
+	[&"drowned_ring", "The Drowned Ring", WorldGen.Sea.SEAGRASS, Vector2(2500, 3600)],
+]
+
+
+## Level sea bed in ocean biome `sea` near `nominal`, 4-30 m down, away from other places.
+func _seabed_site(sea: int, nominal: Vector2, others: Array[Location], srng: RandomNumberGenerator) -> Vector2:
+	for attempt in 120:
+		var q := nominal + Vector2.from_angle(srng.randf() * TAU) * srng.randf_range(0.0, 60.0 + attempt * 4.0)
+		if not _inside(q, 80.0) or gen.sea_at(q.x, q.y) != sea:
+			continue
+		var g := float(_ground(q.x, q.y))
+		if g > WorldGen.SEA_LEVEL - 4 or g < WorldGen.SEA_LEVEL - 30:
+			continue
+		var flat := true
+		for k in 4:
+			var o := Vector2.from_angle(TAU * k / 4.0) * 10.0
+			if absf(_ground(q.x + o.x, q.y + o.y) - g) > 3.0:
+				flat = false
+				break
+		if flat and _far_from(others, q, 120.0):
+			return q
+	return Vector2(-1, -1)
+
+
+## A spot of open deep water near `nominal` (searched outwards) with a coast within reach:
+## {"center": Vector2, "land": Vector2 (the beach the causeway starts from)}, or {}.
+func sea_lair_site(nominal: Vector2, open_radius: float, others: Array[Location]) -> Dictionary:
+	for ring in 16:
+		var r := ring * 45.0
+		var n := maxi(1, ring * 8)
+		for k in n:
+			var c := nominal + Vector2.from_angle(TAU * k / n + ring * 0.37) * r
+			if not _inside(c, 120.0) or not _far_from(others, c, 230.0):
+				continue
+			var open := true
+			for j in 16:
+				var q := c + Vector2.from_angle(TAU * j / 16.0) * open_radius
+				if gen.smooth_height(q.x, q.y) > WorldGen.SEA_LEVEL - 8 or gen.smooth_height(c.x, c.y) > WorldGen.SEA_LEVEL - 8:
+					open = false
+					break
+			if not open:
+				continue
+			# The nearest beach along 24 headings, 45-170 m away.
+			var best := Vector2(-1, -1)
+			var best_d := INF
+			for j in 24:
+				var dir := Vector2.from_angle(TAU * j / 24.0)
+				var d := open_radius + 15.0
+				while d < 170.0:
+					var q := c + dir * d
+					if gen.smooth_height(q.x, q.y) > WorldGen.SEA_LEVEL + 2:
+						if d < best_d:
+							best_d = d
+							best = q
+						break
+					d += 4.0
+			if best_d < INF and _far_from(others, best, 90.0):
+				return {"center": c, "land": best}
+	return {}
 
 
 # --- Hell ----------------------------------------------------------------------

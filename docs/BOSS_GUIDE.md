@@ -11,6 +11,7 @@ The full ladder (first steps, forge quests, optional hunts incl. ocean bosses) i
 | Cerberus | Underworld challenge | Late-overworld equipment and fire protection |
 | Hades | Main campaign finale | Endgame equipment, fire protection and careful arena positioning |
 | Broodmother, Bog Hag, Leviathan | Optional regional bosses, not starter encounters | Return with upgraded equipment; learn their area attacks |
+| Abyssal Kraken, Charybdis (world revision 4) | Optional sea bosses, late game | Mithril gear, ranged weapons help; fought from decks/platforms reached by causeways |
 | Prism Sentinel, Void Sovereign | Post-game Ryft Island challenges | Mithril gear, many potions, space to dodge rings |
 
 ## Boss health and encounter rules
@@ -53,3 +54,16 @@ frost, crystal glow); Hades grows and gains a ring of souls in phase 3. Check th
 `res://tests/gpu/boss_gallery.tscn -- --capture=<dir> [--only=hades] [--perf]` (first-person eye height).
 
 Difficulty labels are design guidance. Human playtesting across equipment tiers remains necessary.
+
+## Sea bosses (world revision 4)
+
+- **The Abyssal Kraken** (`kraken`) in the Kraken's Graveyard over the Abyssal Trench: a ring of wreck decks round a flooded
+  pool. It can only be hurt while its mantle is up. Tentacle slams (lanes), deck sweeps (one of two bands), wreck grabs
+  (hurled wreckage), ink clouds that blind whoever stands in them, a whirlpool pull towards the pool, drowned thralls, and a
+  phase-3 frenzy. Players who fall into the pool are spouted back onto a deck. Drops the Kraken Beak (relic) and Kraken Ink.
+- **Charybdis, the Maw of the Sea** (`charybdis`) at the Maw of the Sea in the Maelstrom: a carved whirlpool ringed by sea
+  stacks with a drowned temple's platforms. Hurt only while the maw has risen (gulp, vortex, debris). Vortex pull then the
+  maw snapping over the rim, debris storms, tidal surges with a dry strip, spinning lanes, maelstrom rings. Anyone sucked
+  down the funnel is spat back out. Drops the Charybdis Heartstone (relic) and Tide Pearls.
+- Prizes: Tideborn Helm (kraken beak; `water_breathing`), Tideborn Trident (heartstone; `swim_speed`), Tidebreath Draught
+  (buff `water_breathing`, 180 s). Swimming/breathing code reads these flags.
