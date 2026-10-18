@@ -118,6 +118,8 @@ func setup(info: Dictionary) -> void:
 	add_child(tracker)
 	# Activities (treasure, bounties, world events, the Proving Ring): same node path on every peer.
 	add_child(ActivityDirector.new())
+	# Pets, wild tameables and fishing lines (world/village_life/): same node path on every peer.
+	add_child(VillageLife.new())
 
 	var save: Dictionary = info.get("save", {})
 	_load_world_state(save)

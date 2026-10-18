@@ -30,6 +30,9 @@ const TIPS := [Vector3(0.58, 0.045, -0.05), Vector3(0.6, 0.03, 0.08), Vector3(0.
 
 var species := "bat"
 var size := 1.0
+## Birds at rest (a pet raven on the ground): wings folded, no beat.
+var perched := false
+var _perch := 0.0
 
 var _flap := 0.0
 var _dive := 0.0
@@ -197,10 +200,12 @@ func _animate(delta: float) -> void:
 	if _dead:
 		die = clampf(_dead_t / 0.5, 0.0, 1.0)
 		rate *= 1.0 - die
+	_perch = damp(_perch, 1.0 if perched and not _dead else 0.0, 6.0, delta)
+	rate *= 1.0 - _perch
 	_flap += delta * TAU * rate
-	var stroke := sin(_flap)
+	var stroke := sin(_flap) * (1.0 - _perch)
 	var down := -cos(_flap)
-	var fold := smoothstep(0.0, 1.0, maxf(0.0, -down)) * (0.9 if bat else 0.4)
+	var fold := lerpf(smoothstep(0.0, 1.0, maxf(0.0, -down)) * (0.9 if bat else 0.4), 1.0, _perch)
 	var dive := 0.0
 	var flinch := 0.0
 	var jaw := 0.05
