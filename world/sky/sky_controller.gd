@@ -354,7 +354,7 @@ func _update_lights(delta: float, force: bool) -> void:
 	var amb_col := (amb * 0.8 + floor_col).lerp(_cave_bounce, u)
 	environment.ambient_light_color = Color(amb_col.x, amb_col.y, amb_col.z)
 	# Snow on the ground bounces light back up: brighter, cooler shadows.
-	environment.ambient_light_energy = lerpf(0.45 * (1.0 - storm * 0.35) * (1.0 + cover * 0.3), 2.3, u)
+	environment.ambient_light_energy = lerpf(0.45 * (1.0 - storm * 0.2) * (1.0 + cover * 0.3), 2.3, u)
 	environment.background_energy_multiplier = 1.0
 	# Fog takes the colour of the horizon away from the sun; aerial perspective
 	# then pulls it towards the actual sky behind each object.
@@ -365,7 +365,7 @@ func _update_lights(delta: float, force: bool) -> void:
 	# by the flakes), not the warm haze of a clear day.
 	if snowing > 0.0:
 		var sl := hz.dot(Vector3(0.3, 0.5, 0.2))
-		hz = hz.lerp(Vector3(0.86, 0.9, 1.0) * sl * 1.15, snowing * 0.7)
+		hz = hz.lerp(Vector3(0.9, 0.94, 1.0) * sl, snowing * 0.6)
 	if dust > 0.0:
 		hz = hz.lerp(Vector3(0.42, 0.3, 0.2) * maxf(dayf, 0.08), dust * 0.6)
 	if ember > 0.0:

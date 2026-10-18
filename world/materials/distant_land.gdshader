@@ -186,7 +186,9 @@ void fragment() {
 	}
 	// Ranges never vanish completely into haze: a trace of their own shading
 	// always reads, darker than the sky in foul weather, never a pale cut-out.
-	FOG = vec4(col, min(amount, 0.93));
+	// In thick weather (fog banks, blizzards) they do vanish, as the near fog
+	// hides everything past ~150 m.
+	FOG = vec4(col, min(amount, mix(0.93, 1.0, clamp((fog_dens - 0.004) * 80.0, 0.0, 1.0))));
 }
 
 void light() {

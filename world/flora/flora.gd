@@ -839,8 +839,11 @@ static func update_distance_lod(tree: SceneTree, cam: Vector3) -> void:
 	var q := _quality
 	var n := mini(_lod_roots.size(), _lod_cursor + 160)
 	for i in range(_lod_cursor, n):
-		var root := _lod_roots[i] as Node3D
-		if root == null or not is_instance_valid(root) or not root.is_inside_tree():
+		var item: Variant = _lod_roots[i]
+		if not is_instance_valid(item):
+			continue
+		var root := item as Node3D
+		if root == null or not root.is_inside_tree():
 			continue
 		var d := maxf((root.global_position + Vector3(8, 8, 8)).distance_to(cam) - CHUNK_MARGIN, 0.0)
 		var band := int(d / 6.0)

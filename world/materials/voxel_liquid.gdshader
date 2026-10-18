@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled;
+render_mode cull_disabled, depth_draw_always;
 // Water and lava surfaces. Drawn opaque so the ASCII pass sees them: water is
 // tagged LIQUID (animated ~ - = glyphs), lava EMISSIVE (passed through and
 // glowing).
@@ -20,6 +20,18 @@ render_mode cull_disabled;
 
 #include "res://rendering/materials/ascii_material.gdshaderinc"
 #include "res://rendering/materials/noise.gdshaderinc"
+
+// Water optics (parameters so biomes / oceans can tune them per material):
+// colour of light scattered back out of the water, extinction per metre
+// (red is absorbed first, so depth turns blue-green), shoreline foam.
+uniform vec3 shallow_color : source_color = vec3(0.045, 0.085, 0.08);
+uniform vec3 deep_color : source_color = vec3(0.012, 0.03, 0.04);
+uniform vec3 absorption = vec3(0.42, 0.11, 0.08);
+uniform float turbidity : hint_range(0.0, 2.0) = 0.35;   // in-scattering per metre
+uniform float refraction = 0.035;
+uniform float shore_foam : hint_range(0.0, 1.0) = 0.55;
+uniform sampler2D depth_tex : hint_depth_texture, filter_nearest, repeat_disable;
+uniform sampler2D refr_tex : hint_screen_texture, filter_linear_mipmap, repeat_disable;
 
 global uniform vec2 wind_dir;
 global uniform float wind_strength;
@@ -139,6 +151,20 @@ void lava(float t, out vec3 albedo, out vec3 emission, out float rough) {
 	rough = mix(0.5, 0.9, crust);
 }
 
+// Metres of water between the surface fragment and the scene behind it (0 when
+// the scene sample is in front of the water).
+float water_thickness(vec2 uv, vec3 vertex, mat4 inv_proj) {
+	float d = textureLod(depth_tex, uv, 0.0).r;
+#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	vec4 ndc = vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+#else
+	vec4 ndc = vec4(uv * 2.0 - 1.0, d, 1.0);
+#endif
+	vec4 view = inv_proj * ndc;
+	view.xyz /= view.w;
+	return max(length(view.xyz) - length(vertex), 0.0);
+}
+
 void water(float t, vec3 view_dir_world, float lod, out vec3 n_out, out vec3 albedo, out float foam_out) {
 	bool top = v_wnormal.y > 0.5;
 	bool side = abs(v_wnormal.y) < 0.5;
@@ -174,9 +200,7 @@ void water(float t, vec3 view_dir_world, float lod, out vec3 n_out, out vec3 alb
 	// Body colour: light scattered back out of the water. Looking straight
 	// down you see deeper (darker, greener); out of the sky light it is dark.
 	float facing = clamp(dot(n, view_dir_world), 0.0, 1.0);
-	vec3 shallow = vec3(0.045, 0.085, 0.08);
-	vec3 deep = vec3(0.012, 0.03, 0.04);
-	vec3 body = mix(shallow, deep, facing) * (0.35 + 0.65 * v_sky);
+	vec3 body = mix(shallow_color, deep_color, facing) * (0.35 + 0.65 * v_sky);
 	albedo = mix(body, vec3(0.75, 0.78, 0.8), foam);
 }
 
@@ -198,7 +222,31 @@ void fragment() {
 		vec3 albedo;
 		float foam;
 		water(t, view_dir_world, lod, n, albedo, foam);
-		NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+		vec3 nv = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+		NORMAL = nv;
+		if (v_wnormal.y > 0.5 && FRONT_FACING) {
+			// Looking into the water from above: what lies under it, bent by the
+			// waves, absorbed and scattered over the distance the light travels
+			// through the water; foam where it thins out against the shore.
+			float thick = water_thickness(SCREEN_UV, VERTEX, INV_PROJECTION_MATRIX);
+			vec2 off = nv.xy * refraction * clamp(thick, 0.0, 1.5);
+			float thick_r = water_thickness(SCREEN_UV + off, VERTEX, INV_PROJECTION_MATRIX);
+			vec2 uv = SCREEN_UV + off;
+			if (thick_r <= 0.0) {
+				uv = SCREEN_UV;   // the offset hit something in front of the water
+				thick_r = thick;
+			}
+			float path = thick_r;
+			vec3 trans = exp(-absorption * path);
+			vec3 under = textureLod(refr_tex, uv, clamp(path * 0.6, 0.0, 3.0)).rgb;
+			float scatter = 1.0 - exp(-turbidity * path);
+			float fres = 0.02 + 0.98 * pow(1.0 - clamp(dot(n, view_dir_world), 0.0, 1.0), 5.0);
+			float edge = 1.0 - smoothstep(0.0, 0.5, thick);
+			float sf = shore_foam * edge * smoothstep(0.45, 0.75, n_value2(v_world.xz * 2.2 + vec2(t * 0.25, -t * 0.18)) + edge * 0.35);
+			foam = max(foam, sf);
+			EMISSION = under * trans * (1.0 - fres) * (1.0 - foam);
+			albedo = mix(albedo * scatter, vec3(0.75, 0.78, 0.8), foam);
+		}
 		ALBEDO = albedo;
 		SPECULAR = mix(0.25, 0.05, foam);        // F0 = 0.02, as real water
 		ROUGHNESS = ascii_roughness(mix(0.03, 0.6, foam), ASCII_LIQUID);
