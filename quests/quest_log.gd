@@ -2,7 +2,11 @@ class_name QuestLog
 extends RefCounted
 ## The local player's quests: progress, tracking, completion and rewards.
 ## Progress comes from `on_event(type, key, amount)`; "collect" and "have"
-## objectives are re-evaluated from the inventory.
+## objectives are re-evaluated from the inventory. Event objectives count from
+## the moment the quest is accepted ("gather" = items picked up, "craft" =
+## items made, "place" = stations set down), except "boss" and "reach", which
+## also count bosses already slain and places already found in this world
+## (`known_bosses` / `known_places`), so doing things early never strands a quest.
 
 signal completed_quest(quest: Dictionary)
 
@@ -15,6 +19,10 @@ var inventory: Inventory
 var activity := {}
 ## Extra guidance sources (the ActivityDirector): Callable() -> Array of markers.
 var marker_providers: Array[Callable] = []
+## World facts shared by reference with GameWorld (bosses_defeated: kind ->
+## true, discovered: location id -> true). Empty outside a world.
+var known_bosses := {}
+var known_places := {}
 
 
 func accept(id: String) -> bool:
@@ -26,11 +34,40 @@ func accept(id: String) -> bool:
 	var progress := PackedInt32Array()
 	progress.resize((q["objectives"] as Array).size())
 	_active[id] = {"progress": progress, "tracked": true}
+	_apply_world_facts(id)
 	_refresh_inventory_objectives()
 	Events.quest_updated.emit(id)
 	Events.notify.emit("New quest: " + String(q["title"]), "quest")
 	Audio.play_ui("quest")
+	_check_completion()
 	return true
+
+
+## Bosses already slain and places already found count for a new quest.
+func _apply_world_facts(id: String) -> void:
+	var objs: Array = QuestDB.any(id)["objectives"]
+	var progress: PackedInt32Array = _active[id]["progress"]
+	for i in objs.size():
+		var o: Dictionary = objs[i]
+		var key := String(o["key"])
+		var known := false
+		match String(o["type"]):
+			"boss":
+				known = known_bosses.has(key)
+			"reach":
+				known = known_places.has(StringName(key)) or known_places.has(key)
+		if known:
+			progress[i] = int(o["count"])
+	_active[id]["progress"] = progress
+
+
+## Does an event key satisfy an objective key? Objective keys may list
+## alternatives ("axe_stone|spear_stone"); "discover" matches by prefix.
+static func key_matches(objective_key: String, type: String, key: String) -> bool:
+	for alt in objective_key.split("|"):
+		if alt == key or (type == "discover" and key.begins_with(alt)):
+			return true
+	return false
 
 
 func is_active(id: String) -> bool:
@@ -58,7 +95,7 @@ func on_event(type: String, key: String, amount := 1) -> void:
 			var o: Dictionary = objs[i]
 			if o["type"] != type:
 				continue
-			if o["key"] != key and not (type == "discover" and key.begins_with(o["key"])):
+			if not key_matches(String(o["key"]), type, key):
 				continue
 			if progress[i] < int(o["count"]):
 				progress[i] = mini(int(o["count"]), progress[i] + amount)
@@ -66,6 +103,7 @@ func on_event(type: String, key: String, amount := 1) -> void:
 		_active[id]["progress"] = progress
 		if touched:
 			Events.quest_updated.emit(id)
+			touched = false
 	if type == "collect" or type == "have":
 		_refresh_inventory_objectives()
 	_check_completion()
@@ -82,7 +120,10 @@ func _refresh_inventory_objectives() -> void:
 		for i in objs.size():
 			var o: Dictionary = objs[i]
 			if o["type"] == "collect" or o["type"] == "have":
-				var n := mini(inventory.count_of(o["key"]), int(o["count"]))
+				var n := 0
+				for alt in String(o["key"]).split("|"):
+					n += inventory.count_of(alt)
+				n = mini(n, int(o["count"]))
 				if n != progress[i]:
 					progress[i] = n
 					changed = true
@@ -119,6 +160,8 @@ func _objectives_done(id: String) -> bool:
 ## Quests without a giver to return to complete as soon as objectives are met.
 func _check_completion() -> void:
 	for id: String in _active.keys():
+		if not _active.has(id):
+			continue  # finished by a nested completion (accepting a successor)
 		var q := QuestDB.any(id)
 		if String(q["giver"]) == "" and _objectives_done(id):
 			complete(id)
@@ -137,7 +180,7 @@ func complete(id: String) -> void:
 	Events.quest_completed.emit(id)
 	Events.notify.emit("Quest complete: " + String(q["title"]), "quest")
 	var next := String(q.get("next", ""))
-	if next != "" and QuestDB.main_quest(next).get("giver", "x") == "":
+	if next != "" and QuestDB.any(next).get("giver", "x") == "":
 		accept(next)
 
 
@@ -196,9 +239,10 @@ func _describe(id: String, done: bool) -> Dictionary:
 	for item: String in r.get("items", {}):
 		rewards.append("%s x%d" % [ItemDB.display_name(item), r["items"][item]])
 	var ready := not done and _objectives_done(id) and String(q["giver"]) != ""
+	var category := QuestDB.category_of(id)
 	return {"id": id, "title": q["title"], "description": q["description"], "objectives": list,
-		"rewards": ", ".join(rewards), "tracked": (not done) and _active[id]["tracked"], "main": not id.begins_with("side_"),
-		"ready": ready, "turn_in": _giver_label(q["giver"]) if ready else ""}
+		"rewards": ", ".join(rewards), "tracked": (not done) and _active[id]["tracked"], "main": category == "main",
+		"category": category, "ready": ready, "turn_in": _giver_label(q["giver"]) if ready else ""}
 
 
 # --- Save --------------------------------------------------------------------------
@@ -217,11 +261,98 @@ func from_dict(d: Dictionary) -> void:
 	for id: String in a:
 		if QuestDB.any(id).is_empty():
 			continue  # a quest that no longer exists in this version
-		_active[id] = {"progress": PackedInt32Array(a[id]["progress"]), "tracked": a[id]["tracked"]}
+		var progress := PackedInt32Array(a[id]["progress"])
+		progress.resize((QuestDB.any(id)["objectives"] as Array).size())  # objectives may have changed
+		_active[id] = {"progress": progress, "tracked": a[id]["tracked"]}
 	for id: String in d.get("completed", []):
 		_completed[id] = true
 	var act: Variant = d.get("activity", {})
 	activity = (act as Dictionary).duplicate(true) if act is Dictionary else {}
+	migrate()
+
+
+## Re-applies slain bosses and found places to every active quest (after a
+## load: older saves could hold a boss quest accepted after its boss died).
+func sync_world_facts() -> void:
+	for id: String in _active.keys():
+		_apply_world_facts(id)
+		Events.quest_updated.emit(id)
+	_check_completion()
+
+
+## Starts the first-steps guide unless this character has begun (or skipped) it.
+func start_guide() -> void:
+	for q: Dictionary in QuestDB.FIRST_STEPS:
+		if _active.has(q["id"]) or _completed.has(q["id"]):
+			return
+	accept(String(QuestDB.FIRST_STEPS[0]["id"]))
+
+
+## The progression ladder for the journal's Path tab:
+## [{title, hint, tier, quest, state: "done"|"current"|"next"|"locked"}].
+## Only the current step and the one after it reveal their hints, so the
+## ladder guides without spoiling what lies further on.
+func path() -> Array:
+	var out: Array = []
+	var current := -1
+	for i in QuestDB.PATH.size():
+		var step: Dictionary = QuestDB.PATH[i]
+		var state := "locked"
+		if _completed.has(String(step["quest"])):
+			state = "done"
+		elif current < 0:
+			current = i
+			state = "current"
+		elif i == current + 1:
+			state = "next"
+		var d := step.duplicate()
+		d["state"] = state
+		d["active"] = _active.has(String(step["quest"]))
+		out.append(d)
+	return out
+
+
+## Optional boss contracts for the Path tab: [{id, title, tier, giver,
+## state: "done"|"active"|"available"|"locked"}]. Bosses this build lacks are left out.
+func optional_path() -> Array:
+	var out: Array = []
+	for q: Dictionary in QuestDB.OPTIONAL:
+		if not QuestDB.boss_available(q):
+			continue
+		var id: String = q["id"]
+		var state := "locked"
+		if _completed.has(id):
+			state = "done"
+		elif _active.has(id):
+			state = "active"
+		elif String(q.get("requires", "")) == "" or _completed.has(String(q["requires"])):
+			state = "available"
+		out.append({"id": id, "title": q["title"], "tier": q.get("tier", ""), "giver": _giver_label(String(q["giver"])), "state": state})
+	return out
+
+
+## Keeps saves from older versions moving after quests were added to the
+## ladder: a quest inserted before one the player has already reached counts
+## as done (no rewards), and the first-steps guide is skipped for characters
+## that already have a story under way.
+func migrate() -> void:
+	var reached := -1
+	for i in QuestDB.MAIN.size():
+		var id: String = QuestDB.MAIN[i]["id"]
+		if _active.has(id) or _completed.has(id):
+			reached = i
+	for i in reached:
+		var id: String = QuestDB.MAIN[i]["id"]
+		if not _completed.has(id) and not _active.has(id):
+			_completed[id] = true
+	var started_guide := false
+	for q: Dictionary in QuestDB.FIRST_STEPS:
+		if _active.has(q["id"]) or _completed.has(q["id"]):
+			started_guide = true
+	var story_started := reached > 0 or _completed.has("kindling")
+	if not started_guide and story_started:
+		for q: Dictionary in QuestDB.FIRST_STEPS:
+			_completed[q["id"]] = true
 
 
 # --- Guidance ------------------------------------------------------------------
@@ -255,7 +386,7 @@ func _compute_markers() -> Array:
 			var q := QuestDB.any(id)
 			if q.is_empty():
 				continue
-			var kind := "main" if not id.begins_with("side_") else "side"
+			var kind := "main" if QuestDB.category_of(id) == "main" else "side"
 			if _objectives_done(id):
 				if String(q["giver"]) != "":
 					var giver := _giver_marker(gw, String(q["giver"]))
@@ -290,6 +421,8 @@ func _compute_markers() -> Array:
 static func _objective_marker(gw: GameWorld, o: Dictionary) -> Dictionary:
 	var key := String(o.get("key", ""))
 	match String(o.get("type", "")):
+		"talk":
+			return _giver_marker(gw, key)
 		"reach":
 			var loc := gw.location_by_id(StringName(key))
 			if loc != null:

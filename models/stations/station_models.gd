@@ -7,6 +7,7 @@ extends RefCounted
 ##   furnace    - fieldstone bloomery with a brick arch, glowing coals, chimney, bellows
 ##   anvil      - forged horn anvil on an iron-banded stump, hammer, tongs, quench tub
 ##   alchemy    - dark table with alembic over a burner, flasks, mortar, books
+##   campfire   - stone ring, leaned logs, embers; cooks food and lights the night
 
 
 static func _p(parent: Node3D, mesh: Mesh, mat: Material, pos := Vector3.ZERO, rot := Vector3.ZERO, scl := Vector3.ONE) -> MeshInstance3D:
@@ -25,6 +26,8 @@ static func build(kind: String, live := false) -> Node3D:
 			anvil(root, live)
 		"alchemy":
 			alchemy(root, live)
+		"campfire":
+			campfire(root, live)
 		_:
 			workbench(root)
 	return root
@@ -366,6 +369,67 @@ static func potion_set(root: Node3D, y: float) -> void:
 		n.position = Vector3(0, y, 0) + s[1]
 		n.scale = Vector3.ONE * 1.4
 		GoodsModels.potion(n, s[0])
+
+
+# --- Campfire -----------------------------------------------------------------------------------
+
+## A ring of fieldstones round an ash bed, split logs leaned into a cone,
+## glowing embers and (live) flames, sparks, smoke and warm flickering light.
+static func campfire(root: Node3D, live: bool) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7741
+	var stones := [Color(0.46, 0.44, 0.41), Color(0.38, 0.36, 0.33), Color(0.52, 0.49, 0.44)]
+	for i in 11:
+		var a := TAU * float(i) / 11.0 + rng.randf_range(-0.08, 0.08)
+		var r := 0.5 + rng.randf_range(-0.03, 0.03)
+		var sz := Vector3(0.2, 0.13, 0.15) * rng.randf_range(0.85, 1.15)
+		_p(root, ItemMesh.rock(0.5, 400 + i, 0.22, 1, sz), ItemMats.stone(stones[rng.randi() % stones.size()], Color(0.25, 0.24, 0.22)),
+			Vector3(cos(a) * r, 0.05, sin(a) * r), Vector3(rng.randf_range(-8, 8), 90.0 - rad_to_deg(a), rng.randf_range(-8, 8)))
+	# Ash bed with charred stubs.
+	_p(root, ModelKit.cylinder(0.4, 0.42, 0.03, 16), ItemMats.stone(Color(0.17, 0.16, 0.15), Color(0.08, 0.08, 0.08), 0.98), Vector3(0, 0.015, 0))
+	var char_mat := ItemMats.stone(Color(0.09, 0.07, 0.06), Color(0.03, 0.03, 0.03), 0.9)
+	var bark := ItemMats.bark()
+	# Five split logs leaned together into a cone.
+	for i in 5:
+		var a := TAU * float(i) / 5.0 + 0.3
+		var lean := 52.0 + rng.randf_range(-5, 5)
+		var log_node := Node3D.new()
+		root.add_child(log_node)
+		log_node.position = Vector3(cos(a) * 0.2, 0.0, sin(a) * 0.2)
+		log_node.rotation_degrees = Vector3(0, 90.0 - rad_to_deg(a), 0)
+		var pivot := Node3D.new()
+		log_node.add_child(pivot)
+		pivot.rotation_degrees = Vector3(0, 0, lean)
+		_p(pivot, ModelKit.cylinder(0.045, 0.055, 0.5, 9), bark, Vector3(0, 0.25, 0))
+		_p(pivot, ModelKit.cylinder(0.04, 0.047, 0.12, 9), char_mat, Vector3(0, 0.47, 0))
+	# Embers under the cone.
+	var ember := ItemMats.molten(Color(0.1, 0.05, 0.03), Color(1.0, 0.38, 0.08), 7.0)
+	for i in 10:
+		var p := Vector3(rng.randf_range(-0.18, 0.18), 0.04, rng.randf_range(-0.18, 0.18))
+		_p(root, ItemMesh.rock(0.04, 500 + i, 0.3, 1), ember, p)
+	if not live:
+		return
+	_p(root, ModelKit.sphere(0.14, 10), ItemMats.glow(Color(1.0, 0.5, 0.15), 4.5), Vector3(0, 0.12, 0), Vector3.ZERO, Vector3(1.2, 0.6, 1.2))
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.56, 0.24)
+	light.light_energy = 2.8
+	light.omni_range = 9.0
+	light.omni_attenuation = 1.3
+	light.shadow_enabled = true
+	light.light_volumetric_fog_energy = 1.2
+	light.position = Vector3(0, 0.55, 0)
+	root.add_child(light)
+	var flicker := FireFlicker.new()
+	flicker.light = light
+	flicker.base = 2.8
+	root.add_child(flicker)
+	var flames := ModelKit.embers(root, 34, Vector3(0.14, 0.05, 0.14), 0.7, 0.2, 1.0)
+	flames.position = Vector3(0, 0.12, 0)
+	flames.emitting = true
+	var sparks := ModelKit.embers(root, 12, Vector3(0.08, 0.04, 0.08), 1.8, 0.03, 2.4)
+	sparks.position = Vector3(0, 0.45, 0)
+	sparks.emitting = true
+	root.add_child(smoke(Vector3(0, 0.8, 0)))
 
 
 ## Flickering firelight.

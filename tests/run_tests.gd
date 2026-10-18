@@ -21,6 +21,12 @@ func _run() -> void:
 		if f.begins_with("test_") and f.ends_with(".gd"):
 			files.append(f)
 	files.sort()
+	# --only=items,progression runs just test_items.gd and test_progression.gd.
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--only="):
+			var keep := a.trim_prefix("--only=").split(",", false)
+			files = PackedStringArray(Array(files).filter(func(f: String) -> bool:
+				return keep.has(f.trim_prefix("test_").trim_suffix(".gd"))))
 
 	var total := 0
 	var failed := 0

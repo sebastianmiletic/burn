@@ -1,13 +1,13 @@
 class_name Station
 extends Entity
-## A crafting station in the world: workbench, furnace, anvil or alchemy
+## A crafting station in the world: workbench, furnace, anvil, alchemy table or campfire
 ## table. Spawned server-side (GameWorld.spawn_entity("station", pos, dim,
 ## {"station": kind, "yaw": radians})) and mirrored on every client like any
 ## entity. Using it is purely local: it opens the crafting book for this
 ## station (Events.station_open), and crafting itself is client-local.
 ## The furnace burns: firelight, flame, sparks, chimney smoke and a crackle.
 
-const KINDS := ["workbench", "furnace", "anvil", "alchemy"]
+const KINDS := ["workbench", "furnace", "anvil", "alchemy", "campfire"]
 const CRACKLE_RANGE := 14.0
 
 var station_kind := "workbench"
@@ -41,7 +41,7 @@ func interact_prompt(_p: Node) -> String:
 
 
 func local_interact(_p: Node) -> void:
-	Audio.play("chest" if station_kind == "workbench" else ("hit_metal" if station_kind == "anvil" else "potion"), global_position, -6.0)
+	Audio.play("chest" if station_kind == "workbench" else ("hit_metal" if station_kind == "anvil" else ("fire" if station_kind == "campfire" else "potion")), global_position, -6.0)
 	Events.station_open.emit(station_kind, self)
 
 
@@ -61,7 +61,7 @@ func apply_snapshot(s: Array, _at_time: float) -> void:
 
 
 func _process(delta: float) -> void:
-	if station_kind != "furnace" or not visible:
+	if not (station_kind in ["furnace", "campfire"]) or not visible:
 		return
 	_crackle -= delta
 	if _crackle > 0.0:

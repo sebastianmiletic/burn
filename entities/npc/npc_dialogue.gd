@@ -25,10 +25,23 @@ const RUMOURS := {
 
 const TURN_IN := {
 	"kindling": "The shrine burns again. I felt it in my bones. Brannoc at the forge needs iron — go to him.",
-	"iron_in_the_deep": "Good ore, and plenty. Take this blade; the best I've made since the sky went grey.",
-	"silent_crypt": "The Warden's Sigil. Cold as a grave. One seal of three — the next is the Mountain King's crown.",
+	"iron_in_the_deep": "Good ore, and plenty. Take this blade; the best I've made since the sky went grey. Now armour.",
+	"tempered": "That'll turn a claw or two. Maren has been asking after you. Go and hear her out.",
+	"silent_crypt": "The Warden's Sigil. Cold as a grave. One seal of three. Brannoc says the mountain wants steel — see him first.",
+	"steel_and_frost": "Good steel, good boots. Now the mountain won't stop you. Maren knows where the king sleeps.",
 	"mountain_king": "The Frost Crown! The king is dead. Only the dragon remains.",
 	"ashvane": "Ashvane's heart, still burning. You hold all three seals. Now comes the worst of it.",
+	"opt_broodmother": "The hunters can walk the Hollow again. Take this, and our thanks.",
+	"opt_bog_hag": "The reeds are quiet. The children sleep. Mirewatch owes you.",
+	"opt_leviathan": "The fishers are already arguing over the best water. You've given them back the sea.",
+	"opt_kraken": "Arms like masts, they say, and you cut them all. Kaldvik drinks to you tonight.",
+	"opt_charybdis": "The sea is just the sea again. Here, before the sailors drink it all.",
+}
+
+## Who to see for the next story quest when it is someone else's to give.
+const GIVER_HINTS := {
+	"elder": "Elder Maren in Emberfall has the next task for you.",
+	"blacksmith": "Brannoc at the Emberfall forge has work for you.",
 }
 
 
@@ -54,6 +67,32 @@ static func next_main_for(q: QuestLog, giver: String) -> String:
 	return ""
 
 
+## Optional quests this giver can offer now: requirements met, boss present
+## in this build, not taken yet.
+static func optional_offers(q: QuestLog, giver: String) -> Array[String]:
+	var out: Array[String] = []
+	for quest: Dictionary in QuestDB.OPTIONAL:
+		var id: String = quest["id"]
+		if String(quest["giver"]) != giver or q.is_active(id) or q.is_completed(id):
+			continue
+		var req := String(quest.get("requires", ""))
+		if req != "" and not q.is_completed(req):
+			continue
+		if QuestDB.boss_available(quest):
+			out.append(id)
+	return out
+
+
+## The next story quest nobody has handed out yet ("" when one is in progress).
+static func next_main(q: QuestLog) -> String:
+	for quest: Dictionary in QuestDB.MAIN:
+		var id: String = quest["id"]
+		if q.is_completed(id):
+			continue
+		return "" if q.is_active(id) else id
+	return ""
+
+
 ## Quests this NPC can take back right now.
 static func turn_ins(q: QuestLog, role: String, village: String) -> Array[String]:
 	var out: Array[String] = []
@@ -73,7 +112,7 @@ static func marker(q: QuestLog, role: String, village: String) -> String:
 		return ""
 	if not turn_ins(q, role, village).is_empty():
 		return "?"
-	if next_main_for(q, giver_key(role, village)) != "":
+	if next_main_for(q, giver_key(role, village)) != "" or not optional_offers(q, giver_key(role, village)).is_empty():
 		return "!"
 	return ""
 
@@ -97,6 +136,18 @@ static func build(info: Dictionary, q: QuestLog, extra: Dictionary = {}) -> Dict
 		var quest := QuestDB.main_quest(offer)
 		lines.append(String(quest["description"]))
 		options.append({"text": "Accept: " + String(quest["title"]), "id": "accept:" + offer})
+	if role in ["elder", "chief", "blacksmith"]:
+		for oid in optional_offers(q, giver_key(role, village)):
+			var oq := QuestDB.optional_quest(oid)
+			if lines.size() < 2:
+				lines.append(String(oq["description"]))
+			options.append({"text": "Accept: %s (optional)" % String(oq["title"]), "id": "accept:" + oid})
+		# Point the way when the next story step is someone else's to give.
+		var nxt := next_main(q)
+		if offer == "" and nxt != "" and village == "emberfall":
+			var g := String(QuestDB.main_quest(nxt)["giver"])
+			if g != giver_key(role, village) and GIVER_HINTS.has(g):
+				lines.append(String(GIVER_HINTS[g]))
 	for o: Dictionary in extra.get("options", []):
 		options.append(o)
 	match role:

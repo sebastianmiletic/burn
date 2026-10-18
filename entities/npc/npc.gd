@@ -766,6 +766,9 @@ func interact_prompt(_p: Player) -> String:
 
 
 func local_interact(p: Player) -> void:
+	var qw := world()
+	if qw != null:
+		qw.quests.on_event("talk", NpcDialogue.giver_key(role, village))
 	_open_dialog()
 	Audio.play_ui("ui_open")
 	if act == Act.INDOORS:
