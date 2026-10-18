@@ -107,5 +107,15 @@ client-local. The protocol rejects malformed positions and invalid dimensions, c
 held tool and timing, and rejects cube deletion of natural ground. This is not a complete anti-cheat
 system. Do not expose a server to untrusted players expecting authoritative inventories or movement.
 
-No relay service, account system, matchmaking service, host migration or dedicated-server distribution
-is included. Internet connectivity depends on routing/UPnP/port forwarding or a private VPN.
+Public servers (ONLINE browser) add: an optional server password checked in the hello (5 wrong tries
+per address lock it out for a minute; the password travels unencrypted over ENet), per-player chat
+rate limits, chat/name length limits, BBCode stripping (and escaping on display), host-routed
+whispers and `/kick` (5-minute address ban). Strangers on a public server get the same trust as
+co-op friends above, so cheating inventories/movement is possible.
+
+The master server (`server/`, see its README) only lists hosts; it never relays traffic. There is no
+relay, account system or host migration. Players still need the host's UDP port (47211) reachable:
+UPnP, port forwarding, or a VPS running the headless dedicated server
+(`godot --headless --path . -- --dedicated --run=new --public --name="My server" [--password=..]
+[--max-players=8] [--master=URL]`). Test the master with `python3 -m unittest discover -s server -p 'test_*.py'`;
+`tests/net/run_net_test.sh` scenario 7 runs it against real game processes.
