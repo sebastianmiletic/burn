@@ -81,3 +81,14 @@ entity, rendering and audio contracts, but these additions supersede their world
 - Underground, SkyController blends to the cave's palette (CaveBiomes.palette_at: dark tinted murk,
   bounce fill, haze), occludes the sky's radiance (no sky reflections or sky light in caves) and lets
   terrain ambient back in as the cave fill; the horizon is hidden more than 14 m down.
+
+# World revision 4 (new worlds; 2 and 3 are unchanged, see tests/unit/test_ocean_worlds.gd golden hashes)
+
+- Ocean biomes for sea columns (`WorldGen.Sea`, `sea_at()`, `region_name()`; `biome_at()` still says OCEAN): Grey Sea,
+  Pale Shelf, Shimmering Shallows (reefs, coral rock), Drowned Meadows (silt, seagrass), Kelpwood Deep, Rime Sea (ice
+  floes), Boiling Shoals (vent chimneys, magma rock), Abyssal Trench (`TRENCH`), the Maelstrom. Seeds in `SEA_SEEDS`;
+  the coastline is drawn exactly as in revision 3, the new sea bed takes over beyond the shore slope.
+- New blocks CORAL_ROCK (75) and SILT (76). SeaFlora (world/flora/sea_flora.gd) plants flooded triangles; the smooth
+  mesher marks them (`flora_surface.wet`) and Flora grows no land cover there. No tree roots in water in any revision.
+- Sea lairs (world/structures/sea_lairs.gd, arenas in sea_arenas.gd): `kraken_graveyard`, `maw_of_the_sea`, with
+  causeways and shrines; sea-bed sites `wreck_*`, `sunken_chapel`, `drowned_manor`, `drowned_ring` (props `sunken`).

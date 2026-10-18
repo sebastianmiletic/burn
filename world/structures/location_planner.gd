@@ -117,6 +117,9 @@ func _plan_overworld() -> Array[Location]:
 			if h < WorldGen.SEA_LEVEL - 4 and h > -16 and _far_from(out, p, 100):
 				var wreck := Location.new(StringName("wreck_%d" % wreck_count), ["The Cinderwake", "Saltbound Wreck", "The Lost Lantern", "Reefrunner's Rest"][wreck_count], Location.Kind.RUIN, Vector3(p.x, h + 1, p.y))
 				ExplorationSites.shipwreck(wreck)
+				if gen.revision >= 4:
+					for prop: Dictionary in wreck.props:
+						prop["sunken"] = true  # coral and weed on the old wrecks too (visual only)
 				out.append(wreck)
 				wreck_count += 1
 				if wreck_count == 4:
@@ -562,7 +565,63 @@ func _plan_sea(existing: Array[Location]) -> Array[Location]:
 		out.append(shrine)
 		all.append(loc)
 		all.append(shrine)
+	# Wrecks with their cargo, and drowned ruins crusted with coral, on the sea beds.
+	for spec: Array in SEA_SITES:
+		var p := _seabed_site(spec[2], spec[3], all, srng)
+		if p.x < 0.0:
+			continue
+		var h := _ground(p.x, p.y)
+		var loc := Location.new(spec[0], spec[1], Location.Kind.RUIN, Vector3(p.x, h + 1, p.y))
+		loc.major = true
+		if String(spec[0]).begins_with("wreck"):
+			ExplorationSites.shipwreck(loc)
+			for prop: Dictionary in loc.props:
+				prop["sunken"] = true
+			loc.add_spawn("chest", loc.center + Vector3(-1, 1.2, 1), {"tier": 3 if spec[2] in [WorldGen.Sea.ABYSS, WorldGen.Sea.FROZEN, WorldGen.Sea.VENTS] else 2})
+		else:
+			loc.center.y = h
+			loc.ground_y = h
+			Structures.ruin(loc, srng)
+			for prop: Dictionary in loc.props:
+				prop["sunken"] = true
+			loc.add_spawn("chest", loc.center + Vector3(2.5, 1.0, 2.5), {"tier": 2})
+			loc.add_spawn("enemy", loc.center + Vector3(-4, 1, 3), {"kind": "drowned"})
+		out.append(loc)
+		all.append(loc)
 	return out
+
+
+## Sea-bed sites (revision 4): id, name, ocean biome, nominal position.
+const SEA_SITES := [
+	[&"wreck_gilded_gull", "Wreck of the Gilded Gull", WorldGen.Sea.REEF, Vector2(300, 3100)],
+	[&"wreck_widows_keel", "Wreck of the Widow's Keel", WorldGen.Sea.KELP, Vector2(2250, 2450)],
+	[&"wreck_frostbound", "Wreck of the Frostbound", WorldGen.Sea.FROZEN, Vector2(4470, 1000)],
+	[&"wreck_ashen_barque", "Wreck of the Ashen Barque", WorldGen.Sea.VENTS, Vector2(700, 2200)],
+	[&"wreck_lantern_queen", "Wreck of the Lantern Queen", WorldGen.Sea.ABYSS, Vector2(3800, 2900)],
+	[&"sunken_chapel", "The Sunken Chapel", WorldGen.Sea.SEAGRASS, Vector2(2250, 1900)],
+	[&"drowned_manor", "The Drowned Manor", WorldGen.Sea.REEF, Vector2(1150, 4350)],
+	[&"drowned_ring", "The Drowned Ring", WorldGen.Sea.SEAGRASS, Vector2(2500, 3600)],
+]
+
+
+## Level sea bed in ocean biome `sea` near `nominal`, 4-30 m down, away from other places.
+func _seabed_site(sea: int, nominal: Vector2, others: Array[Location], srng: RandomNumberGenerator) -> Vector2:
+	for attempt in 120:
+		var q := nominal + Vector2.from_angle(srng.randf() * TAU) * srng.randf_range(0.0, 60.0 + attempt * 4.0)
+		if not _inside(q, 80.0) or gen.sea_at(q.x, q.y) != sea:
+			continue
+		var g := float(_ground(q.x, q.y))
+		if g > WorldGen.SEA_LEVEL - 4 or g < WorldGen.SEA_LEVEL - 30:
+			continue
+		var flat := true
+		for k in 4:
+			var o := Vector2.from_angle(TAU * k / 4.0) * 10.0
+			if absf(_ground(q.x + o.x, q.y + o.y) - g) > 3.0:
+				flat = false
+				break
+		if flat and _far_from(others, q, 120.0):
+			return q
+	return Vector2(-1, -1)
 
 
 ## A spot of open deep water near `nominal` (searched outwards) with a coast within reach:

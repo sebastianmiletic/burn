@@ -37,7 +37,45 @@ static func build(b: ArchBuild, prop: Dictionary) -> void:
 			_gateway(b, at, prop, rng)
 		"ryft":
 			_ryft(b, at, prop, rng)
+	if prop.get("sunken", false):
+		_sunken(b, at, prop, rng)
 	_far(b, site, at, prop)
+
+
+const CORALS := [Color(0.95, 0.55, 0.5), Color(0.98, 0.78, 0.45), Color(0.62, 0.45, 0.85), Color(0.45, 0.78, 0.66), Color(0.86, 0.82, 0.72)]
+
+
+## Sea-bed sites (revision 4): coral heads and weed crusting the stones and timbers,
+## shells and broken amphorae scattered round them.
+static func _sunken(b: ArchBuild, at: Vector3, prop: Dictionary, rng: RandomNumberGenerator) -> void:
+	var m := b.detail
+	var spots: Array = []
+	for pc: Dictionary in prop.get("pieces", []):
+		var pos: Vector3 = (pc.get("pos", at) as Vector3) - b.origin
+		spots.append([pos, float(pc.get("h", 1.0))])
+	for i in 18:
+		var a := rng.randf() * TAU
+		var r := rng.randf_range(1.5, 10.0)
+		spots.append([at + Vector3(cos(a) * r, 0, sin(a) * r), 0.0])
+	for s: Array in spots:
+		var p: Vector3 = s[0]
+		var h: float = s[1]
+		var n := 2 if h > 0.0 else 1
+		for k in n:
+			var q := p + Vector3(rng.randf_range(-0.7, 0.7), 0, rng.randf_range(-0.7, 0.7))
+			q.y = b.ground(q) + (rng.randf_range(0.2, maxf(h, 0.3)) if h > 0.0 else 0.05)
+			m.mat(L.RUBBLE, CORALS[rng.randi() % CORALS.size()], 0.3, 0.6)
+			m.rock(q, Vector3(0.32, 0.22, 0.32) * rng.randf_range(0.6, 1.5), rng.randi(), 3, 6)
+	# Amphorae half buried in the sand.
+	for i in 5:
+		var a := rng.randf() * TAU
+		var p := at + Vector3(cos(a), 0, sin(a)) * rng.randf_range(2.0, 7.0)
+		p.y = b.ground(p) - 0.15
+		m.mat(L.RUBBLE, Color(0.62, 0.4, 0.28), 0.4)
+		var tilt := Basis(Vector3(cos(a), 0, sin(a)), rng.randf_range(0.9, 1.4))
+		b.push(Transform3D(tilt, p))
+		m.lathe(Vector3.ZERO, PackedVector2Array([Vector2(0.0, -0.35), Vector2(0.14, -0.3), Vector2(0.22, 0.0), Vector2(0.12, 0.3), Vector2(0.07, 0.42), Vector2(0.09, 0.48)]), 10, true, false)
+		b.pop()
 
 
 static func _far(b: ArchBuild, site: String, at: Vector3, prop: Dictionary) -> void:

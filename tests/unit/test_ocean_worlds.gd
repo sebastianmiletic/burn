@@ -176,3 +176,25 @@ func test_new_worlds_have_ocean_biomes() -> void:
 				break
 	check(found.has(Blocks.CORAL_ROCK), "reefs are built of coral rock")
 	check(found.has(Blocks.ICE), "ice floes drift on the Rime Sea")
+
+
+func test_sea_bed_sites() -> void:
+	var g := gen(WorldGen.LATEST_REVISION, 4321)
+	var wrecks := 0
+	var ruins := 0
+	for loc in g.locations:
+		var id := String(loc.id)
+		if not (id.begins_with("wreck_") or id.begins_with("sunken_") or id.begins_with("drowned_")) or id == "drowned_spire":
+			continue
+		check(loc.center.y < WorldGen.SEA_LEVEL, "%s lies on the sea bed" % loc.name)
+		check(not loc.spawns_of("chest").is_empty(), "%s holds loot" % loc.name)
+		var sunken := false
+		for p: Dictionary in loc.props:
+			sunken = sunken or p.get("sunken", false)
+		check(sunken, "%s is dressed as sunken" % loc.name)
+		if id.begins_with("wreck_"):
+			wrecks += 1
+		else:
+			ruins += 1
+	check(wrecks >= 3, "several shipwrecks (%d)" % wrecks)
+	check(ruins >= 2, "sunken ruins (%d)" % ruins)
