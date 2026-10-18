@@ -552,9 +552,9 @@ func _water_stop(w: GameWorld, stop: String, report: PackedStringArray) -> void:
 			var h := Ogygia.hearth(g)
 			pos = Vector3(h.x + 1.6, OgygiaGen.SEA + 1.65, h.z + 4.0)
 			pitch = -0.1
-		"swim_surface", "swim_3p":
+		"swim_surface", "swim_3p", "swim_stroke", "swim_crawl", "swim_3p_crawl":
 			pos = Vector3(OgygiaGen.CENTER.x, OgygiaGen.SEA - 1.4, OgygiaGen.CENTER.y + 108.0)
-			third = stop == "swim_3p"
+			third = stop.begins_with("swim_3p")
 			yaw = 0.6 if third else 0.0
 			pitch = -0.04 if third else 0.0
 		"swim_under", "drown_fade":
@@ -576,8 +576,12 @@ func _water_stop(w: GameWorld, stop: String, report: PackedStringArray) -> void:
 	if p.camera.first_person == third:
 		p.camera.first_person = not third
 		p.call("_apply_view")
-	if third:
+	var press := third or stop in ["swim_stroke", "swim_crawl"]
+	var fast := stop.ends_with("crawl")
+	if press:
 		Input.action_press("move_forward")
+	if fast:
+		Input.action_press("sprint")
 	await _frames(120)
 	p.camera.yaw = yaw
 	p.camera.pitch = pitch
@@ -586,8 +590,11 @@ func _water_stop(w: GameWorld, stop: String, report: PackedStringArray) -> void:
 		p.suffocation = 0.62
 		await _frames(4)
 	await _shot(stop)
-	if third:
+	if press:
 		Input.action_release("move_forward")
+	if fast:
+		Input.action_release("sprint")
+	if third:
 		p.camera.first_person = true
 		p.call("_apply_view")
 	p.body.fly = false
