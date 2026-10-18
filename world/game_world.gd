@@ -175,7 +175,14 @@ func setup(info: Dictionary) -> void:
 	_log_time("spawn area streamed", t0)
 	# Make sure we stand on solid ground (saves can predate edits).
 	var p := local_player.global_position
-	if local_player.body._overlaps(world, p):
+	# Saved inside a cave or mine: look for open space right here first, so a
+	# slightly embedded save never lifts the player up to the surface.
+	var near := Vector3.INF
+	if local_player.body._overlaps(world, p) or world.field(p + Vector3(0, 0.3, 0)) >= 0.5:
+		near = local_player.body.find_open_spot(world, p, 2.5)
+	if near != Vector3.INF:
+		local_player.global_position = near
+	elif local_player.body._overlaps(world, p):
 		# Smooth ground queries exclude masonry; they cannot resolve a body
 		# embedded in a shrine platform or overlapping village architecture.
 		local_player.global_position.y = world.surface_y(int(p.x), int(p.z)) + 1.05

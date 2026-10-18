@@ -1,6 +1,7 @@
 extends SceneTree
 ## Headless test runner:  godot --headless --path . -s res://tests/run_tests.gd
 ## Runs every tests/unit/test_*.gd (each extends TestCase). Exit code 1 on failure.
+## `-- --only=voxel,swim` runs only the files whose names contain one of those words.
 
 
 var _ran := false
@@ -21,6 +22,16 @@ func _run() -> void:
 		if f.begins_with("test_") and f.ends_with(".gd"):
 			files.append(f)
 	files.sort()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--only="):
+			var words := a.trim_prefix("--only=").split(",", false)
+			var kept := PackedStringArray()
+			for f in files:
+				for word in words:
+					if word in f:
+						kept.append(f)
+						break
+			files = kept
 
 	var total := 0
 	var failed := 0

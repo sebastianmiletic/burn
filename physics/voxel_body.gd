@@ -74,10 +74,16 @@ func step(owner: Node3D, world: VoxelWorld, delta: float) -> void:
 			lifts.append(1.001)
 			for lift in lifts:
 				var up := before + Vector3(0, lift, 0)
-				if _overlaps(world, up) or _smooth_blocked(world, up):
+				if not _body_clear(world, up):
 					continue
 				var try_pos := _move_axis(world, up, 0, part.x)
 				try_pos = _move_axis(world, try_pos, 2, part.z)
+				# Only accept a step that ends with the whole body in the open:
+				# lifting into a pickaxe notch in a rock face used to leave the
+				# feet inside the rock (and the "buried" rescue then carried the
+				# body up through the ground to the surface).
+				if not _body_clear(world, try_pos):
+					continue
 				if Vector2(try_pos.x - before.x, try_pos.z - before.z).length() > Vector2(pos.x - before.x, pos.z - before.z).length() + 0.01:
 					stepped += try_pos.y - pos.y
 					pos = try_pos
@@ -111,9 +117,10 @@ func _smooth_vertical(world: VoxelWorld, pos: Vector3, dy: float) -> Vector3:
 	var reach := climb_step if not fly else 0.05
 	var g := _ground(world, pos, pos.y + reach, reach + 0.02)
 	if g == INF:
-		# Buried (a block placed on us, terrain streamed in): climb out.
-		pos.y += 0.25
-		return pos
+		# Buried (ground packed onto us, terrain streamed in or edited around
+		# us): move to the nearest open spot. Never climb blindly - that used to
+		# carry players up through solid rock to the surface.
+		return _depenetrate(world, pos)
 	if g > -INF and g >= pos.y - 0.001:
 		pos.y = g
 		on_floor = true
@@ -159,15 +166,101 @@ func _smooth_blocked(world: VoxelWorld, pos: Vector3) -> bool:
 	return false
 
 
+## Whole body free of crisp blocks and of smooth ground (corners and the
+## centre line).
+func _body_clear(world: VoxelWorld, pos: Vector3) -> bool:
+	if _overlaps(world, pos) or _smooth_blocked(world, pos):
+		return false
+	for y: float in [0.3, climb_step + 0.02, half_extents.y, half_extents.y * 2.0 - 0.1]:
+		if world.field(pos + Vector3(0, y, 0)) >= 0.5:
+			return false
+	return true
+
+
+## How deep the body sits in smooth ground (sum of field excess at its sample points).
+func _penetration(world: VoxelWorld, pos: Vector3) -> float:
+	var h := half_extents
+	var total := 0.0
+	for y: float in [climb_step + 0.02, h.y, h.y * 2.0 - 0.1]:
+		total += maxf(0.0, world.field(pos + Vector3(0, y, 0)) - 0.5)
+		for o: Vector2 in [Vector2(h.x, h.z), Vector2(-h.x, h.z), Vector2(h.x, -h.z), Vector2(-h.x, -h.z)]:
+			total += maxf(0.0, world.field(pos + Vector3(o.x, y, o.y)) - 0.5)
+	return total
+
+
+var _depen_wait := 0.0
+
+
+## Nearest spot (within ~2.5 m, preferring up) where the body stands in the
+## open, or the same position if there is none: a body sealed in rock stays
+## put (and can dig itself out) instead of rising through the ground.
+func _depenetrate(world: VoxelWorld, pos: Vector3) -> Vector3:
+	velocity = Vector3.ZERO
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _depen_wait:
+		return pos
+	var found := find_open_spot(world, pos, 2.5)
+	if found == Vector3.INF:
+		_depen_wait = now + 0.5
+		return pos
+	on_floor = true
+	stepped += maxf(0.0, found.y - pos.y)
+	return found
+
+
+## Search outwards from `pos` for a place where the body is clear and has
+## ground (or open air) below it. Vector3.INF when nothing within `radius`.
+func find_open_spot(world: VoxelWorld, pos: Vector3, radius: float) -> Vector3:
+	var best := Vector3.INF
+	var best_cost := INF
+	var rings := [Vector2.ZERO]
+	var r := 0.4
+	while r <= radius + 0.01:
+		var n := maxi(8, int(TAU * r / 0.45))
+		for i in n:
+			rings.append(Vector2.from_angle(TAU * i / n) * r)
+		r += 0.4
+	var dy := -1.0
+	while dy <= radius + 0.01:
+		# Going up is cheaper than going sideways or down (holes are dug downwards).
+		var vcost := dy * 0.7 if dy >= 0.0 else -dy * 1.4
+		if vcost < best_cost:
+			for o: Vector2 in rings:
+				var cost := vcost + o.length()
+				if cost >= best_cost:
+					continue
+				var c := pos + Vector3(o.x, dy, o.y)
+				if not _body_clear(world, c):
+					continue
+				var g := world.ground_below(c.x, c.y + 0.3, c.z, 1.2)
+				if g == INF:
+					continue
+				if g > -INF:
+					c.y = maxf(c.y, g + 0.01)
+					if not _body_clear(world, c):
+						continue
+				best = c
+				best_cost = cost
+		dy += 0.25
+	return best
+
+
 func _move_axis(world: VoxelWorld, pos: Vector3, axis: int, amount: float) -> Vector3:
 	if amount == 0.0:
 		return pos
 	var target := pos
 	target[axis] += amount
-	if axis != 1 and _smooth_blocked(world, target) and not _smooth_blocked(world, pos):
-		hit_wall = true
-		velocity[axis] = 0.0
-		return pos
+	if axis != 1 and _smooth_blocked(world, target):
+		# Already touching the ground (a fresh hole, a slope underfoot): moving
+		# is allowed only if it does not push the body deeper into it.
+		if not _smooth_blocked(world, pos):
+			hit_wall = true
+			velocity[axis] = 0.0
+			return pos
+		if _penetration(world, target) > _penetration(world, pos) + 0.0001:
+			hit_wall = true
+			velocity[axis] = 0.0
+			return pos
 	if not _overlaps(world, target):
 		return target
 	# Snap against the face we hit.
