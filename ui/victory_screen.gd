@@ -13,28 +13,94 @@ var _clip: Control
 var _buttons: HBoxContainer
 
 
+const REPO_URL := "https://github.com/sebastianmiletic/burn"
+const PROFILE_URL := "https://github.com/sebastianmiletic"
+## Other public projects by the author: [name, url, one line].
+const PROJECTS := [
+	["Termatica", "https://github.com/sebastianmiletic/termatica",
+		"A native macOS terminal under 2 MB: PTYs, SSH, splits, AppKit + Metal rendering. Ranked #1 for measured aggregate throughput and memory in a reproducible six-terminal comparison."],
+	["Open Cloud", "https://github.com/sebastianmiletic/opencloud",
+		"A cross-platform streaming tracker built with Tauri, with Supabase sync, for macOS, Windows and Linux."],
+	["Sparkdeck", "https://github.com/sebastianmiletic/sparkdeck",
+		"A pocket-sized open-source Arch Linux cyberdeck for coding, emulation, radio decoding and security work."],
+	["Hyprland dotfiles", "https://github.com/sebastianmiletic/hyprland-dotfiles",
+		"A Hyprland + Quickshell desktop."],
+	["Ryft", "https://github.com/sebastianmiletic/ryft",
+		"A Hyprland-style tiling look for macOS."],
+	["HumanGPT", "https://github.com/sebastianmiletic/humangpt",
+		"An offline-first writing editor with adaptive edit levels."],
+	["Macrosoft Access", "https://github.com/sebastianmiletic/macrosoftaccess",
+		"A local-first database workspace for macOS."],
+	["battlecode-cli", "https://github.com/sebastianmiletic/battlecode-cli",
+		"A terminal dashboard for UNSW Battlecode."],
+]
+
+
+## The credits (title screen and end of the campaign). Links are [url] tags:
+## connect the label's meta_clicked to open_link().
 static func credits_bbcode() -> String:
 	var a := UiTheme.ACCENT.to_html(false)
-	return "\n".join([
-		"[color=#%s]BURN[/color]" % a,
-		"A tale told in ash.",
+	var hot := UiTheme.ACCENT_HOT.to_html(false)
+	var dim := UiTheme.TEXT_DIM.to_html(false)
+	var head := func(t: String) -> String: return "[font_size=17][color=#%s]%s[/color][/font_size]" % [a, t]
+	var link := func(url: String, label := "") -> String:
+		return "[url=%s][color=#%s]%s[/color][/url]" % [url, hot, label if label != "" else url.trim_prefix("https://")]
+	var lines := [
+		"[font_size=26][color=#%s]BURN[/color][/font_size]" % a,
+		"[i]A tale told in ash.[/i]",
 		"",
-		"[color=#%s]Design, code, art and sound[/color]" % a,
-		"Made for this project — every world, creature, sound and line is original.",
+		head.call("CREATED BY"),
+		"[font_size=20]Sebastian Miletic[/font_size]",
+		"Software builder focused on native apps, terminals and Linux.",
+		"[color=#%s]Languages[/color]  Objective-C · C · Rust · JavaScript · TypeScript · QML" % dim,
+		"[color=#%s]Desktop[/color]  AppKit · Metal · Tauri · Hyprland" % dim,
+		"[color=#%s]Platforms[/color]  macOS · Windows · Linux" % dim,
+		"[color=#%s]Values[/color]  native · compact · measurable" % dim,
 		"",
-		"[color=#%s]Engine[/color]" % a,
-		"Godot Engine 4.7 — MIT licence, © Juan Linietsky, Ariel Manzur and contributors.",
+		"Design, code, world generation, models, shaders, sound and music were made for this project.",
+		"Everything you see is generated at runtime; the music is fully synthesised.",
 		"",
-		"[color=#%s]Fonts[/color]" % a,
-		"JetBrains Mono — SIL Open Font License 1.1, © The JetBrains Mono Project Authors.",
-		"Cinzel — SIL Open Font License 1.1, © The Cinzel Project Authors.",
+		head.call("SOURCE"),
+		"BURN on GitHub  " + link.call(REPO_URL),
+		"Profile  " + link.call(PROFILE_URL),
 		"",
-		"[color=#%s]Techniques[/color]" % a,
-		"ASCII edge-glyph approach after AcerolaFX ASCII — MIT licence, © Garrett Gunnell.",
+		head.call("MORE FROM THE AUTHOR"),
+	]
+	for p: Array in PROJECTS:
+		lines.append("[b]%s[/b]" % link.call(p[1], p[0]))
+		lines.append("[color=#%s]%s[/color]" % [dim, p[2]])
+		lines.append("")
+	lines.append_array([
+		head.call("ENGINE"),
+		"Godot Engine 4.7  MIT licence, © Juan Linietsky, Ariel Manzur and Godot Engine contributors.  " + link.call("https://godotengine.org", "godotengine.org"),
 		"",
-		"[color=#%s]Thanks[/color]" % a,
+		head.call("FONTS"),
+		"JetBrains Mono  SIL Open Font License 1.1, © The JetBrains Mono Project Authors.",
+		"Cinzel  SIL Open Font License 1.1, © The Cinzel Project Authors.",
+		"",
+		head.call("SOUND"),
+		"Impact Sounds and RPG Audio by Kenney  CC0 1.0  " + link.call("https://kenney.nl", "kenney.nl"),
+		"Park Ambiences (river) by thimras, Crickets Ambient Noise by wolfgang  CC0 1.0  " + link.call("https://opengameart.org", "opengameart.org"),
+		"Everything else is synthesised in the game.",
+		"",
+		head.call("TEXTURES"),
+		"Architecture, bark, rock and terrain textures from Poly Haven  CC0 1.0  " + link.call("https://polyhaven.com", "polyhaven.com"),
+		"The leaf atlas is painted procedurally.",
+		"",
+		head.call("TECHNIQUES"),
+		"ASCII edge-glyph approach after AcerolaFX ASCII  MIT licence, © Garrett Gunnell.",
+		"",
+		head.call("THANKS"),
 		"To everyone who carried a torch into the dark.",
 	])
+	return "\n".join(lines)
+
+
+## Opens a credits link in the system browser (only the web links above).
+static func open_link(meta: Variant) -> void:
+	var url := str(meta)
+	if url.begins_with("https://"):
+		OS.shell_open(url)
 
 
 func _ready() -> void:
@@ -87,6 +153,8 @@ func _ready() -> void:
 	text.add_theme_font_size_override("normal_font_size", 15)
 	text.add_theme_color_override("default_color", UiTheme.TEXT)
 	text.text = "[center]%s[/center]" % credits_bbcode()
+	text.meta_underlined = true
+	text.meta_clicked.connect(VictoryScreen.open_link)
 	_roll.add_child(text)
 	_buttons = HBoxContainer.new()
 	_buttons.alignment = BoxContainer.ALIGNMENT_CENTER

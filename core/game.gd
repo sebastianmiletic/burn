@@ -1,12 +1,14 @@
 extends Node
 ## Autoload "Game": the application state machine.
 ##   intro -> main menu -> (solo | lobby) -> loading -> playing -> menu
-## Owns save slots, starts/joins sessions and builds the GameWorld.
+## Owns the runs (saved worlds, see SaveSystem), starts/joins sessions and
+## builds the GameWorld. A run is addressed by its id (String) or, for the old
+## numbered slots and the party world, by an int.
 
 enum State { BOOT, INTRO, MENU, LOBBY, LOADING, PLAYING }
 
-const PARTY_SLOT := 9            ## the host's shared party world
-const AUTOSAVE_SECONDS := 300.0
+const PARTY_SLOT := 9            ## the host's shared party world (when no run is chosen)
+const AUTOSAVE_SECONDS := 300.0  ## default; Settings gameplay/autosave_minutes overrides
 var CHARACTER_PATH := RuntimePaths.file("saves/party_character.burn")
 
 var state := State.BOOT
@@ -16,6 +18,8 @@ var world: GameWorld
 var _screen: Node
 var _loading: Node
 var _autosave := AUTOSAVE_SECONDS
+## The run a hosted co-op game plays in (null: the shared party world).
+var _host_run: Variant = null
 
 
 func _ready() -> void:
@@ -54,9 +58,12 @@ func _arg(prefix: String, fallback: String) -> String:
 
 func _process(delta: float) -> void:
 	if state == State.PLAYING and world != null and Net.is_server():
-		_autosave -= delta
+		var every := autosave_interval()
+		if every <= 0.0:
+			return
+		_autosave = minf(_autosave - delta, every)
 		if _autosave <= 0.0:
-			_autosave = AUTOSAVE_SECONDS
+			_autosave = every
 			save_game()
 
 
@@ -97,13 +104,22 @@ func show_menu() -> void:
 	Audio.set_music("menu")
 
 
-func open_lobby_host() -> void:
+## Seconds between autosaves (0: only on quitting and milestones).
+func autosave_interval() -> float:
+	return float(Settings.get_value("gameplay", "autosave_minutes")) * 60.0
+
+
+## Host a warband. `run` picks the world the friends join (a run id); without
+## one the shared party world is used, as before.
+func open_lobby_host(run: Variant = null) -> void:
+	_host_run = run if run != null and SaveSystem.valid_id(run) else null
 	state = State.LOBBY
 	Net.host_party(String(Settings.get_value("gameplay", "player_name")))
 	_set_screen(_ui("res://ui/lobby_screen.gd", [true]))
 
 
 func open_lobby_join() -> void:
+	_host_run = null
 	state = State.LOBBY
 	_set_screen(_ui("res://ui/lobby_screen.gd", [false]))
 
@@ -111,23 +127,61 @@ func open_lobby_join() -> void:
 # --- Saves ------------------------------------------------------------------------
 
 func has_save() -> bool:
-	return SaveSystem.most_recent() >= 0
+	return SaveSystem.most_recent() != ""
 
 
 func save_slots() -> Array[Dictionary]:
 	return SaveSystem.slots()
 
 
+## Every run, most recently played first (see SaveSystem.summary()).
+func list_runs() -> Array[Dictionary]:
+	return SaveSystem.list_runs()
+
+
 func continue_game() -> void:
-	var slot := SaveSystem.most_recent()
-	if slot >= 0:
-		start_solo(slot, false)
+	var run := SaveSystem.most_recent()
+	if run != "":
+		start_solo(run, false)
+
+
+## A new run from the runs page. `seed_text` may be empty (random), a number
+## or any phrase (hashed). Returns the new run's id.
+func create_run(title: String, seed_text := "", difficulty := SaveSystem.DIFFICULTY_NORMAL) -> String:
+	var id := SaveSystem.new_id()
+	var seed_value := seed_from_text(seed_text)
+	var t := title.strip_edges()
+	SaveSystem.create_meta(id, t if t != "" else "Untitled run", seed_value, clampi(difficulty, 0, SaveSystem.DIFFICULTIES.size() - 1))
+	start_solo(id, true, {"seed": seed_value})
+	return id
+
+
+static func seed_from_text(text: String) -> int:
+	var t := text.strip_edges()
+	if t == "":
+		return randi() & 0x7fffffff
+	if t.is_valid_int():
+		return absi(int(t)) & 0x7fffffff
+	return hash(t) & 0x7fffffff
+
+
+func rename_run(run: Variant, title: String) -> void:
+	SaveSystem.rename(run, title)
+
+
+func delete_run(run: Variant) -> void:
+	SaveSystem.delete(run)
+
+
+## How hard enemies hit the player in the current session (difficulty).
+func damage_taken_scale() -> float:
+	return float(session.get("damage_taken", 1.0))
 
 
 func save_game() -> void:
 	if world == null or world.local_player == null or not Net.is_server():
 		return
-	var slot := int(session.get("slot", 0))
+	var slot: Variant = session.get("slot", 0)
 	SaveSystem.write(slot, world.save_data())
 	if Net.is_online():
 		_save_character()
@@ -157,21 +211,36 @@ func _load_character() -> Dictionary:
 
 # --- Sessions ------------------------------------------------------------------------
 
-func start_solo(slot: int, new_game: bool) -> void:
+## `slot` is a run id (String) or an old slot number (int). A new game in an
+## existing slot replaces it (tests and --solo use that); new runs from the
+## menu come through create_run(). options: {"seed": int}.
+func start_solo(slot: Variant, new_game: bool, options := {}) -> void:
 	Net.leave()
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	var save := {} if new_game else SaveSystem.read(slot)
-	if new_game:
+	if new_game and SaveSystem.exists(slot):
 		SaveSystem.delete(slot)
-	var seed_value := int(save.get("seed", randi()))
+	var meta := SaveSystem.read_meta(slot)
+	var seed_value := int(save.get("seed", options.get("seed", meta.get("seed", randi()))))
 	if _arg("--seed", "") != "":
 		seed_value = int(_arg("--seed", "1"))
-	_load_world({"seed": seed_value, "mode": "solo", "slot": slot, "save": save})
+	_load_world({"seed": seed_value, "mode": "solo", "slot": slot, "save": save,
+		"damage_taken": _difficulty_scale(slot, save)})
+
+
+func _difficulty_scale(run: Variant, save: Dictionary) -> float:
+	var info: Dictionary = save.get("run", {}) if save.get("run") is Dictionary else {}
+	var d := int(SaveSystem.read_meta(run).get("difficulty", info.get("difficulty", SaveSystem.DIFFICULTY_NORMAL)))
+	return float(SaveSystem.DIFFICULTY_DAMAGE[clampi(d, 0, SaveSystem.DIFFICULTY_DAMAGE.size() - 1)])
+
+
+func _party_run() -> Variant:
+	return _host_run if _host_run != null else PARTY_SLOT
 
 
 ## Host pressed "Begin campaign" in the lobby.
 func start_campaign() -> void:
-	var save := SaveSystem.read(PARTY_SLOT)
+	var save := SaveSystem.read(_party_run())
 	var seed_value := int(save.get("seed", randi()))
 	# Clients loading with the host need the saved generation revision too,
 	# not just late joiners. Otherwise an old host world and new client differ.
@@ -183,8 +252,10 @@ func start_campaign() -> void:
 	}
 	Net.late_join_info = func() -> Dictionary:
 		var live := join_state()
-		return {"seed": seed_value, "join_state": live if not live.is_empty() else initial_state, "options": Net.lobby_options.duplicate()}
-	Net.start_campaign({"seed": seed_value, "host_save": save.has("seed"), "join_state": initial_state})
+		return {"seed": seed_value, "join_state": live if not live.is_empty() else initial_state, "options": Net.lobby_options.duplicate(),
+			"damage_taken": damage_taken_scale()}
+	Net.start_campaign({"seed": seed_value, "host_save": save.has("seed"), "join_state": initial_state,
+		"damage_taken": _difficulty_scale(_party_run(), save)})
 
 
 func _on_session_started(info: Dictionary) -> void:
@@ -194,7 +265,7 @@ func _on_session_started(info: Dictionary) -> void:
 	var host := Net.is_server()
 	var save := {}
 	if host:
-		save = SaveSystem.read(PARTY_SLOT)
+		save = SaveSystem.read(_party_run())
 	else:
 		# Clients bring their own character; the world state comes from the host.
 		var character := _load_character()
@@ -210,7 +281,8 @@ func _on_session_started(info: Dictionary) -> void:
 		save["ryft_unlocked"] = js.get("ryft_unlocked", false)
 		save["time_of_day"] = js.get("time_of_day", 8.5)
 		save["day"] = js.get("day", 1)
-	_load_world({"seed": int(info.get("seed", 1)), "mode": "host" if host else "client", "slot": PARTY_SLOT, "save": save})
+	_load_world({"seed": int(info.get("seed", 1)), "mode": "host" if host else "client", "slot": _party_run() if host else PARTY_SLOT,
+		"save": save, "damage_taken": float(info.get("damage_taken", 1.0))})
 
 
 ## The host sends this to players who join a campaign already in progress.
@@ -241,7 +313,7 @@ func _load_world(info: Dictionary) -> void:
 		_loading.queue_free()
 	_loading = null
 	state = State.PLAYING
-	_autosave = AUTOSAVE_SECONDS
+	_autosave = autosave_interval() if autosave_interval() > 0.0 else AUTOSAVE_SECONDS
 	world.replicator.client_ready()
 	if info.get("mode", "solo") != "client":
 		save_game()
@@ -249,12 +321,14 @@ func _load_world(info: Dictionary) -> void:
 
 
 func quit_to_menu() -> void:
-	session = {}
+	# Save first: the session says which run (and seed) is being saved.
 	if state == State.PLAYING:
 		if Net.is_server():
 			save_game()
 		elif Net.is_online():
 			_save_character()
+	session = {}
+	_host_run = null
 	Net.leave()
 	if world != null and is_instance_valid(world):
 		world.queue_free()

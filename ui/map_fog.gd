@@ -8,7 +8,7 @@ extends RefCounted
 ## Persistence: in the GameWorld save (`"map_fog": MapFog.save_dict(self)`,
 ## read back by `of()` from session.save["map_fog"]; party guests keep theirs
 ## in their character file), and between saves in its own small file
-## (`saves/map_fog_<slot>.burn`, keyed by seed) written every few seconds
+## (`SaveSystem.fog_path()`, keyed by seed) written every few seconds
 ## while it changes. On load the newer of the two wins.
 
 const CELL := 8.0
@@ -19,7 +19,7 @@ const VERSION := 1
 var _layers := {}          # dim -> {"img": Image, "tex": ImageTexture, "n": int, "dirty": bool}
 var _unsaved := false
 var _world: WeakRef
-var _slot := -1
+var _slot: Variant = null   # run id or old slot number (SaveSystem); null: no save
 var _seed := 0
 var _last_reveal := {}     # dim -> Vector2
 
@@ -140,7 +140,7 @@ func from_dict(d: Dictionary) -> bool:
 
 
 func _path() -> String:
-	return RuntimePaths.file("saves/map_fog_%d.burn" % _slot)
+	return SaveSystem.fog_path(_slot)
 
 
 func _load() -> void:
@@ -148,11 +148,13 @@ func _load() -> void:
 	var session: Variant = w.get("session") if w != null else null
 	var loaded := false
 	if session is Dictionary:
-		_slot = int((session as Dictionary).get("slot", -1))
+		_slot = (session as Dictionary).get("slot", null)
+		if (_slot is int and int(_slot) < 0) or (_slot is String and String(_slot) == ""):
+			_slot = null
 		_seed = int((session as Dictionary).get("seed", 0))
 		var save: Dictionary = (session as Dictionary).get("save", {})
 		var best: Dictionary = save["map_fog"] if save.get("map_fog") is Dictionary else {}
-		if not save.is_empty() and _slot >= 0 and FileAccess.file_exists(_path()):
+		if not save.is_empty() and _slot != null and FileAccess.file_exists(_path()):
 			var f := FileAccess.open(_path(), FileAccess.READ)
 			var v: Variant = f.get_var() if f != null else null
 			if v is Dictionary and int((v as Dictionary).get("seed", -1)) == _seed:
@@ -180,7 +182,7 @@ func _reveal_known_places(w: Object) -> void:
 
 ## Writes the fog file (no-op without a save slot or changes).
 func save_file() -> void:
-	if not _unsaved or _slot < 0:
+	if not _unsaved or _slot == null:
 		return
 	DirAccess.make_dir_recursive_absolute(_path().get_base_dir())
 	var f := FileAccess.open(_path(), FileAccess.WRITE)
