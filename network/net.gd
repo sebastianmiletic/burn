@@ -132,6 +132,7 @@ func _handle_command_line() -> void:
 	var name_arg := ""
 	var join_arg := ""
 	var addr_arg := ""
+	var pass_arg := ""
 	var host := false
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--sim-latency="):
@@ -146,6 +147,8 @@ func _handle_command_line() -> void:
 			join_arg = arg.trim_prefix("--join=")
 		elif arg.begins_with("--join-address="):
 			addr_arg = arg.trim_prefix("--join-address=")
+		elif arg.begins_with("--join-password="):
+			pass_arg = arg.trim_prefix("--join-password=")
 	var who := name_arg if name_arg != "" else _default_name()
 	if host:
 		var code := host_party(who)
@@ -155,7 +158,7 @@ func _handle_command_line() -> void:
 			if state == "joined":
 				print("BURN_JOINED %s as %s" % [addr_arg, _my_name()]))
 		join_failed.connect(func(reason: String) -> void: print("BURN_JOIN_FAILED %s" % reason))
-		join_address(addr_arg, who)
+		join_address(addr_arg, who, PackedInt32Array(), pass_arg)
 	elif join_arg != "":
 		var code := RuneCode.from_text(join_arg)
 		if code.is_empty():

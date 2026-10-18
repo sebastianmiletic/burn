@@ -326,6 +326,8 @@ func _load_world(info: Dictionary) -> void:
 	_loading = null
 	state = State.PLAYING
 	_autosave = AUTOSAVE_SECONDS
+	if Net.dedicated:
+		print("BURN_DEDICATED_READY seed=%d" % int(info.get("seed", 0)))
 	world.replicator.client_ready()
 	if info.get("mode", "solo") != "client":
 		save_game()
