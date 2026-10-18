@@ -371,7 +371,9 @@ func _animate(delta: float) -> void:
 	head_basis = head_basis * Basis(Vector3.RIGHT, pitch)
 	head.global_transform = Transform3D(head_basis, _head_pos)
 	_jaw = damp(_jaw, jaw_t, 12.0, delta)
-	jaw.rotation.x = _jaw * 0.75
+	# The jaw reaches along -Z from its hinge: a positive X rotation would swing
+	# its tip upwards into the skull, so open with a negative one (the jaw drops).
+	jaw.rotation.x = -_jaw * 0.75
 	_frill = damp(_frill, frill_t, 5.0, delta)
 	for i in frills.size():
 		var side := -1.0 if i == 0 else 1.0
