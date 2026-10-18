@@ -20,6 +20,10 @@ static func create(kind: String, _data := {}) -> Entity:
 			return Player.new()
 		"npc":
 			return Npc.new()
+		"calypso":
+			return Calypso.new()
+		"ogygia_raft":
+			return OgygiaRaft.new()
 		"drop":
 			return ItemDrop.new()
 		"chest":

@@ -54,6 +54,13 @@ func _run() -> void:
 	print("[playtest] initial health=", p.health, " dead=", p.dead, " pos=", p.global_position, " loaded=", vw.is_area_loaded(p.global_position))
 	# --- Spawn ---------------------------------------------------------------
 	await _wait_for(func() -> bool: return p.body.on_floor, 10.0)
+	if "--ogygia-only" in OS.get_cmdline_user_args():
+		# Quick iteration on the swimming / drowning / Ogygia section alone.
+		p.respawn_point = p.global_position
+		await _ogygia(p)
+		print("%s — %d failures" % ["PLAYTEST PASSED" if _failures == 0 else "PLAYTEST FAILED", _failures])
+		get_tree().quit(1 if _failures > 0 else 0)
+		return
 	print("[playtest] settled health=", p.health, " dead=", p.dead, " velocity=", p.body.velocity, " floor=", p.body.on_floor, " loaded=", vw.is_area_loaded(p.global_position))
 	_check(p.body.on_floor and not p.dead, "player spawns standing on ground at %s" % str(p.global_position.round()))
 	_check(p.inventory.has("pickaxe_stone") and p.inventory.has("sword_rusty"), "starting kit given")
@@ -241,6 +248,9 @@ func _run() -> void:
 		_w.travel(0)
 		_check(p.global_position.distance_to(_w.default_spawn(0)) < 1, "return from Ryft leads home, not the Hades cavern")
 
+	# --- Swimming, drowning and Ogygia ------------------------------------------------------------
+	await _ogygia(p)
+
 	# --- Save -------------------------------------------------------------------------------------
 	Game.save_game()
 	var save := SaveSystem.read(int(Game.session.get("slot", 0)))
@@ -300,6 +310,79 @@ func _slot_of(p: Player, item: String) -> int:
 		if String(p.inventory.get_slot(i).get("id", "")) == item:
 			return i
 	return 0
+
+
+func _ogygia(p: Player) -> void:
+	# The sea gives this one back (the host's roll, forced here).
+	var bag := p.inventory.to_dict()
+	_w.replicator.force_drown_outcome = 1
+	_w.replicator.request_drown_outcome()
+	var isle := _w.world_for(Ogygia.DIM)
+	_check(p.dimension == Ogygia.DIM and _w.local_dimension == Ogygia.DIM, "a rare drowning wakes on Ogygia")
+	await _wait_for(func() -> bool: return isle.is_area_loaded(p.global_position) and p.body.on_floor, 30.0)
+	_check(p.body.on_floor and not p.dead and p.global_position.y > OgygiaGen.SEA, "standing on Ogygia's beach at %s" % str(p.global_position.round()))
+	_check(_w.quests.is_completed(Ogygia.LORE_ID), "first visit writes Ogygia into the journal")
+	await _wait_for(func() -> bool: return _count("calypso") == 1 and _count("ogygia_raft") == 1, 5.0)
+	_check(_count("calypso") == 1 and _count("ogygia_raft") == 1, "Calypso and her raft are on the island")
+	_check(GameWorld.biome_name(_w, p.global_position, Ogygia.DIM) == "Ogygia", "the island is named")
+	# Swimming in the lagoon: a 10 m drop into deep water does no harm and the body treads water.
+	var sea := Vector3(OgygiaGen.CENTER.x, OgygiaGen.SEA + 10.0, OgygiaGen.CENTER.y + 112.0)
+	p.global_position = sea
+	p.body.velocity = Vector3.ZERO
+	p.body.fly = true  # hover until the sea there has streamed in
+	await _wait_for(func() -> bool: return isle.is_area_loaded(sea) and isle.is_area_loaded(sea - Vector3(0, 16, 0)) and isle.loading_progress() > 0.9, 40.0)
+	p.global_position = sea
+	p.body.fly = false
+	var hp := p.health
+	_check(await _wait_for(func() -> bool: return p.swimming, 15.0), "falling into the sea starts swimming")
+	await _wait(4.0)
+	var eye := p.global_position.y + 1.62
+	_check(p.swimming and absf(eye - p.water_surface - 0.2) < 0.35, "treading water with the eyes above the surface (eye %.2f, surface %.2f)" % [eye, p.water_surface])
+	_check(p.health >= hp, "diving into deep water does no fall damage")
+	# Swim forward where the camera looks (down-forward dives). Earlier
+	# dialogues may have left the controls with the UI: take them back.
+	Events.dialog_close.emit()
+	_w.set_ui_open(false)
+	p.set_input_enabled(true)
+	p.camera.pitch = -0.6
+	Input.action_press("move_forward")
+	await _wait(1.5)
+	Input.action_release("move_forward")
+	_check(p.head_under and p.global_position.y < sea.y - 12.0, "swimming follows the look direction under water (y %.1f)" % p.global_position.y)
+	# Hold your breath too long: the dark closes in and the sea keeps you.
+	var causes: Array = []
+	var on_died := func(c: String) -> void: causes.append(c)
+	Events.player_died.connect(on_died)
+	_w.replicator.force_drown_outcome = 0
+	p.air = 1.5
+	Input.action_press("dodge")
+	await _wait_for(func() -> bool: return p.dead, 15.0)
+	Input.action_release("dodge")
+	Events.player_died.disconnect(on_died)
+	_check(p.dead and causes.size() == 1 and String(causes[0]).contains("Drowned"), "drowning is a death (%s)" % str(causes))
+	p.request_respawn()
+	_check(not p.dead and p.dimension == 0 and p.suffocation == 0.0, "drowned on Ogygia, rise at the shrine with clear eyes")
+	# Back to the island; Calypso's gift; save while there; the raft home.
+	_w.replicator.force_drown_outcome = 1
+	_w.replicator.request_drown_outcome()
+	await _wait_for(func() -> bool: return isle.is_area_loaded(p.global_position) and p.body.on_floor, 30.0)
+	var calypso := _find("calypso") as Calypso
+	if calypso != null:
+		calypso.local_interact(p)
+		Events.dialog_choice.emit(calypso, "gift")
+		Events.dialog_choice.emit(calypso, "bye")
+	_check(p.inventory.has(Calypso.GIFT_ITEM), "Calypso's gift")
+	Game.save_game()
+	var isle_save := SaveSystem.read(int(Game.session.get("slot", 0)))
+	_check(int((isle_save.get("player", {}) as Dictionary).get("dim", -1)) == Ogygia.DIM, "a save made on Ogygia keeps the player there")
+	var raft := _find("ogygia_raft")
+	var had := p.inventory.count_of("pickaxe_stone")
+	if raft != null:
+		raft.call("local_interact", p)
+	_check(p.dimension == p.respawn_dimension and p.global_position.distance_to(p.respawn_point) < 1.0, "the raft returns you to your last shrine")
+	_check(p.inventory.count_of("pickaxe_stone") == had and had > 0 and bag.size() > 0, "inventory intact after Ogygia")
+	_w.replicator.force_drown_outcome = -1
+	await _wait(0.5)
 
 
 func _dump_entities() -> void:

@@ -170,6 +170,17 @@ func _check_completion() -> void:
 			Events.notify.emit("%s — return to %s" % [q["title"], _giver_label(q["giver"])], "quest")
 
 
+## A journal entry that is complete the moment it happens (no toast spam,
+## no rewards). Returns false if it was already recorded.
+func record_lore(id: String) -> bool:
+	if _completed.has(id) or QuestDB.any(id).is_empty():
+		return false
+	_active.erase(id)
+	_completed[id] = true
+	Events.quest_updated.emit(id)
+	return true
+
+
 func complete(id: String) -> void:
 	if not _active.has(id):
 		return

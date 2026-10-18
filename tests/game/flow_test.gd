@@ -47,6 +47,12 @@ func _process(delta: float) -> bool:
 				return _done()
 		3:
 			if _t > 2.0:
+				# Wake on Ogygia, then save by quitting: continue must bring us back there.
+				var gw: Node = root.get_node("GameWorld")
+				var rep: Node = gw.get("replicator")
+				rep.set("force_drown_outcome", 1)
+				rep.call("request_drown_outcome")
+				_check(int(gw.get("local_dimension")) == 3, "rescued onto Ogygia before saving")
 				game.call("quit_to_menu")
 				_step = 4
 				_t = 0.0
@@ -61,6 +67,23 @@ func _process(delta: float) -> bool:
 			if int(game.get("state")) == 5:
 				_check(true, "continue loads the saved game")
 				_check(str(game.get("session").get("slot")) == "slot_5", "quitting saved into the run that was played (slot 5), got %s" % str(game.get("session").get("slot")))
+				_step = 6
+				_t = 0.0
+			elif _t > 90.0:
+				_check(false, "continue loads the saved game")
+				return _done()
+		6:
+			if _t > 3.0:
+				var gw: Node = root.get_node("GameWorld")
+				var p: Node = gw.get("local_player")
+				_check(int(p.get("dimension")) == 3 and int(gw.get("local_dimension")) == 3, "a game saved on Ogygia loads on Ogygia")
+				var residents := 0
+				for e: Node in gw.call("all_entities"):
+					if String(e.get("kind")) in ["calypso", "ogygia_raft"]:
+						residents += 1
+				_check(residents == 2, "Calypso and the raft are there after loading")
+				load("res://world/ogygia/ogygia.gd").call("depart", gw)
+				_check(int(p.get("dimension")) == 0, "the raft leaves Ogygia after a reload")
 				return _done()
 			elif _t > 90.0:
 				_check(false, "continue loads the saved game")

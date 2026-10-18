@@ -86,6 +86,9 @@ func _process(delta: float) -> void:
 			else:
 				title = "Unknown Biome"
 				subtitle = "Explore to learn its name"
+	if dim == Ogygia.DIM:
+		title = "Ogygia"
+		subtitle = "Calypso's grotto" if underground else "Island of Calypso"
 	if title != current_title or subtitle != current_subtitle:
 		current_title = title
 		current_subtitle = subtitle
@@ -138,7 +141,8 @@ func _update_ambience(w: GameWorld, loc: Location) -> void:
 		"village": 0.7 if loc != null and loc.kind == Location.Kind.VILLAGE else 0.0,
 	})
 	if Audio.has_method("set_muffle"):
-		Audio.call("set_muffle", 0.5 if underground else 0.0)
+		var lp := w.local_player
+		Audio.call("set_muffle", maxf(0.5 if underground else 0.0, lp.audio_muffle if lp != null else 0.0))
 	if w.active_boss() == null:
 		var music := "explore"
 		if dim == 1:

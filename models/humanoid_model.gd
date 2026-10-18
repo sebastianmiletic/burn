@@ -52,6 +52,8 @@ var style := {}
 ## Owner's world-space velocity (m/s).
 var velocity := Vector3.ZERO
 var sprinting := false
+## In deep water: breaststroke when moving, treading water when still.
+var swimming := false
 ## Block id under the feet (dust colour, snow puffs). -1 unknown.
 var ground_block := -1
 ## Optional ground height probe for foot planting: func(world_pos: Vector3) -> float (NAN = unknown).
@@ -767,6 +769,9 @@ func _pose(dt: float) -> void:
 
 	# --- Airborne, take-off and landing -------------------------------------------
 	_pose_air_land(t, hips_rot)
+	_swim_w = damp(_swim_w, 1.0 if swimming and not _dead else 0.0, 5.0, dt)
+	if _swim_w > 0.01:
+		_pose_swim(t)
 	# --- One-shot actions -----------------------------------------------------------
 	var p := action_progress()
 	if _dead:
@@ -782,6 +787,42 @@ func _pose(dt: float) -> void:
 		t[R.HEAD] += Vector3(-pitch * 0.45, -yaw_sum * 0.45, -roll * 0.5)
 	t[R.HIPS] = hips_rot
 	_ik_w = damp(_ik_w, _ik_target, 16.0, dt)
+
+
+var _swim_w := 0.0
+
+
+## Swimming: the body tips forward into a breaststroke with a flutter kick
+## as it moves; still, it hangs upright treading water with sculling hands.
+func _pose_swim(t: PackedVector3Array) -> void:
+	var w := _swim_w
+	var mvn := clampf(_speed * _s / 2.6, 0.0, 1.0)
+	var cyc := _time * lerpf(2.4, 3.6, mvn)
+	var stroke := sin(cyc)
+	var lie := lerpf(-0.18, -1.2, mvn)
+	_hips_q_override = true
+	_hips_q = Quaternion.IDENTITY.slerp(Quaternion.from_euler(Vector3(lie, 0, 0)), w)
+	_hips_tgt = _hips_tgt.lerp(_rest[R.HIPS] + Vector3(0, -0.05 - 0.25 * mvn, 0.0), w)
+	_ik_target = lerpf(_ik_target, 0.0, w)
+	_ik_w = lerpf(_ik_w, 0.0, w)
+	var kick := sin(cyc * 2.0)
+	for side in 2:
+		var sg := -1.0 if side == 0 else 1.0
+		var o := 0 if side == 0 else 5
+		var lo := 0 if side == 0 else 4
+		var thigh := Vector3(0.25 * (1.0 - mvn) + sg * kick * lerpf(0.25, 0.35, mvn), 0, sg * -0.06)
+		var shin := Vector3(-0.35 - 0.3 * maxf(0.0, sg * kick) - 0.25 * (1.0 - mvn), 0, 0)
+		t[R.THIGH_L + lo] = t[R.THIGH_L + lo].lerp(thigh, w)
+		t[R.SHIN_L + lo] = t[R.SHIN_L + lo].lerp(shin, w)
+		# Arms: reach forward and sweep out (moving), or scull at the sides (treading).
+		var reach := Vector3(1.9 + 0.5 * stroke, sg * 0.1, sg * (-0.25 - 0.7 * maxf(0.0, -stroke)))
+		var scull := Vector3(0.55 + 0.15 * stroke, sg * 0.3 * stroke, sg * -0.85)
+		t[R.UARM_L + o] = t[R.UARM_L + o].lerp(scull.lerp(reach, mvn), w)
+		t[R.FARM_L + o] = t[R.FARM_L + o].lerp(Vector3(0.35 + 0.6 * maxf(0.0, -stroke) * mvn, 0, 0), w)
+	# Keep the face up out of the water.
+	t[R.NECK] = t[R.NECK].lerp(Vector3(lie * 0.35, 0, 0), w)
+	t[R.HEAD] = t[R.HEAD].lerp(Vector3(lie * 0.45, 0, 0), w)
+	t[R.SPINE] = t[R.SPINE].lerp(Vector3(lie * 0.08, 0, 0), w)
 
 
 func _pose_air_land(t: PackedVector3Array, hips_rot: Vector3) -> void:

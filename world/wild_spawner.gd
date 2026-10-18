@@ -135,8 +135,8 @@ func _populate(w: GameWorld, p: Player) -> void:
 		return
 	var pos := p.global_position
 	var night := w.sky.darkness() > 0.5 if w.sky != null else false
-	if p.dimension == 2:
-		return  # The floating isles have curated encounters.
+	if p.dimension >= 2:
+		return  # The floating isles have curated encounters; Ogygia is at peace.
 	if p.dimension == 1:
 		_spawn_hostiles(w, p, HELL, 7, "cave")
 		return

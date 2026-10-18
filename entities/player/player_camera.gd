@@ -187,22 +187,44 @@ func _follow_first_person(world: VoxelWorld, focus: Vector3, delta: float) -> vo
 
 
 ## Never let the eye (and the near plane around it) sit inside rock or a wall:
-## slide it back towards the body until there's clearance.
+## slide it back towards the body's axis (then down to the chest) until a
+## sphere around it is clear. The rendered Surface Nets mesh can bulge a
+## little past the field's 0.5 level, so the test uses a lower threshold and
+## a radius larger than the near plane's corner distance (~0.13 m at 100 deg).
+const EYE_CLEAR := 0.26
+const EYE_FIELD := 0.4
+static var _eye_probes: Array[Vector3] = []
+
+
 func _clear_of_ground(world: VoxelWorld, eye: Vector3, chest: Vector3) -> Vector3:
-	const CLEAR := 0.16
-	var probes := [Vector3.ZERO, Vector3(CLEAR, 0, 0), Vector3(-CLEAR, 0, 0), Vector3(0, CLEAR, 0), Vector3(0, 0, CLEAR), Vector3(0, 0, -CLEAR)]
-	var p := eye
-	for i in 10:
-		var inside := false
-		for o: Vector3 in probes:
-			var q: Vector3 = p + o
-			if world.field(q) >= 0.47 or world.is_box_solid(Vector3i(q.floor())):
-				inside = true
-				break
-		if not inside:
+	if _eye_probes.is_empty():
+		_eye_probes.append(Vector3.ZERO)
+		for x in [-1, 0, 1]:
+			for y in [-1, 0, 1]:
+				for z in [-1, 0, 1]:
+					if x != 0 or y != 0 or z != 0:
+						_eye_probes.append(Vector3(x, y, z).normalized() * EYE_CLEAR)
+	if _eye_open(world, eye):
+		return eye
+	# Back along a path that is known to be clear: the body axis at eye height, then the chest.
+	var axis := Vector3(chest.x, eye.y, chest.z)
+	var path: Array[Vector3] = [eye]
+	for i in range(1, 9):
+		path.append(eye.lerp(axis, i / 8.0))
+	for i in range(1, 9):
+		path.append(axis.lerp(chest, i / 8.0))
+	for p: Vector3 in path:
+		if _eye_open(world, p):
 			return p
-		p = p.lerp(chest, 0.2)
-	return p
+	return chest
+
+
+func _eye_open(world: VoxelWorld, p: Vector3) -> bool:
+	for o: Vector3 in _eye_probes:
+		var q := p + o
+		if world.field(q) >= EYE_FIELD or world.is_box_solid(Vector3i(q.floor())):
+			return false
+	return true
 
 
 func aim_ray() -> Array:

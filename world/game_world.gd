@@ -88,6 +88,7 @@ func setup(info: Dictionary) -> void:
 	await _prepare_dimension(1, seed_value ^ 0x5eed, 0.45, 0.6)
 	_log_time("underworld prepared", t0)
 	await _prepare_dimension(2, seed_value ^ 0x7f17, 0.60, 0.62)
+	_prepare_ogygia(seed_value ^ 0x0697)
 	add_child(Architecture.new())
 	add_child(EnvironmentDetails.new())
 	if DisplayServer.get_name() != "headless":
@@ -179,7 +180,14 @@ func setup(info: Dictionary) -> void:
 	_log_time("spawn area streamed", t0)
 	# Make sure we stand on solid ground (saves can predate edits).
 	var p := local_player.global_position
-	if local_player.body._overlaps(world, p):
+	# Saved inside a cave or mine: look for open space right here first, so a
+	# slightly embedded save never lifts the player up to the surface.
+	var near := Vector3.INF
+	if local_player.body._overlaps(world, p) or world.field(p + Vector3(0, 0.3, 0)) >= 0.5:
+		near = local_player.body.find_open_spot(world, p, 2.5)
+	if near != Vector3.INF:
+		local_player.global_position = near
+	elif local_player.body._overlaps(world, p):
 		# Smooth ground queries exclude masonry; they cannot resolve a body
 		# embedded in a shrine platform or overlapping village architecture.
 		local_player.global_position.y = world.surface_y(int(p.x), int(p.z)) + 1.05
@@ -190,6 +198,8 @@ func setup(info: Dictionary) -> void:
 		else:
 			local_player.global_position = Vector3(p.x, world.surface_y(int(p.x), int(p.z)) + 1.05, p.z)
 
+	if local_player.dimension == Ogygia.DIM and Net.is_server():
+		Ogygia.ensure_residents(self)  # saved while on the island
 	_apply_gfx_flags()
 	Settings.changed.connect(_on_settings_changed)
 	hud = _make_ui()
@@ -267,6 +277,28 @@ func _prepare_dimension(dim: int, seed_value: int, p0: float, p1: float) -> void
 	vw.meshing_enabled = false
 
 
+## Ogygia (dimension 3): Calypso's island, reachable only by drowning (see
+## world/ogygia/ogygia.gd). Small and procedural, so it is prepared instantly.
+var _ogygia_scenery: Node3D
+
+
+func _prepare_ogygia(seed_value: int) -> void:
+	var gen := OgygiaGen.new(seed_value)
+	gens[Ogygia.DIM] = gen
+	var vw := VoxelWorld.new()
+	vw.name = "Ogygia"
+	vw.setup(gen, Ogygia.DIM)
+	vw.view_radius = mini(view_radius(), 8)
+	vw.max_point_lights = 6
+	worlds[Ogygia.DIM] = vw
+	add_child(vw)
+	vw.visible = false
+	vw.meshing_enabled = false
+	_ogygia_scenery = Ogygia.build_scenery(gen)
+	_ogygia_scenery.visible = false
+	add_child(_ogygia_scenery)
+
+
 func view_radius() -> int:
 	return GraphicsQuality.view_radius()
 
@@ -295,6 +327,8 @@ func _activate_dimension(dim: int) -> void:
 		w.visible = d == dim
 		w.meshing_enabled = d == dim
 		w.set_process(true)
+	if _ogygia_scenery != null:
+		_ogygia_scenery.visible = dim == Ogygia.DIM
 	sky.set_dimension(dim)
 	weather.set_dimension(dim)
 	for e: Entity in _entities.values():
@@ -437,6 +471,8 @@ func nearest_player(pos: Vector3, dim: int, max_dist: float) -> Player:
 
 
 func default_spawn(dim: int) -> Vector3:
+	if dim == Ogygia.DIM:
+		return Ogygia.beach_spawn(gen_for(dim))
 	var id := &"emberfall_shrine" if dim == 0 else (&"asphodel" if dim == 1 else &"ryft_landing")
 	var loc := location_by_id(id)
 	var g := gen_for(dim)
@@ -807,12 +843,14 @@ func travel(to_dim: int) -> void:
 	local_player.body.velocity = Vector3.ZERO
 	var w := world_for(to_dim)
 	w.focus = target
-	view.flash = 1.0
-	Audio.play_ui("portal")
+	var island := to_dim == Ogygia.DIM or from == Ogygia.DIM
+	if not island:
+		view.flash = 1.0
+		Audio.play_ui("portal")
 	Audio.set_music("hell" if to_dim == 1 else "explore")
 	quests.on_event("dimension", str(to_dim))
 	replicator.notify_dimension(to_dim)
-	if from != to_dim:
+	if from != to_dim and not island:
 		Events.notify.emit("Ryft Island: follow the stone arches between the floating isles." if to_dim == 2 else ("You pass through the Gates of Hades." if to_dim == 1 else "You return to the world above."), "warn")
 
 
@@ -913,4 +951,6 @@ static func biome_name(gw: GameWorld, pos: Vector3, dim: int) -> String:
 	var g := gw.gen_for(dim)
 	if g == null:
 		return ""
+	if dim == Ogygia.DIM:
+		return "Ogygia"
 	return WorldGen.BIOME_NAMES[g.biome_at(int(pos.x), int(pos.z))]

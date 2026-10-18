@@ -801,7 +801,7 @@ func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) 
 	var center: PackedByteArray = neighbours[13]
 	var lights: Array = []
 	# Cave decorations (world/caves/cave_decor.gd): ore nodules, dripstone, fungi, webs; glowing ones add lights.
-	if dimension != 2 and smooth.has("terrain"):
+	if dimension < 2 and smooth.has("terrain"):
 		var decor := CaveDecor.plan_chunk(o, smooth["terrain"], dimension, gen.world_seed, center)
 		if not decor.is_empty():
 			result["cave_decor"] = decor

@@ -96,6 +96,12 @@ func _run() -> void:
 	await _frames(60)
 	for stop: String in tour:
 		_clear_ui()
+		if stop.begins_with("og_") or stop.begins_with("swim_") or stop == "drown_fade":
+			await _water_stop(w, stop, report)
+			continue
+		# "<stop>+wall": after framing, turn to the side and walk into the wall (camera clipping checks).
+		var wall_press := stop.ends_with("+wall")
+		stop = stop.trim_suffix("+wall")
 		# "arena_<location id>": stand 18 m in front of that location's boss spawn.
 		var arena := stop.begins_with("arena_")
 		var spec: Array = [StringName(stop.trim_prefix("arena_")), 13.0, 0.0, Vector3(0, 2.5, 18), -0.12] if arena else STOPS.get(stop, [])
@@ -313,6 +319,15 @@ func _run() -> void:
 				# Freeze-frame an action mid-swing (first-person viewmodel checks).
 				p.call("_start_action", arg.trim_prefix("--action="), 0.6)
 				await get_tree().create_timer(0.2).timeout
+		if wall_press:
+			p.camera.yaw += PI * 0.5
+			Input.action_press("move_forward")
+			await get_tree().create_timer(2.0).timeout
+			await _shot(stop + "_wall")
+			p.camera.pitch = 0.5
+			await _frames(10)
+			await _shot(stop + "_wall_up")
+			Input.action_release("move_forward")
 		await _shot(stop)
 		# --ui=map,journal: also shoot those HUD screens at every stop.
 		for arg in OS.get_cmdline_user_args():
@@ -510,6 +525,75 @@ func _breakdown(w: GameWorld, report: PackedStringArray) -> void:
 		await _frames(10)
 	report.append(line)
 	await _frames(20)
+
+
+## Ogygia and water stops (they need the island, which no Location names):
+##   og_beach, og_grotto, og_calypso, swim_surface, swim_under, swim_3p, drown_fade
+func _water_stop(w: GameWorld, stop: String, report: PackedStringArray) -> void:
+	var p := w.local_player
+	p.invulnerable_until = Time.get_ticks_msec() / 1000.0 + 3600.0
+	if w.local_dimension != Ogygia.DIM:
+		w.replicator.force_drown_outcome = 1
+		w.replicator.request_drown_outcome()
+		w.replicator.force_drown_outcome = -1
+	var g := w.gen_for(Ogygia.DIM)
+	var vw := w.world_for(Ogygia.DIM)
+	var pos := Ogygia.beach_spawn(g)
+	var yaw := 0.0
+	var pitch := 0.02
+	var hover := false
+	var third := false
+	match stop:
+		"og_grotto":
+			var m := OgygiaGen.GROTTO_MOUTH + Vector3(0, 0, 1.0)
+			pos = Vector3(m.x, OgygiaGen.SEA + 1.65, m.z)
+			pitch = -0.08
+		"og_calypso":
+			var h := Ogygia.hearth(g)
+			pos = Vector3(h.x + 1.6, OgygiaGen.SEA + 1.65, h.z + 4.0)
+			pitch = -0.1
+		"swim_surface", "swim_3p":
+			pos = Vector3(OgygiaGen.CENTER.x, OgygiaGen.SEA - 1.4, OgygiaGen.CENTER.y + 108.0)
+			third = stop == "swim_3p"
+			yaw = 0.6 if third else 0.0
+			pitch = -0.04 if third else 0.0
+		"swim_under", "drown_fade":
+			pos = Vector3(OgygiaGen.CENTER.x, OgygiaGen.SEA - 4.5, OgygiaGen.CENTER.y + 100.0)
+			pitch = 0.35
+			hover = true
+	p.global_position = pos
+	p.body.velocity = Vector3.ZERO
+	p.body.fly = true
+	vw.focus = pos
+	var t0 := Time.get_ticks_msec()
+	while (not vw.is_area_loaded(pos) or vw.loading_progress() < 0.95) and Time.get_ticks_msec() - t0 < 25000:
+		await get_tree().process_frame
+	w.sky.time_of_day = 16.5
+	p.global_position = pos
+	p.body.fly = hover
+	p.camera.yaw = yaw
+	p.camera.pitch = pitch
+	if p.camera.first_person == third:
+		p.camera.first_person = not third
+		p.call("_apply_view")
+	if third:
+		Input.action_press("move_forward")
+	await _frames(120)
+	p.camera.yaw = yaw
+	p.camera.pitch = pitch
+	if stop == "drown_fade":
+		p.air = Player.BREATH_FADE * 0.35
+		p.suffocation = 0.62
+		await _frames(4)
+	await _shot(stop)
+	if third:
+		Input.action_release("move_forward")
+		p.camera.first_person = true
+		p.call("_apply_view")
+	p.body.fly = false
+	p.air = p.breath_capacity()
+	p.suffocation = 0.0
+	report.append("%s at %s swimming %s head_under %s" % [stop, str(p.global_position.round()), p.swimming, p.head_under])
 
 
 ## A pause menu opened by focus changes (other windows) would freeze the player.
