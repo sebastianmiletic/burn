@@ -37,7 +37,8 @@ const FOREST_COLORS := [Color(0.42, 0.36, 0.18), Color(0.22, 0.36, 0.31), Color(
 
 ## New worlds use the latest revision; saves keep the revision they were made with.
 ## Revision 4 adds the ocean biomes, sea structures and the ocean bosses' lairs (new worlds only).
-const LATEST_REVISION := 4
+## Revision 5 adds the surface lands and landforms of world/biomes/surface_biomes.gd (and more).
+const LATEST_REVISION := 5
 const SEA_LEVEL := 12
 const LAVA_LEVEL := 0  ## hell
 const COARSE := 4      ## metres per coarse map cell
@@ -168,6 +169,9 @@ var _b_warp := PackedVector2Array()
 var _b_sea := PackedVector2Array()
 var _b_sea_near := PackedInt32Array()
 var _ocean := PackedByteArray()
+## Revision 5: surface lands (SurfaceBiomes) and their 4 m map (land | weight << 3).
+var land: SurfaceBiomes
+var _land := PackedByteArray()
 ## While locations are planned the ravines are not cut yet (they avoid the planned sites).
 var _planning := false
 var _seed_pos := PackedVector2Array()
@@ -205,6 +209,8 @@ func _init(dim: Dimension, seed_value: int, world_revision := LATEST_REVISION) -
 		_n_ravmask = _noise(FastNoiseLite.TYPE_SIMPLEX_SMOOTH, 0.0021, 1, 44)
 		_col_ring.resize(COLUMN_CACHE)
 		_col_ring.fill(-1)
+		if revision >= 5:
+			land = SurfaceBiomes.new(seed_value)
 
 
 ## Revision 3 overworld.
@@ -222,6 +228,8 @@ func center() -> Vector2:
 func prepare(progress: Callable = Callable(), timing := false) -> void:
 	var t := Time.get_ticks_msec()
 	_setup_biome_seeds()
+	if dimension == Dimension.OVERWORLD and land == null:
+		SurfaceBiomes.unregister()
 	_report(progress, 0.05, "Shaping the land")
 	if _v3():
 		_build_maps_v3()
@@ -245,6 +253,8 @@ func prepare(progress: Callable = Callable(), timing := false) -> void:
 		var t0 := Time.get_ticks_msec()
 		_protect_sites()
 		caves = CaveNetwork.plan_natural(self)
+		if land != null:
+			land.plan_caves(self, caves)
 		for loc in locations:
 			if loc.has_meta(&"carvers"):
 				caves.merge(loc.get_meta(&"carvers") as CaveNetwork)
@@ -422,6 +432,8 @@ func _build_maps_v3() -> void:
 	_mtn.resize(n * n)
 	_rav.resize(n * n)
 	_protect.resize(n * n)
+	if land != null:
+		_land.resize(n * n)
 	task = WorkerThreadPool.add_group_task(_rows_v3, n, -1, true, "terrain maps")
 	WorkerThreadPool.wait_for_group_task_completion(task)
 
@@ -568,6 +580,14 @@ func _rows_v3(row: int) -> void:
 		# The caldera volcano.
 		if wc.b > 0.004:
 			base += _volcano(p) * smoothstep(0.0, 0.5, wc.b)
+		var land_code := 0
+		if land != null:
+			# Revision 5: the surface lands and landforms (world/biomes/surface_biomes.gd).
+			var lc := land.cell(p, base, shape.y, shape.z, biome)
+			base = lc.x
+			shape = Vector3(shape.x, lc.y, lc.z)
+			biome = int(lc.w) & 255
+			land_code = int(lc.w) >> 8
 		# Coast: gentle beaches, but sheer cliffs along the fjords.
 		var soft := lerpf(65.0, 22.0, clampf(wc.a * 1.6, 0.0, 1.0))
 		var t := smoothstep(-soft, soft, s)
@@ -619,6 +639,8 @@ func _rows_v3(row: int) -> void:
 		_biome[i] = biome
 		if revision >= 4:
 			_ocean[i] = sea_kind if biome == Biome.OCEAN else 0
+		if land != null:
+			_land[i] = land_code if biome != Biome.OCEAN else 0
 		_mtn[i] = wc.r * (1.0 - t) * (1.0 - fj)
 		var allow: float = RAVINE_ALLOWANCE[biome] * (1.0 - t) * (1.0 - fj) * smoothstep(SEA_LEVEL + 10.0, SEA_LEVEL + 28.0, base)
 		allow *= 1.0 - smoothstep(0.3, 0.8, wc.r) * 0.6
@@ -725,6 +747,10 @@ func sea_at(x: float, z: float) -> int:
 
 ## What the HUD calls a place in the wilds: the forest stand, the ocean biome or the biome.
 func region_name(x: float, z: float) -> String:
+	if land != null:
+		var ln := land.region_name(Vector2(x, z))
+		if ln != "":
+			return ln
 	var biome := biome_at(int(x), int(z))
 	if biome == Biome.FOREST:
 		return FOREST_NAMES[forest_region(int(x), int(z))]
@@ -833,6 +859,8 @@ func _plan_lakes() -> void:
 			var level := ring_min - 1.8
 			lakes.append([p, radius, level, Blocks.ICE if biome == Biome.TUNDRA else Blocks.WATER])
 			found += 1
+	if land != null:
+		land.plan(self)  # revision 5: the oasis spring, desert arches
 	# Sculpt every bowl: the floor dips below the level, the rim rises above it.
 	for l: Array in lakes:
 		var c: Vector2 = l[0]
@@ -981,6 +1009,22 @@ func biome_at(x: int, z: int) -> int:
 	var ix := clampi(x / COARSE, 0, _coarse_n - 1)
 	var iz := clampi(z / COARSE, 0, _coarse_n - 1)
 	return _biome[ix + iz * _coarse_n]
+
+
+## Revision 5: land code of the 4 m cell at a column (SurfaceBiomes: land | weight << 3), 0 outside.
+func land_code(x: int, z: int) -> int:
+	if _land.is_empty():
+		return 0
+	var ix := clampi(x / COARSE, 0, _coarse_n - 1)
+	var iz := clampi(z / COARSE, 0, _coarse_n - 1)
+	return _land[ix + iz * _coarse_n]
+
+
+## Biome byte for the terrain mesher: biome_at(), or SurfaceBiomes.LAND_CODE + land for the
+## (dithered) columns of a revision 5 land.
+func surface_biome_at(x: int, z: int) -> int:
+	var b := biome_at(x, z)
+	return land.mesher_biome(self, x, z, b) if land != null else b
 
 
 ## Smooth (detail-free) ground height, used for roads and site planning.
@@ -1162,12 +1206,18 @@ func climate_at(pos: Vector3) -> Vector3:
 		Biome.VOLCANIC:
 			dust = 0.3
 	var haze := clampf((pos.y - 170.0) / 180.0, 0.0, 1.0) if not biome in [Biome.VOLCANIC, Biome.CANYON] else 0.0
+	if land != null:
+		return land.climate(pos, Vector3(snow, dust, haze))
 	return Vector3(snow, dust, haze)
 
 
 ## Ground colour seen from afar (horizon mesh): follows the surface rules, so snow lies only
 ## above the snowline on slopes that hold it, faces show rock, scree is grey. slope = rise/run.
 func horizon_color(x: int, z: int, h: float, slope: float) -> Color:
+	if land != null:
+		var lc := land.horizon(self, x, z, int(h), slope)
+		if lc.a > 0.0:
+			return lc
 	var biome := biome_at(x, z)
 	var top := _surface_v3(x, z, int(h), biome, 0, slope) & 255 if revision >= 3 else -1
 	match top:
@@ -1689,7 +1739,7 @@ static func _ore_kind(y: int, t: float) -> int:
 # --- Revision 3 chunk generation ---------------------------------------------------------------
 
 ## Rock groups for the deep strata of a column.
-enum Rock { PLAIN, MOUNTAIN, WASTES, MARSH, OCEAN, MESA, VOLCANIC, TUNDRA, REDWOOD }
+enum Rock { PLAIN, MOUNTAIN, WASTES, MARSH, OCEAN, MESA, VOLCANIC, TUNDRA, REDWOOD, DUNE }
 
 
 ## Per chunk column (cached): heights, surface/subsurface blocks, rock group, biome, slope,
@@ -1754,9 +1804,12 @@ func _columns_v3(cx: int, cz: int) -> Array:
 			var biome := biome_at(wx, wz)
 			biomes[i] = biome
 			var surf := _surface_v3(wx, wz, hh, biome, roads[i], s)
+			rock[i] = _rock_group(biome)
+			if land != null and _land[clampi(wx / COARSE, 0, _coarse_n - 1) + clampi(wz / COARSE, 0, _coarse_n - 1) * _coarse_n] != 0:
+				surf = land.surface(self, wx, wz, hh, roads[i], s, surf)
+				rock[i] = land.rock_group(land.pick(self, wx, wz), rock[i])
 			top[i] = surf & 255
 			sub[i] = surf >> 8
-			rock[i] = _rock_group(biome)
 			var lv := lake_level(wx, wz)
 			water[i] = lv.x if lv.x > -INF else -100000.0
 			wblock[i] = int(lv.y)
@@ -1955,6 +2008,8 @@ func _rock_v3(x: int, y: int, z: int, depth: int, group: int, st: int, o1: int, 
 			if pocket:
 				return Blocks.GRANITE
 			return Blocks.LIMESTONE if band == 2 else Blocks.STONE
+		Rock.DUNE:
+			return SurfaceBiomes.dune_rock(y, st, band, pocket)
 	if pocket:
 		return Blocks.GRANITE if band < 2 else Blocks.LIMESTONE
 	return Blocks.LIMESTONE if band == 2 else Blocks.STONE
@@ -2009,6 +2064,7 @@ func _generate_overworld_v3(key: Vector3i) -> Array:
 		o2 = _noise_block(o, 0.045, 2, 36)
 		if o.y < -12:
 			cav = _noise_block(o, 0.012, 2, 33)
+	var arches: Array = land.arches_in(o) if land != null else []
 	var carve := PackedFloat32Array()
 	var owner := PackedInt32Array()
 	if not carvers.is_empty():
@@ -2026,6 +2082,10 @@ func _generate_overworld_v3(key: Vector3i) -> Array:
 				var ci := x + z * Chunk.SIZE
 				var h := heights[ci]
 				var d := 0.5 + (hf[ci] + 0.5 - fy) * 0.5
+				var arch_d := -1.0
+				if not arches.is_empty():
+					arch_d = land.arch_density(arches, o.x + x, wy, o.z + z)
+					d = maxf(d, arch_d)
 				var ni := x + y * Chunk.SIZE + z * Chunk.AREA
 				var di := x + z * Chunk.SIZE + y * Chunk.AREA
 				# Flood guards: no noise tunnel breaches a lake or a flooded/magma chamber.
@@ -2074,6 +2134,8 @@ func _generate_overworld_v3(key: Vector3i) -> Array:
 					else:
 						b = _rock_v3(o.x + x, wy, o.z + z, depth, rocks[ci], int(strata[ni]) if not strata.is_empty() else 128,
 								int(o1[ni]) if not o1.is_empty() else 128, int(o2[ni]) if not o2.is_empty() else 128)
+					if arch_d >= 0.5 and wy > h:
+						b = SurfaceBiomes.arch_block(wy)
 					if b != Blocks.BEDROCK:
 						if chamber_distance < 1.13:
 							b = CaveBiomes.wall_material(o + Vector3i(x, y, z), kind, world_seed, q_floor(chamber_distance, wy, cc, cr))
@@ -2323,6 +2385,11 @@ func _place_trees_v3(data: PackedByteArray, dens: PackedByteArray, o: Vector3i, 
 				Biome.RYFT:
 					chance = 0.18
 					trunk = Blocks.RYFTWOOD_TRUNK
+			if land != null and _land[clampi(rx / COARSE, 0, _coarse_n - 1) + clampi(rz / COARSE, 0, _coarse_n - 1) * _coarse_n] != 0:
+				var tv := land.tree(self, rx, rz, chance, trunk, trunk_h, hsh)
+				chance = tv.x
+				trunk = int(tv.y)
+				trunk_h = int(tv.z)
 			if roll >= chance or slope > 0.85 or roads[ci] == 1:
 				continue
 			if _pads.has(rx + rz * size):
