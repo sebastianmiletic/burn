@@ -6,7 +6,8 @@ extends CanvasLayer
 ##
 ## Layout: minimap top-left with the location / health / rank panel beside
 ## it, boss bar top-centre, quests top-right, toasts right, hotbar and
-## abilities bottom-centre, chat bottom-left, crosshair and prompts centre.
+## abilities bottom-centre, chat on the left between minimap and hotbar,
+## crosshair and prompts centre.
 
 var root: Control
 var minimap: Minimap
@@ -109,14 +110,18 @@ func _ready() -> void:
 	hotbar.offset_bottom = -22
 	root.add_child(hotbar)
 
+	# Left side, below the minimap / status block and above the hotbar.
 	chat = ChatBox.new()
-	chat.anchor_top = 1.0
+	chat.anchor_top = 0.0
 	chat.anchor_bottom = 1.0
-	chat.offset_left = 22
-	chat.offset_right = 442
-	chat.offset_top = -452
-	chat.offset_bottom = -194
+	chat.offset_left = 26
+	chat.offset_right = 486
+	chat.offset_top = 252
+	chat.offset_bottom = -250  # clear of the hotbar and its item-name label
 	root.add_child(chat)
+	chat.typing_changed.connect(func(on: bool) -> void:
+		if not on and not any_screen_open():
+			UiContext.set_ui_open(false))
 
 	_gameplay_widgets = [crosshair, hotbar]
 
@@ -242,6 +247,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		_close_screens(map_screen)
 		map_screen.toggle()
 		get_viewport().set_input_as_handled()
-	elif event.is_action_pressed("chat") and not any_screen_open():
+	elif not any_screen_open() and chat.is_enabled() and (event.is_action_pressed("chat") or _is_enter(event)):
 		chat.open()
 		get_viewport().set_input_as_handled()
+	elif not any_screen_open() and chat.is_enabled() and event.is_action_pressed("chat_command"):
+		chat.open("/")
+		get_viewport().set_input_as_handled()
+
+
+static func _is_enter(event: InputEvent) -> bool:
+	var k := event as InputEventKey
+	return k != null and k.pressed and not k.echo and (k.keycode == KEY_ENTER or k.keycode == KEY_KP_ENTER)

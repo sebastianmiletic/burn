@@ -53,6 +53,26 @@ func _run() -> void:
 		await _shot("menu_credits")
 		menu.queue_free()
 
+	if _wants("browser"):
+		var b := ServerBrowser.new()
+		b.offline_preview = true
+		add_child(b)
+		var proto := ServerBrowser.protocol()
+		b.show_entries([
+			{"name": "Cinderheart's fire", "description": "Hunting the Mountain King, all welcome", "mode": "Campaign", "players": 3, "max_players": 8, "ping": 34.0, "protocol": proto, "version": "0.5.1", "password": false, "ip": "1.2.3.4", "port": 47211, "verified": true, "source": "online"},
+			{"name": "The Ashen Vigil", "description": "", "mode": "Campaign", "players": 8, "max_players": 8, "ping": 92.0, "protocol": proto, "version": "0.5.1", "password": false, "ip": "1.2.3.5", "port": 47211, "verified": true, "source": "online"},
+			{"name": "Kindlers only", "description": "friends of the forge", "mode": "Campaign", "players": 1, "max_players": 4, "ping": 151.0, "protocol": proto, "version": "0.5.1", "password": true, "ip": "1.2.3.6", "port": 47212, "verified": false, "source": "online"},
+			{"name": "Basement fire", "description": "", "mode": "Campaign", "players": 2, "max_players": 6, "ping": 3.0, "protocol": proto, "version": "", "password": false, "ip": "192.168.1.20", "port": 47211, "verified": true, "source": "lan"},
+			{"name": "Old embers", "description": "", "mode": "Campaign", "players": 2, "max_players": 8, "ping": -2.0, "protocol": proto - 1, "version": "0.5.0", "password": false, "ip": "1.2.3.7", "port": 47211, "verified": null, "source": "online"},
+		], "5 public servers online.")
+		await _wait(1.2)
+		await _shot("browser")
+		b.call("_show_host")
+		await _wait(0.5)
+		await _shot("browser_host")
+		b.queue_free()
+		await _frames(2)
+
 	if _wants("settings"):
 		var bg := EmberBackground.new()
 		add_child(bg)
@@ -127,7 +147,7 @@ func _run() -> void:
 		await _wait(1.2)
 
 	var need_world := false
-	for n in ["hud", "inventory", "shop", "dialog", "journal", "map", "pause", "death", "victory"]:
+	for n in ["hud", "chat", "inventory", "shop", "dialog", "journal", "map", "pause", "death", "victory"]:
 		need_world = need_world or _wants(n)
 	if not need_world:
 		get_tree().quit()
@@ -179,6 +199,18 @@ func _run() -> void:
 		await _wait(0.8)
 		await _shot("hud_look")
 		hud.status.call("_on_look", "", "", "")
+	if _wants("chat"):
+		ev.emit_signal("chat_message", "Brandmark", "/me raises a torch toward the pass", "party")
+		ev.emit_signal("chat_message", "Kindlewright", "meet at the shrine, bring coal", "whisper")
+		ev.emit_signal("chat_message", "", "The Mountain King has been defeated.", "system")
+		ev.emit_signal("chat_message", "Soothand", "gg! that [b]was[/b] close", "party")
+		await _wait(0.6)
+		await _shot("hud_chat")
+		hud.chat.open("/w Kindlewright on my way")
+		await _wait(0.6)
+		await _shot("hud_chat_typing")
+		hud.chat.close()
+		await _frames(2)
 	var screens := [
 		["inventory", func() -> void: hud.inventory_screen.open()],
 		["shop", func() -> void: ev.emit_signal("shop_open", "blacksmith")],

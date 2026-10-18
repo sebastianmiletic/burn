@@ -33,11 +33,33 @@ func _ready() -> void:
 	Net.session_started.connect(_on_session_started)
 	Net.join_failed.connect(_on_join_failed)
 	Events.campaign_won.connect(_on_campaign_won)
+	Net.server_list.registration_changed.connect(_on_registration)
+
+
+## Public hosting feedback in the chat: listed or not, and whether the master
+## could reach the game port.
+func _on_registration(st: String, detail: String) -> void:
+	var text := ""
+	if st == "failed":
+		text = "Not listed online: %s Players on your network can still join." % detail
+	elif st == "registered":
+		var v: Variant = Net.server_list.verified
+		if v == true:
+			text = "Your server is listed online and reachable at %s." % detail
+		elif v == false:
+			text = "Listed online, but the server list could not reach UDP port %d. Others may not be able to join: forward the port or enable UPnP on your router." % Net.enet_port
+		else:
+			text = "Your server is listed online (%s)." % detail
+	if text != "":
+		Events.chat_message.emit("", text, "system")
 
 
 ## Called by the main scene.
 func boot() -> void:
 	var args := Array(OS.get_cmdline_user_args())
+	if "--dedicated" in args:
+		start_dedicated()
+		return
 	if "--solo" in args or "--playtest" in args or args.any(func(a: String) -> bool: return a.begins_with("--capture-game")):
 		start_solo(int(_arg("--slot", "8")), not "--continue" in args)
 		return
@@ -124,6 +146,66 @@ func open_lobby_join() -> void:
 	_set_screen(_ui("res://ui/lobby_screen.gd", [false]))
 
 
+## The online server browser (public servers from the master list + LAN).
+func open_server_browser() -> void:
+	state = State.MENU
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_set_screen(_ui("res://ui/server_browser.gd"))
+	Audio.set_music("menu")
+
+
+## Host a public (or LAN-listed) server from the browser and go straight into
+## the world; others join while it runs. config: Net.server_config plus
+## "run" (one of the player's run ids; "" = a new run named after the server).
+func host_public(config: Dictionary) -> bool:
+	var run: Variant = config.get("run", "")
+	if run == null or str(run) == "" or not SaveSystem.valid_id(run):
+		run = SaveSystem.new_id()
+		SaveSystem.create_meta(run, str(config.get("name", "Public server")), randi(), SaveSystem.DIFFICULTY_NORMAL)
+	var cfg := config.duplicate()
+	cfg.erase("run")
+	var code: PackedInt32Array = Net.host_party(String(Settings.get_value("gameplay", "player_name")), PackedInt32Array(), cfg)
+	if code.is_empty():
+		return false
+	_host_run = run
+	state = State.LOADING
+	start_campaign()
+	return true
+
+
+## Headless dedicated server:
+##   godot --headless --path . -- --dedicated [--run=<run id>|new] [--public] [--name=..]
+##     [--description=..] [--password=..] [--max-players=8] [--master=URL] [--upnp]
+## Hosts with a hidden spectator player and starts the campaign at once.
+func start_dedicated() -> void:
+	# Without --run the server keeps one persistent "dedicated" world; --run=new starts it afresh.
+	var arg_run := _arg("--run", "")
+	var run: Variant = "dedicated"
+	if arg_run == "new":
+		SaveSystem.delete(run)
+	elif arg_run.is_valid_int():
+		run = int(arg_run)   # an old numbered slot
+	elif arg_run != "" and SaveSystem.valid_id(arg_run):
+		run = arg_run
+	var args := OS.get_cmdline_user_args()
+	var cfg := {"dedicated": true, "lan": true, "internet": "--public" in args, "upnp": "--upnp" in args,
+		"name": _arg("--name", "Burn dedicated server"), "description": _arg("--description", ""),
+		"password": _arg("--password", ""), "max_players": int(_arg("--max-players", "8")), "mode": "Campaign"}
+	var code := Net.host_party("Server", PackedInt32Array(), cfg)
+	if code.is_empty():
+		push_error("Dedicated server: could not open a game port.")
+		get_tree().quit(1)
+		return
+	Events.chat_message.connect(func(from: String, text: String, channel: String) -> void:
+		print("[chat:%s] %s%s" % [channel, (from + ": ") if from != "" else "", text]))
+	Net.server_list.registration_changed.connect(func(st: String, detail: String) -> void:
+		print("BURN_MASTER %s %s (verified=%s)" % [st, detail, str(Net.server_list.verified)]))
+	print("BURN_DEDICATED port=%d run=%s public=%s" % [Net.enet_port, str(run), str(cfg["internet"])])
+	_host_run = run
+	state = State.LOADING
+	start_campaign()
+
+
 # --- Saves ------------------------------------------------------------------------
 
 func has_save() -> bool:
@@ -183,7 +265,8 @@ func save_game() -> void:
 		return
 	var slot: Variant = session.get("slot", 0)
 	SaveSystem.write(slot, world.save_data())
-	if Net.is_online():
+	# A public server run from a solo save keeps that run's character there.
+	if Net.is_online() and typeof(slot) == TYPE_INT and slot == PARTY_SLOT:
 		_save_character()
 	Events.notify.emit("Game saved.", "info")
 
@@ -314,6 +397,8 @@ func _load_world(info: Dictionary) -> void:
 	_loading = null
 	state = State.PLAYING
 	_autosave = autosave_interval() if autosave_interval() > 0.0 else AUTOSAVE_SECONDS
+	if Net.dedicated:
+		print("BURN_DEDICATED_READY seed=%d" % int(info.get("seed", 0)))
 	world.replicator.client_ready()
 	if info.get("mode", "solo") != "client":
 		save_game()

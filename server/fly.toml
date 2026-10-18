@@ -1,0 +1,23 @@
+# Example Fly.io config. Change `app` to your own app name before `fly launch`.
+app = "burn-master-example"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "47290"
+  BURN_MASTER_TRUST_PROXY = "fly"
+
+[http_service]
+  internal_port = 47290
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "3s"
+    method = "GET"
+    path = "/healthz"

@@ -35,6 +35,7 @@ const ACTIONS := {
 	"map": [KEY_M],
 	"quests": [KEY_J],
 	"chat": [KEY_T],
+	"chat_command": [KEY_SLASH],
 	"pause": [KEY_ESCAPE],
 	"perf": [KEY_F3],
 	"screenshot": [KEY_F12],
@@ -72,7 +73,7 @@ const LABELS := {
 	"interact": "Interact", "attack": "Attack / mine", "use": "Use / place",
 	"ability_fire": "Fireball", "ability_burst": "Light burst", "potion": "Drink potion",
 	"slot_1": "Hotbar 1", "slot_2": "Hotbar 2", "slot_3": "Hotbar 3",
-	"inventory": "Inventory", "map": "World map", "quests": "Quest log", "chat": "Chat",
+	"inventory": "Inventory", "map": "World map", "quests": "Quest log", "chat": "Chat", "chat_command": "Chat command (/)",
 	"pause": "Pause", "perf": "Performance overlay", "screenshot": "Screenshot", "toggle_view": "First / third person",
 }
 

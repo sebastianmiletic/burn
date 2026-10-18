@@ -125,6 +125,20 @@ const DEFAULTS := {
 		"toggle_sprint": false,
 		"toggle_attack": false,
 	},
+	"online": {
+		"master_server_url": "",  # "" = ServerList.DEFAULT_MASTER_URL
+		"server_name": "",
+		"server_description": "",
+		"max_players": 8,
+	},
+	"chat": {
+		"enabled": true,
+		"text_size": 15,
+		"opacity": 1.0,
+		"fade_time": 10.0,
+		"show_system": true,
+		"profanity_filter": true,
+	},
 	"controls": {},
 }
 

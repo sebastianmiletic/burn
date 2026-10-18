@@ -272,6 +272,7 @@ func _build_all() -> void:
 	_build_controls()
 	_build_gameplay()
 	_build_accessibility()
+	_build_chat()
 
 
 ## Hides rows (and empty headings) that do not match `text`, in every tab.
@@ -990,3 +991,16 @@ func _sync_checks(section: String, key: String) -> void:
 			var on := bool(UiContext.setting(section, key))
 			c.set_pressed_no_signal(on)
 			c.text = "on" if on else "off"
+
+
+## Chat options, appended to the Gameplay page (its own page if that is missing).
+func _build_chat() -> void:
+	var scroll := _tabs.get_node_or_null("Gameplay")
+	var p: VBoxContainer = scroll.get_child(0) if scroll != null and scroll.get_child_count() > 0 else _page("Chat")
+	_heading(p, "Chat")
+	_check(p, "chat", "enabled", "Show chat", "Off hides the chat panel and stops T, Enter and / from opening it.")
+	_slider(p, "chat", "text_size", "Text size", 11, 24, 1, "%d px", 1.0, "Size of chat text.")
+	_slider(p, "chat", "opacity", "Opacity", 0.2, 1.0, 0.05, "%d%%", 100.0, "How strongly chat text shows over the world.")
+	_slider(p, "chat", "fade_time", "Fade after", 3.0, 60.0, 1.0, "%d s", 1.0, "Seconds before a message fades. Open the chat (T) to see them all again.")
+	_check(p, "chat", "show_system", "System messages", "Joins, leaves, deaths, defeated bosses and completed quests in the chat.")
+	_check(p, "chat", "profanity_filter", "Filter profanity", "Masks common swear words in other players' messages.")

@@ -111,7 +111,22 @@ func _ready() -> void:
 		if not (runes is PackedInt32Array) or (runes as PackedInt32Array).size() != 4:
 			runes = net.call("host_party", str(UiContext.setting("gameplay", "player_name")))
 	_refresh()
+	_add_chat()
 	UiContext.sound("ui_open")
+
+
+## Party chat on the left: always open here, it never captures the mouse.
+func _add_chat() -> void:
+	var chat := ChatBox.new()
+	chat.always_open = true
+	chat.captures_game_input = false
+	chat.anchor_top = 1.0
+	chat.anchor_bottom = 1.0
+	chat.offset_left = 26
+	chat.offset_right = 380
+	chat.offset_top = -330
+	chat.offset_bottom = -26
+	add_child(chat)
 
 
 func _build_host(box: VBoxContainer) -> void:
