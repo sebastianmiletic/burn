@@ -471,8 +471,12 @@ func _full_mine(others: Array, id: StringName, mine_name: String, nominal: Vecto
 	return [surface, depths]
 
 
+## Revision 5 and later: no roads between places (villages keep only their own
+## streets and door paths); older worlds keep theirs so their terrain is unchanged.
 static func roads(world_gen: WorldGen, locs: Array[Location] = []) -> Array[PackedVector2Array]:
 	var out: Array[PackedVector2Array] = []
+	if world_gen.revision >= 5:
+		return out
 	var by_id := {}
 	for l in (locs if not locs.is_empty() else world_gen.locations):
 		by_id[l.id] = l

@@ -37,7 +37,7 @@ const FOREST_COLORS := [Color(0.42, 0.36, 0.18), Color(0.22, 0.36, 0.31), Color(
 
 ## New worlds use the latest revision; saves keep the revision they were made with.
 ## Revision 4 adds the ocean biomes, sea structures and the ocean bosses' lairs (new worlds only).
-const LATEST_REVISION := 4
+const LATEST_REVISION := 5
 const SEA_LEVEL := 12
 const LAVA_LEVEL := 0  ## hell
 const COARSE := 4      ## metres per coarse map cell
