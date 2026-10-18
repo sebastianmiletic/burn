@@ -1,6 +1,7 @@
 # Boss progression and encounter rules
 
 Suggested progression, not a guarantee of difficulty. Bring healing supplies and upgrade equipment before each step.
+The full ladder (first steps, forge quests, optional hunts incl. ocean bosses) is in `docs/PROGRESSION.md`.
 
 | Encounter | Intended place in progression | Preparation |
 | --- | --- | --- |
