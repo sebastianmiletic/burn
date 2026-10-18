@@ -66,6 +66,11 @@ func mountain_weight(_x: float, _z: float) -> float:
 	return 0.0
 
 
+## The island has no coarse height grid; the analytic surface is cheap.
+func smooth_height(x: float, z: float) -> float:
+	return height(x, z)
+
+
 func is_protected(_x: float, _z: float) -> bool:
 	return true
 
