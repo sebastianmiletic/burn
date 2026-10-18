@@ -89,6 +89,9 @@ var _cpu_hold := 0.0
 var _window := Vector2i.ZERO
 var _vignette := 0.3
 var _no_horizon := "--no-horizon" in OS.get_cmdline_user_args()   # profiling aid
+var _depth_fx: DepthEffects
+var _haze := 0.0
+var _under := 0.0
 
 
 func _ready() -> void:
@@ -131,6 +134,13 @@ func _overlay(mat: ShaderMaterial) -> ColorRect:
 
 
 func _exit_tree() -> void:
+	if _depth_fx != null:
+		if source_camera != null and is_instance_valid(source_camera) and source_camera.compositor != null:
+			var fx := source_camera.compositor.compositor_effects.duplicate()
+			fx.erase(_depth_fx)
+			source_camera.compositor.compositor_effects = fx
+		_depth_fx.release()
+		_depth_fx = null
 	if viewport != null:
 		viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 		viewport.scaling_3d_scale = 1.0
@@ -155,6 +165,7 @@ func _process(delta: float) -> void:
 		_mul_mat.set_shader_parameter(&"tint", Vector3(tint.r, tint.g, tint.b))
 		_mul_mat.set_shader_parameter(&"time", _time)
 	_update_post(delta)
+	_update_depth_fx(delta)
 	_add.visible = flash > 0.001
 	if _add.visible:
 		# Subtle: the sky and the bolt's own light carry lightning.
@@ -212,6 +223,54 @@ func _update_post(delta: float) -> void:
 
 
 var _sun_target := 0.0
+
+
+## Weather haze blur and the underwater murk (DepthEffects, a compositor
+## effect on the world camera; Forward+ only).
+func _update_depth_fx(delta: float) -> void:
+	var cam := source_camera
+	if cam == null or not is_instance_valid(cam) or DisplayServer.get_name() == "headless" or not GraphicsQuality.forward_plus():
+		return
+	if _depth_fx == null:
+		_depth_fx = DepthEffects.new()
+	if cam.compositor == null:
+		cam.compositor = Compositor.new()
+	if not cam.compositor.compositor_effects.has(_depth_fx):
+		var fx := cam.compositor.compositor_effects.duplicate()
+		fx.append(_depth_fx)
+		cam.compositor.compositor_effects = fx
+	if _sky == null or not is_instance_valid(_sky):
+		_sky = _find_sky()
+	var w := GameWorld.instance
+	var target_haze := 0.0
+	if w != null and w.weather != null and w.weather.has_method("precipitation_haze"):
+		target_haze = w.weather.precipitation_haze()
+	_haze = move_toward(_haze, target_haze, delta * 0.5)
+	var under := false
+	var p: Player = w.local_player if w != null else null
+	if p != null and is_instance_valid(p) and p.water_surface > -INF:
+		under = cam.global_position.y < p.water_surface - 0.02
+		_depth_fx.water_y = p.water_surface
+	_under = move_toward(_under, 1.0 if under else 0.0, delta * 6.0)
+	_depth_fx.haze = _haze * (1.0 - _under)
+	_depth_fx.underwater = _under
+	_depth_fx.time = _time
+	_depth_fx.cam_near = cam.near
+	_depth_fx.cam_far = cam.far
+	_depth_fx.tan_half_fov_y = tan(deg_to_rad(cam.fov) * 0.5)
+	if _sky != null:
+		var hp := _sky.haze_params()
+		if hp.has("fog_col"):
+			_depth_fx.haze_color = hp["fog_col"]
+		var sd := _sky.sun_direction()
+		_depth_fx.sun_dir = sd
+		_depth_fx.sun_color = _sky.sun_radiance
+		_depth_fx.daylight = clampf(_sky.sun_radiance.length() * 1.2, 0.0, 1.0)
+		var scatter := Vector3(0.06, 0.32, 0.26)
+		_depth_fx.water_light = scatter * (_sky.sky_zenith * 0.9 + _sky.sun_radiance * 0.22) + Vector3(0.002, 0.004, 0.005)
+	if _under > 0.0:
+		var absorb := Vector3(0.42, 0.11, 0.08)
+		_depth_fx.extinction = absorb * 0.6 + Vector3(0.03, 0.03, 0.03)
 
 
 ## Terrain or a building between the camera and the sun (no shafts through a mountain).

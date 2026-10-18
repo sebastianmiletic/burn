@@ -27,16 +27,13 @@ void fragment() {
 	// Refraction wobble, stronger towards the edges, and a slow drunken sway when out of air.
 	uv += underwater * (0.0025 + 0.004 * r) * vec2(sin(uv.y * 34.0 + time_s * 2.0), cos(uv.x * 27.0 + time_s * 1.6));
 	uv += suffocate * 0.006 * vec2(sin(time_s * 0.9), cos(time_s * 0.7));
-	float blur = underwater * 1.4 + suffocate * suffocate * 4.5 + r * underwater * 0.8;
+	float blur = underwater * 0.5 + suffocate * suffocate * 4.5 + r * underwater * 0.6;
 	vec3 col = textureLod(screen, uv, blur).rgb;
 	// Water swallows red first, then everything into a blue-green murk.
 	float lum = dot(col, vec3(0.3, 0.59, 0.11));
-	vec3 absorbed = col * vec3(0.45, 0.8, 0.9);
+	vec3 absorbed = col * vec3(0.8, 0.95, 1.0);
 	vec3 murk = water_col * (0.55 + 0.5 * lum);
-	vec3 wet = mix(absorbed, murk, 0.42 + 0.25 * r);
-	// Caustic shimmer from above.
-	float k = sin(uv.x * 48.0 + time_s * 1.3 + sin(uv.y * 31.0 + time_s * 0.8) * 2.0) * sin(uv.y * 41.0 - time_s * 1.1 + sin(uv.x * 23.0) * 1.5);
-	wet += water_col * 0.35 * pow(max(k, 0.0), 3.0) * smoothstep(1.0, 0.0, uv.y);
+	vec3 wet = mix(absorbed, murk, 0.08 + 0.12 * r);   // depth murk: DepthEffects
 	col = mix(col, wet, underwater);
 	// Out of air: grey, then the dark creeps in from the edges to a full blackout.
 	col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), suffocate * 0.7);

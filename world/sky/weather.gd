@@ -291,6 +291,18 @@ func snow_cover() -> float:
 	return _snow_cover
 
 
+## How much falling rain, snow or dust softens the distance, 0 clear .. 1 a
+## white-out (storms and blizzards, with their wind, the most). WorldView's
+## depth haze blur scales with it.
+func precipitation_haze() -> float:
+	if _dimension != 0 or _underground:
+		return 0.0
+	var wind := wind_amount()
+	var rain := rain_amount()
+	var snow := snow_amount()
+	return clampf(rain * (0.5 + storm_amount() * 0.35 + wind * 0.15) + snow * (0.6 + wind * 0.4) + dust_amount() * 0.55, 0.0, 1.0)
+
+
 ## How far one can see outdoors, 0 (white-out) .. 1 (clear) — for AI and gameplay.
 func visibility() -> float:
 	if _dimension != 0 or _underground:
