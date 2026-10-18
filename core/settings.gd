@@ -20,7 +20,7 @@ const GFX_PRESETS := {
 	"ssil": [0, 0, 0, 1],             # 0 off, 1 on
 	"ssr": [0, 0, 1, 2],              # 0 off, 1 low, 2 high
 	"gi": [0, 0, 1, 2],               # 0 off, 1 SDFGI, 2 SDFGI high
-	"volumetric_fog": [0, 1, 1, 2],   # 0 off, 1 low, 2 high
+	"volumetric_fog": [0, 0, 1, 2],   # 0 off, 1 low, 2 high
 	"view_distance": [6, 8, 10, 12],  # streamed terrain radius, chunks of 16 m
 	"foliage": [0, 1, 2, 3],          # density and draw distance of grass, plants, trees
 	"texture_quality": [0, 1, 2, 3],  # mip bias and anisotropic filtering

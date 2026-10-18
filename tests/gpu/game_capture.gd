@@ -427,8 +427,8 @@ func _breakdown(w: GameWorld, report: PackedStringArray) -> void:
 				RenderingServer.viewport_get_render_info(vp, t, RenderingServer.VIEWPORT_RENDER_INFO_DRAW_CALLS_IN_FRAME),
 				RenderingServer.viewport_get_render_info(vp, t, RenderingServer.VIEWPORT_RENDER_INFO_PRIMITIVES_IN_FRAME) / 1000]
 	report.append("   main pass: %s | shadow pass: %s" % [info.call(RenderingServer.VIEWPORT_RENDER_INFO_TYPE_VISIBLE), info.call(RenderingServer.VIEWPORT_RENDER_INFO_TYPE_SHADOW)])
-	var chunk_kids: Array[Node3D] = []
-	var chunks: Array[GeometryInstance3D] = []
+	var chunk_kids: Array = []
+	var chunks: Array = []
 	for c in vw.get_children():
 		if c is MeshInstance3D:
 			chunks.append(c)
@@ -441,22 +441,44 @@ func _breakdown(w: GameWorld, report: PackedStringArray) -> void:
 		if m.is_visible_in_tree() and m.multimesh != null:
 			inst += m.multimesh.visible_instance_count if m.multimesh.visible_instance_count >= 0 else m.multimesh.instance_count
 	report.append("   chunks %d, flora/decor nodes %d, multimeshes %d (%d instances), scene nodes %d" % [chunks.size(), chunk_kids.size(), mmis.size(), inst, Performance.get_monitor(Performance.OBJECT_NODE_COUNT)])
+	# Submitted triangles per flora mesh: instances in their visibility range times mesh triangles.
+	var cam_pos := w.view.camera.global_position
+	var per_mesh := {}
+	var tri_cache := {}
+	for m: MultiMeshInstance3D in mmis:
+		if not m.is_visible_in_tree() or m.multimesh == null or m.multimesh.mesh == null:
+			continue
+		var d := cam_pos.distance_to(m.global_transform * m.get_aabb().get_center())
+		if d > m.visibility_range_end and m.visibility_range_end > 0.0 or d < m.visibility_range_begin:
+			continue
+		var mesh := m.multimesh.mesh
+		if not tri_cache.has(mesh):
+			tri_cache[mesh] = mesh.get_faces().size() / 3
+		var n := m.multimesh.visible_instance_count if m.multimesh.visible_instance_count >= 0 else m.multimesh.instance_count
+		var key := "%s/%d" % [String(m.get_parent().name), int(tri_cache[mesh])]
+		per_mesh[key] = int(per_mesh.get(key, 0)) + n * int(tri_cache[mesh])
+	var keys := per_mesh.keys()
+	keys.sort_custom(func(a: String, b: String) -> bool: return per_mesh[a] > per_mesh[b])
+	var top := "   flora tris by parent/mesh-tris:"
+	for k: String in keys.slice(0, 12):
+		top += "  %s %dk" % [k, int(per_mesh[k]) / 1000]
+	report.append(top)
 	var arch: Array = w.find_children("*", "Architecture", true, false)
 	var distant: Array = w.find_children("*", "DistantLand", true, false)
 	var shadow_was := {}
 	var set_vis := func(nodes: Array, on: bool) -> void:
-		for n: Node3D in nodes:
+		for n: Variant in nodes:
 			if is_instance_valid(n):
-				n.visible = on
+				(n as Node3D).visible = on
 	var shadows_off := func() -> void:
-		for c in chunks:
+		for c: Variant in chunks:
 			if is_instance_valid(c):
-				shadow_was[c] = c.cast_shadow
+				shadow_was[c] = (c as GeometryInstance3D).cast_shadow
 				c.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var shadows_on := func() -> void:
-		for c: GeometryInstance3D in shadow_was:
+		for c: Variant in shadow_was:
 			if is_instance_valid(c):
-				c.cast_shadow = shadow_was[c]
+				(c as GeometryInstance3D).cast_shadow = shadow_was[c]
 	var toggles := {
 		"terrain+flora": [func() -> void: vw.visible = false, func() -> void: vw.visible = true],
 		"flora+decor": [func() -> void: set_vis.call(chunk_kids, false), func() -> void: set_vis.call(chunk_kids, true)],

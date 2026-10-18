@@ -267,6 +267,8 @@ func _update_lights(delta: float, force: bool) -> void:
 	var ember := wx.ember_amount() if wx != null else 0.0
 	var aurora := wx.aurora_amount() if wx != null else 0.0
 	var meteors := wx.meteor_amount() if wx != null else 0.0
+	var snowing := wx.snow_amount() if wx != null else 0.0
+	var cover := wx.snow_cover() if wx != null else 0.0
 
 	_atmos_timer -= delta
 	if _atmos_timer <= 0.0 or force:
@@ -351,13 +353,19 @@ func _update_lights(delta: float, force: bool) -> void:
 	var floor_col := Vector3(0.012, 0.015, 0.024)
 	var amb_col := (amb * 0.8 + floor_col).lerp(_cave_bounce, u)
 	environment.ambient_light_color = Color(amb_col.x, amb_col.y, amb_col.z)
-	environment.ambient_light_energy = lerpf(0.45 * (1.0 - storm * 0.35), 2.3, u)
+	# Snow on the ground bounces light back up: brighter, cooler shadows.
+	environment.ambient_light_energy = lerpf(0.45 * (1.0 - storm * 0.35) * (1.0 + cover * 0.3), 2.3, u)
 	environment.background_energy_multiplier = 1.0
 	# Fog takes the colour of the horizon away from the sun; aerial perspective
 	# then pulls it towards the actual sky behind each object.
 	var hz := (_horizon * 0.85 + _horizon_sun.limit_length(1.2) * 0.15) * (1.0 - nightf) + Vector3(0.008, 0.01, 0.016) * nightf
 	var hz_grey := hz.dot(Vector3(0.3, 0.5, 0.2))
 	hz = hz.lerp(Vector3(hz_grey, hz_grey, hz_grey * 1.05), overcast * 0.7 + fog * 0.3) * sky_dim
+	# Falling snow: the air fills with a cool, bright grey-blue (light scattered
+	# by the flakes), not the warm haze of a clear day.
+	if snowing > 0.0:
+		var sl := hz.dot(Vector3(0.3, 0.5, 0.2))
+		hz = hz.lerp(Vector3(0.86, 0.9, 1.0) * sl * 1.15, snowing * 0.7)
 	if dust > 0.0:
 		hz = hz.lerp(Vector3(0.42, 0.3, 0.2) * maxf(dayf, 0.08), dust * 0.6)
 	if ember > 0.0:
@@ -375,7 +383,7 @@ func _update_lights(delta: float, force: bool) -> void:
 	environment.fog_sun_scatter = 0.18 * (1.0 - overcast) * dayf * surface_light
 	var morning := _mist_amount()
 	var mist := morning + wet * (1.0 - rain) * 0.5
-	var surface_density := (0.0013 + fog * 0.028 + rain * 0.006 + storm * 0.004 + dust * 0.012 + mist * 0.003 + ember * 0.004 + heat * 0.0008) * _fog_mult
+	var surface_density := (0.0013 + fog * 0.028 + rain * 0.006 + snowing * 0.009 + storm * 0.004 + dust * 0.012 + mist * 0.003 + ember * 0.004 + heat * 0.0008) * _fog_mult
 	# High in the mountains a little cold haze hangs between the ranges (kept
 	# light so the view across the peaks stays the reward for the climb).
 	var alt := 0.0

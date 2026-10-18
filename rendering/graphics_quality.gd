@@ -78,6 +78,9 @@ static func apply_environment(env: Environment) -> void:
 	if not fp:
 		RenderingServer.directional_shadow_atlas_set_size(SHADOW_ATLAS[sh], true)
 		return
+	# Half-resolution GI gather: most of SDFGI's per-pixel cost, hardly visible
+	# under the upscaler. Full resolution on SDFGI high.
+	RenderingServer.gi_set_use_half_resolution(gi < 2)
 	RenderingServer.environment_set_volumetric_fog_volume_size([48, 64, 112][vf], [32, 48, 112][vf])
 	RenderingServer.environment_set_volumetric_fog_filter_active(vf >= 1)
 	RenderingServer.directional_shadow_atlas_set_size(SHADOW_ATLAS[sh], true)

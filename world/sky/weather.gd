@@ -99,6 +99,7 @@ var _snow: FlakeFall
 var _dust: FlakeFall
 var _ash: FlakeFall
 var _embers: GPUParticles3D
+var _breath: GPUParticles3D
 var _dimension := 0
 var _wet := 0.0
 var _snow_cover := 0.0
@@ -136,6 +137,8 @@ func _ready() -> void:
 	add_child(_ash)
 	_embers = _make_embers()
 	add_child(_embers)
+	_breath = _make_breath()
+	add_child(_breath)
 	for p: GPUParticles3D in [_rain, _snow, _dust, _ash, _embers]:
 		p.emitting = false
 		p.visible = false
@@ -389,6 +392,7 @@ func _process(delta: float) -> void:
 	_set_active(_embers, hell or embers > 0.03)
 	if camera != null:
 		_embers.global_position = camera.global_position + Vector3(0, 6, 0)
+	_update_breath(w, camera)
 
 	# Rain soaks the ground and it dries slowly (faster in sunshine and in a
 	# heatwave); snow settles in the cold and melts away elsewhere.
@@ -582,6 +586,99 @@ func _sky_flash(dir: Vector3, strength: float) -> void:
 	var w := _world()
 	if w != null and w.sky != null:
 		w.sky.flash_sky(dir, strength)
+
+
+## Breath vapour in the cold (snowy biomes, high ground, blizzards, cold nights
+## in the north): a faint puff in front of the face every few seconds.
+func _update_breath(w: GameWorld, camera: Camera3D) -> void:
+	var cold := 0.0
+	if _dimension == 0 and w != null and w.local_player != null and camera != null and not w.local_player.dead:
+		cold = maxf(maxf(_snow_mix, altitude * 1.5), _current[5])
+		if w.sky != null:
+			cold = maxf(cold, _snow_mix * 0.5 + w.sky.darkness() * 0.3 * _snow_mix)
+	var on := cold > 0.45
+	if _breath.emitting != on:
+		_breath.emitting = on
+		_breath.visible = on or _breath.visible
+	if not on:
+		return
+	var fwd := -camera.global_basis.z
+	fwd.y = 0.0
+	fwd = fwd.normalized()
+	var head := w.local_player.global_position + Vector3(0, 1.55, 0)
+	_breath.global_position = head + fwd * 0.42
+	var pm := _breath.process_material as ParticleProcessMaterial
+	pm.direction = (fwd + Vector3(0, -0.15, 0)).normalized()
+	_breath.amount_ratio = clampf(cold, 0.5, 1.0)
+
+
+func _make_breath() -> GPUParticles3D:
+	var p := GPUParticles3D.new()
+	p.amount = 10
+	p.lifetime = 3.4
+	p.explosiveness = 0.85
+	p.local_coords = false
+	p.visibility_aabb = AABB(Vector3(-3, -3, -3), Vector3(6, 6, 6))
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 0.04
+	pm.direction = Vector3(0, 0, -1)
+	pm.spread = 14.0
+	pm.initial_velocity_min = 0.45
+	pm.initial_velocity_max = 0.8
+	pm.gravity = Vector3(0, 0.05, 0)
+	pm.damping_min = 0.6
+	pm.damping_max = 1.0
+	pm.scale_min = 0.6
+	pm.scale_max = 1.0
+	var grow := Curve.new()
+	grow.add_point(Vector2(0.0, 0.25))
+	grow.add_point(Vector2(0.45, 1.0))
+	grow.add_point(Vector2(1.0, 1.4))
+	var ct := CurveTexture.new()
+	ct.curve = grow
+	pm.scale_curve = ct
+	# Visible for the first ~1.3 s of each 3.4 s cycle: a puff, then a pause.
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 0.0))
+	g.set_color(1, Color(1, 1, 1, 0.0))
+	g.add_point(0.06, Color(1, 1, 1, 0.22))
+	g.add_point(0.38, Color(1, 1, 1, 0.0))
+	var gt := GradientTexture1D.new()
+	gt.gradient = g
+	pm.color_ramp = gt
+	p.process_material = pm
+	var q := QuadMesh.new()
+	q.size = Vector2(0.32, 0.32)
+	var m := StandardMaterial3D.new()
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.vertex_color_use_as_albedo = true
+	m.albedo_color = Color(0.92, 0.94, 0.97)
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	m.proximity_fade_enabled = true
+	m.proximity_fade_distance = 0.4
+	m.albedo_texture = _soft_dot()
+	q.material = m
+	p.draw_pass_1 = q
+	p.emitting = false
+	p.visible = false
+	return p
+
+
+static func _soft_dot() -> GradientTexture2D:
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 1))
+	g.set_color(1, Color(1, 1, 1, 0))
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.fill = GradientTexture2D.FILL_RADIAL
+	t.fill_from = Vector2(0.5, 0.5)
+	t.fill_to = Vector2(0.5, 0.0)
+	t.width = 64
+	t.height = 64
+	return t
 
 
 func _make_embers() -> GPUParticles3D:

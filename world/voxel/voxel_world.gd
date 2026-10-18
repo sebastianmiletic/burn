@@ -536,6 +536,16 @@ func _process(delta: float) -> void:
 		_rebuild_wanted(fkey)
 		_unload_far(fkey)
 	_schedule()
+	# Cave decoration (thousands of instanced crystals, fungi, dripstone) is
+	# only drawn when it can be seen: from inside the caves, or near a mouth.
+	var under := dimension != 2 and focus.y < gen.ground_level(focus.x, focus.z) - 4.0
+	if under != _focus_under:
+		_focus_under = under
+		_refresh_decor()
+	if flora != null and visible and meshing_enabled:
+		var cam := get_viewport().get_camera_3d()
+		if cam != null:
+			flora.call("update_distance_lod", get_tree(), cam.global_position)
 	if meshing_enabled:
 		_light_timer -= delta
 		if _light_timer <= 0.0:
@@ -688,6 +698,40 @@ func _try_mesh(k: Vector3i) -> int:
 	return 1
 
 
+## Skylight heights for the mesher: the lowest column within 2 m. A vertex on
+## a cliff face sits far below its own column's top but is open to the sky
+## sideways; only rock overhead on every side (caves, overhangs) darkens it.
+## Neighbours outside the chunk come from the generator, so the shading has
+## no seams at chunk borders.
+func _sky_heights(surface: PackedInt32Array, o: Vector3i, detail: FastNoiseLite, ridge: FastNoiseLite) -> PackedInt32Array:
+	if dimension == 2:
+		return surface
+	const B := 2
+	const W := Chunk.SIZE + 2 * B
+	var wide := PackedInt32Array()
+	wide.resize(W * W)
+	for z in W:
+		for x in W:
+			var lx := x - B
+			var lz := z - B
+			if lx >= 0 and lz >= 0 and lx < Chunk.SIZE and lz < Chunk.SIZE:
+				wide[x + z * W] = surface[lx + lz * Chunk.SIZE]
+			else:
+				var wx := o.x + lx
+				var wz := o.z + lz
+				wide[x + z * W] = int(gen.column(wx, wz, detail, ridge).x) if gen.in_bounds(wx, wz) else -64
+	var out := PackedInt32Array()
+	out.resize(Chunk.AREA)
+	for z in Chunk.SIZE:
+		for x in Chunk.SIZE:
+			var lo := wide[x + B + (z + B) * W]
+			for dz in range(-B, B + 1):
+				for dx in range(-B, B + 1):
+					lo = mini(lo, wide[x + B + dx + (z + B + dz) * W])
+			out[x + z * Chunk.SIZE] = lo
+	return out
+
+
 func _neighbour_data(k: Vector3i) -> Array:
 	var out := []
 	out.resize(27)
@@ -737,7 +781,7 @@ func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) 
 			surface[x + z * Chunk.SIZE] = int(gen.column(wx, wz, detail, ridge).x) if gen.in_bounds(wx, wz) else -64
 			biomes[x + z * Chunk.SIZE] = gen.biome_at(wx, wz)
 	var result := ChunkMesher.build(neighbours, surface, o.y)
-	var smooth := SmoothMesher.build(neighbours, densities, surface, biomes, o, dimension)
+	var smooth := SmoothMesher.build(neighbours, densities, _sky_heights(surface, o, detail, ridge), biomes, o, dimension)
 	if smooth.has("terrain"):
 		result["terrain"] = smooth["terrain"]
 	if flora != null:
@@ -920,7 +964,29 @@ func _set_mesh(k: Vector3i, result: Dictionary) -> void:
 	if result.has("cave_decor"):
 		var decor_node := CaveDecor.build_chunk(result["cave_decor"], flora_quality)
 		if decor_node != null:
+			decor_node.visible = _decor_visible(k)
 			mi.add_child(decor_node)
+
+
+var _focus_under := false
+
+
+## Decor in a chunk buried well below the ground is invisible from the surface.
+func _decor_visible(k: Vector3i) -> bool:
+	if _focus_under:
+		return true
+	var c := Vector3(k * Chunk.SIZE) + Vector3(8, 16, 8)
+	return c.y > gen.ground_level(c.x, c.z) - 6.0
+
+
+func _refresh_decor() -> void:
+	for k: Vector3i in _meshes:
+		var m: MeshInstance3D = _meshes[k]
+		if m == null:
+			continue
+		var decor := m.get_node_or_null(^"CaveDecor") as Node3D
+		if decor != null:
+			decor.visible = _decor_visible(k)
 
 
 func _shadow_setting(k: Vector3i) -> int:
