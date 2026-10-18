@@ -2,6 +2,18 @@
 
 Written for whoever continues this project (human or another AI). It covers what the game is, what state it is in, what was being worked on, what is left, how to test, and the gotchas that cost time.
 
+## 00. Update (18 Oct 2026): menu, online, chat, oceans, swimming, progression
+
+Merged on `main` (not pushed): Play/runs menu (unlimited runs, `SaveSystem` run ids, old `slot_N` saves still load),
+credits, full settings incl. Graphics tab with live presets, server browser + `server/` master server (NOT deployed:
+`ServerList.DEFAULT_MASTER_URL` is localhost; see `server/README.md`), dedicated mode (`--dedicated`), left-side chat
+(`/` opens it), protocol 5, world revision 4 oceans (9 sea biomes, wrecks, sunken ruins, `kraken`, `charybdis`),
+swimming, hidden breath/blackout -> rare Ogygia (dimension 3, Calypso) or drowning, mining-launch fix,
+progression ladder (`docs/PROGRESSION.md`, journal Path tab). Fixed: quit-to-menu used to save into slot 0.
+Validation on merged main: 196 unit tests 0 failures; playtest, flow, activity, net and MP tests pass; logs clean.
+Open: 60 fps at High not met (village ~30 fps on M4 under load); water renders black at dusk; small-window menu layout,
+real controller, HDR, colour filter and dedicated-server client join not verified; no GPU pass on the merged build.
+
 ## 0. Continuation update (16 Oct 2026)
 
 **Read this first: sections 1–8 below are the previous handoff and some branch/release statements are historical.**
