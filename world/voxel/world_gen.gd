@@ -37,7 +37,7 @@ const FOREST_COLORS := [Color(0.42, 0.36, 0.18), Color(0.22, 0.36, 0.31), Color(
 
 ## New worlds use the latest revision; saves keep the revision they were made with.
 ## Revision 4 adds the ocean biomes, sea structures and the ocean bosses' lairs (new worlds only).
-const LATEST_REVISION := 4
+const LATEST_REVISION := 5
 const SEA_LEVEL := 12
 const LAVA_LEVEL := 0  ## hell
 const COARSE := 4      ## metres per coarse map cell
@@ -612,6 +612,14 @@ func _rows_v3(row: int) -> void:
 		base -= 22.0 * (1.0 - smoothstep(0.0, _crater.z, cd))
 		base += 7.0 * exp(-pow((cd - _crater.z) / 14.0, 2.0))
 		ridge *= smoothstep(_crater.z * 0.6, _crater.z * 1.6, cd)
+		var adv_flags := 0
+		if revision >= 5:
+			# Revision 5: Mount Pyrrhos' caldera, the outer isles, the Atlantis bowl.
+			var sc := AdventureTerrain.shape_column(p, base, amp, biome)
+			base = sc[0]
+			amp = sc[1]
+			biome = sc[2]
+			adv_flags = sc[3]
 		var i := col + row * n
 		_base[i] = base
 		_amp[i] = amp
@@ -622,7 +630,7 @@ func _rows_v3(row: int) -> void:
 		_mtn[i] = wc.r * (1.0 - t) * (1.0 - fj)
 		var allow: float = RAVINE_ALLOWANCE[biome] * (1.0 - t) * (1.0 - fj) * smoothstep(SEA_LEVEL + 10.0, SEA_LEVEL + 28.0, base)
 		allow *= 1.0 - smoothstep(0.3, 0.8, wc.r) * 0.6
-		_rav[i] = clampi(int(allow * 255.0), 0, 255)
+		_rav[i] = clampi(int(allow * 255.0), 0, 255) if adv_flags & 1 == 0 else 0
 
 
 ## Peak envelope with ridgelines and erosion (metres above the biome base).
@@ -667,6 +675,8 @@ func _mesa(p: Vector2, canyon: FastNoiseLite, basin: FastNoiseLite, cwarp: FastN
 
 ## The caldera volcano above the biome base.
 func _volcano(p: Vector2) -> float:
+	if revision >= 5:
+		return AdventureTerrain.volcano(p)
 	var d := p.distance_to(Vector2(VOLCANO.x, VOLCANO.y))
 	if d >= VOLCANO.w:
 		return 0.0
@@ -794,7 +804,10 @@ func _floe(x: int, z: int, h: int) -> float:
 func _plan_lakes() -> void:
 	lakes.clear()
 	var vc := Vector2(VOLCANO.x, VOLCANO.y)
-	lakes.append([vc, CALDERA.x * 0.8, smooth_height(vc.x, vc.y) + CALDERA.y * 0.45, Blocks.LAVA])
+	if revision >= 5:
+		lakes.append_array(AdventureTerrain.lakes(self))
+	else:
+		lakes.append([vc, CALDERA.x * 0.8, smooth_height(vc.x, vc.y) + CALDERA.y * 0.45, Blocks.LAVA])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = world_seed * 31 + 7
 	var want := {Biome.ALPINE: [5, 52.0, 95.0, 220], Biome.TUNDRA: [7, 20.0, 40.0, 150], Biome.REDWOOD: [2, 28.0, 45.0, 260], Biome.FJORD: [2, 30.0, 50.0, 260]}
@@ -1219,6 +1232,8 @@ func lake_level(x: float, z: float) -> Vector2:
 func is_underground(pos: Vector3) -> bool:
 	if dimension != Dimension.OVERWORLD:
 		return false
+	if revision >= 5 and AdventureTerrain.sheltered(pos):
+		return true
 	return pos.y < ground_level(pos.x, pos.z) - 5.0
 
 

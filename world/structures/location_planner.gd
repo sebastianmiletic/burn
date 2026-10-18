@@ -128,6 +128,8 @@ func _plan_overworld() -> Array[Location]:
 		out.append_array(_plan_new_lands(out))
 	if gen.revision >= 4:
 		out.append_array(_plan_sea(out))
+	if gen.revision >= 5:
+		out.append_array(AdventureSites.plan(self, out))  # volcano, Atlantis, outer isles
 	# The endgame gateway exists from the start, visibly sealed until Hades falls.
 	var hub := out[0]
 	hub.add_spawn("portal", hub.center + Vector3(0, 1, -12), {"to": 2, "size": Vector2(3, 5)})
@@ -544,6 +546,8 @@ func _plan_sea(existing: Array[Location]) -> Array[Location]:
 	var all: Array[Location] = existing.duplicate()
 	for spec: Array in [[&"kraken_graveyard", "The Kraken's Graveyard", gen.KRAKEN_SITE, 30.0, &"wreckwatch_shrine", "Wreckwatch Shrine"],
 			[&"maw_of_the_sea", "The Maw of the Sea", gen.MAELSTROM_SITE, 34.0, &"maelstrom_shrine", "Maelstrom Shrine"]]:
+		if spec[0] == &"kraken_graveyard" and gen.revision >= 5:
+			continue  # revision 5: the Kraken lives in Atlantis (AdventureSites)
 		var site := sea_lair_site(spec[2], float(spec[3]), all)
 		if site.is_empty():
 			continue
