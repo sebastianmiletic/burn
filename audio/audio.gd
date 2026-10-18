@@ -858,7 +858,8 @@ var _unfocused := false
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		_unfocused = what == NOTIFICATION_APPLICATION_FOCUS_OUT
-		_apply_volumes()
+		if is_inside_tree():
+			_apply_volumes()
 
 
 ## Settings > Audio > Output device ("Default" follows the system).
