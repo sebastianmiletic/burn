@@ -17,8 +17,13 @@ func _process(_delta: float) -> bool:
 func _run() -> void:
 	var dir := DirAccess.open("res://tests/unit")
 	var files := PackedStringArray()
+	# --only=chat_online,voxel runs just test_chat_online.gd and test_voxel.gd.
+	var only := PackedStringArray()
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--only="):
+			only = arg.trim_prefix("--only=").split(",")
 	for f in dir.get_files():
-		if f.begins_with("test_") and f.ends_with(".gd"):
+		if f.begins_with("test_") and f.ends_with(".gd") and (only.is_empty() or only.has(f.trim_prefix("test_").trim_suffix(".gd"))):
 			files.append(f)
 	files.sort()
 

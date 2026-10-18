@@ -259,8 +259,14 @@ func _merge(e: Dictionary) -> void:
 	_ping_queue.append(e)
 
 
+## This build's network protocol (looked up at runtime: no autoload dependency).
+static func protocol() -> int:
+	var net := UiContext.net()
+	return int(net.get_script().get_script_constant_map().get("PROTOCOL_VERSION", 0)) if net != null else 0
+
+
 static func compatible(e: Dictionary) -> bool:
-	return int(e.get("protocol", 0)) == Net.PROTOCOL_VERSION
+	return int(e.get("protocol", 0)) == protocol()
 
 
 ## Filtered and sorted view of `entries` (static so tests can check it).
@@ -371,7 +377,7 @@ func _row(e: Dictionary, index: int) -> Button:
 	var name_text := String(e.get("name", "?"))
 	if e.get("source") == "lan":
 		name_text += "   · LAN"
-	elif e.get("verified") == false:
+	elif e.get("verified") is bool and not e.get("verified"):
 		name_text += "   · unverified"
 	var version := String(e.get("version", ""))
 	var cells := [
@@ -419,7 +425,7 @@ func _join(e: Dictionary, password := "") -> void:
 	if _joining:
 		return
 	if not compatible(e):
-		_set_status("That server runs a different version of Burn (protocol %d, you have %d)." % [int(e.get("protocol", 0)), Net.PROTOCOL_VERSION], UiTheme.DANGER)
+		_set_status("That server runs a different version of Burn (protocol %d, you have %d)." % [int(e.get("protocol", 0)), protocol()], UiTheme.DANGER)
 		return
 	if int(e.get("players", 0)) >= int(e.get("max_players", 1)):
 		_set_status("That server is full.", UiTheme.DANGER)

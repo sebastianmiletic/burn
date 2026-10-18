@@ -13,6 +13,7 @@ var probe: Node
 var args := {}
 var failures := 0
 var chats: Array = []  # [from, text]
+var channels: Array = []  # [from, text, channel]
 
 
 func _initialize() -> void:
@@ -39,9 +40,15 @@ func _main() -> void:
 			if callback.get_object() == game:
 				net.disconnect(signal_name, callback)
 	events = root.get_node("Events")
-	events.chat_message.connect(func(from: String, text: String, _ch: String) -> void: chats.append([from, text]))
+	events.chat_message.connect(func(from: String, text: String, ch: String) -> void:
+		chats.append([from, text])
+		channels.append([from, text, ch]))
 	if args.get("role") == "host":
 		await _host()
+	elif args.get("role") == "public-host":
+		await _public_host()
+	elif args.get("role") == "browser-client":
+		await _browser_client()
 	else:
 		await _client()
 	_finish()
@@ -272,3 +279,129 @@ func _client() -> void:
 			check(f["u"] >= floor_count and f["u"] <= N, "unreliable packets: %d/%d arrived (loss %.1f%%)" % [f["u"], N, 100.0 * (N - f["u"]) / N])
 	net.send_chat("bye")
 	await wait_seconds(0.5 + net.sim_latency_ms / 500.0)
+
+
+# --- Public server (master list) ---------------------------------------------------------
+# Host: --role=public-host --master=URL --server-name=... --password=...
+# Client: --role=browser-client --master=URL --server-name=... --password=...
+
+func _net_const(n: String) -> Variant:
+	return net.get_script().get_script_constant_map().get(n)
+
+
+func _has_channel(channel: String, needle: String) -> bool:
+	for c: Array in channels:
+		if c[2] == channel and String(c[1]).contains(needle):
+			return true
+	return false
+
+
+func _public_host() -> void:
+	var cfg := {"name": args.get("server-name", "Test Fire"), "description": "integration test", "password": args.get("password", ""),
+		"max_players": 4, "internet": true, "lan": true, "mode": "Campaign"}
+	var code: PackedInt32Array = net.host_party("Host", PackedInt32Array(), cfg)
+	check(not code.is_empty() and net.is_public(), "hosting a public server on port %d" % net.enet_port)
+	var sl: Node = net.server_list
+	var reg: bool = await wait_until(func() -> bool: return sl.registered_id != "", 25.0)
+	if sl.registration_error != "":
+		print("INFO: registration needed a retry: ", sl.registration_error)
+	check(reg and sl.registered_id != "", "registered with the master (%s)" % sl.registration_error)
+	net.start_campaign({"seed": 42, "note": "public"})
+	var joined: bool = await wait_until(func() -> bool: return net.player_count() >= 2, 45.0)
+	check(joined, "a browser client joined (%s)" % str(net.players.values().map(func(p: Dictionary) -> String: return p["name"])))
+	var ok: bool = await wait_until(func() -> bool: return sl.verified == true, 15.0)
+	check(ok, "master verified the UDP game port through heartbeat (verified=%s)" % str(sl.verified))
+	if not joined:
+		return
+	var guest := ""
+	for id: int in net.players:
+		if id != 1:
+			guest = net.players[id]["name"]
+	var w: bool = await wait_until(func() -> bool: return _has_channel("whisper", "psst host"), 15.0)
+	check(w, "received the guest's whisper on the whisper channel")
+	net.send_whisper(guest, "psst guest")
+	var spam_seen := [0]
+	var bye: bool = await wait_until(func() -> bool:
+		spam_seen[0] = channels.filter(func(c: Array) -> bool: return String(c[1]).begins_with("spam ")).size()
+		return not take_chat(func(_f: String, t: String) -> bool: return t == "bye").is_empty(), 40.0)
+	check(bye, "guest finished")
+	check(spam_seen[0] >= 1 and spam_seen[0] <= int(_net_const("CHAT_BURST")), "chat flood limited: %d of 12 spam lines relayed" % spam_seen[0])
+	check(not _has_channel("party", "[b]"), "BBCode tags stripped before relaying")
+	await wait_seconds(1.0)
+
+
+func _browser_client() -> void:
+	var server_name: String = args.get("server-name", "Test Fire")
+	var failed_reason := [""]
+	net.join_failed.connect(func(r: String) -> void: failed_reason[0] = r)
+	# The master's own list (not the LAN sighting) must carry the server.
+	var lister: Node = load("res://network/server_list.gd").new()
+	root.add_child(lister)
+	var online := [[]]
+	var got_list := [false]
+	lister.listed.connect(func(servers: Array, err: String) -> void:
+		got_list[0] = true
+		online[0] = servers
+		if err != "":
+			print("INFO: list error ", err))
+	var found: Dictionary = {}
+	var end := Time.get_ticks_msec() + 30000
+	while found.is_empty() and Time.get_ticks_msec() < end:
+		got_list[0] = false
+		lister.fetch()
+		await wait_until(func() -> bool: return got_list[0], 8.0)
+		for e: Dictionary in online[0]:
+			if e["name"] == server_name:
+				found = e
+		if found.is_empty():
+			await wait_seconds(1.0)
+	if not check(not found.is_empty(), "master lists \"%s\"" % server_name):
+		return
+	check(found["password"] == true and found["protocol"] == int(_net_const("PROTOCOL_VERSION")) and found["max_players"] == 4 and found["ip"] == "127.0.0.1",
+			"listing fields: locked, protocol %d, 4 slots, caller IP %s" % [found["protocol"], found["ip"]])
+
+	# Loaded at runtime: the browser's menu backdrop needs the autoloads.
+	var browser: Node = load("res://ui/server_browser.gd").new()
+	root.add_child(browser)
+	var listed: bool = await wait_until(func() -> bool:
+		for e: Dictionary in browser.entries():
+			if e["name"] == server_name and float(e.get("ping", -1.0)) >= 0.0:
+				return true
+		return false, 15.0)
+	var entry: Dictionary = {}
+	for e: Dictionary in browser.entries():
+		if e["name"] == server_name:
+			entry = e
+	check(listed, "browser shows the server with a measured ping (%s ms, %s)" % [str(entry.get("ping")), entry.get("source")])
+	if entry.is_empty():
+		return
+	browser.join_entry(entry, "not-the-password")
+	var rejected: bool = await wait_until(func() -> bool: return failed_reason[0] != "", 15.0)
+	check(rejected and String(failed_reason[0]).contains("Wrong password"), "wrong password rejected: \"%s\"" % failed_reason[0])
+	await wait_seconds(0.5)
+	failed_reason[0] = ""
+	browser.set("_joining", false)
+	browser.join_entry(entry, args.get("password", ""))
+	var joined: bool = await wait_until(func() -> bool: return net.players.has(net.my_id()) or failed_reason[0] != "", 20.0)
+	if not check(joined and failed_reason[0] == "", "joined from the browser list with the password (%s)" % failed_reason[0]):
+		return
+	browser.queue_free()
+	var me: String = net.players[net.my_id()]["name"]
+	var sys: bool = await wait_until(func() -> bool: return _has_channel("system", me + " joined"), 10.0)
+	check(sys, "system line announces the join")
+	net.send_whisper("host", "psst host")
+	var echo: bool = await wait_until(func() -> bool: return _has_channel("whisper_out", "psst host"), 10.0)
+	check(echo, "whisper echoed back to the sender")
+	var reply: bool = await wait_until(func() -> bool: return _has_channel("whisper", "psst guest"), 10.0)
+	check(reply, "whisper from the host arrives")
+	net.send_whisper("nobody-here", "hello?")
+	var missing: bool = await wait_until(func() -> bool: return _has_channel("system", "Nobody called"), 10.0)
+	check(missing, "whisper to an unknown player reports an error")
+	net.send_chat("[b]bold[/b] attempt")
+	for i in 12:
+		net.send_chat("spam %d" % i)
+	var limited: bool = await wait_until(func() -> bool: return _has_channel("system", "too fast"), 10.0)
+	check(limited, "flooding the chat gets a rate-limit notice")
+	await wait_seconds(float(_net_const("CHAT_REFILL")) * 2.0 + 0.5)
+	net.send_chat("bye")
+	await wait_seconds(1.0)

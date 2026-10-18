@@ -408,10 +408,21 @@ class MasterServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
+    def server_bind(self):
+        # "::" listens dual-stack (IPv4 clients appear as ::ffff:a.b.c.d).
+        if self.address_family == socket.AF_INET6:
+            try:
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            except OSError:
+                pass
+        super().server_bind()
+
     def __init__(self, address, registry: Registry, limiter: RateLimiter, trust_proxy: str = "none"):
         self.registry = registry
         self.limiter = limiter
         self.trust_proxy = trust_proxy
+        if ":" in address[0]:
+            self.address_family = socket.AF_INET6
         super().__init__(address, Handler)
 
 
@@ -632,7 +643,7 @@ def make_server(host: str = "0.0.0.0", port: int = 47290, expiry: float = 45.0, 
 def main(argv=None) -> None:
     env = os.environ.get
     ap = argparse.ArgumentParser(description="BURN master server (public server list)")
-    ap.add_argument("--host", default=env("BURN_MASTER_HOST", "0.0.0.0"))
+    ap.add_argument("--host", default=env("BURN_MASTER_HOST", "::"), help="bind address (\"::\" = IPv4 and IPv6)")
     ap.add_argument("--port", type=int, default=int(env("PORT", env("BURN_MASTER_PORT", "47290"))))
     ap.add_argument("--expiry", type=float, default=float(env("BURN_MASTER_EXPIRY", "45")),
                     help="seconds without heartbeat before an entry disappears")
@@ -647,6 +658,11 @@ def main(argv=None) -> None:
     ap.add_argument("--log-level", default=env("BURN_MASTER_LOG", "INFO"))
     args = ap.parse_args(argv)
     logging.basicConfig(level=args.log_level.upper(), format="%(asctime)s %(levelname)s %(message)s")
+    try:
+        socket.socket(socket.AF_INET6, socket.SOCK_STREAM).close()
+    except OSError:
+        if args.host == "::":
+            args.host = "0.0.0.0"  # no IPv6 on this machine
     srv = make_server(args.host, args.port, args.expiry, not args.no_probe, args.trust_proxy,
                       args.max_servers, args.max_per_ip, args.probe_timeout)
     LOG.info("BURN master listening on %s:%d (expiry %.0f s, probe %s, trust proxy %s)",

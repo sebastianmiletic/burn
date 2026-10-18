@@ -15,7 +15,7 @@ signal registration_changed(state: String, detail: String)
 ## Used when Settings online/master_server_url is empty. Change this to the
 ## deployed master's URL (see server/README.md) before shipping a build.
 const DEFAULT_MASTER_URL := "http://127.0.0.1:47290"
-const TIMEOUT := 6.0
+const TIMEOUT := 8.0
 const RETRY := 20.0
 
 var registered_id := ""
@@ -27,6 +27,11 @@ var _beat := 0.0
 var _beat_every := 15.0
 var _hosting := false
 var _busy := false
+var _failures := 0
+## HTTPRequest -> [deadline msec, callback]. Wall-clock timeouts: HTTPRequest's
+## own timer counts frame deltas, and the first frame after a long load can
+## expire it at once.
+var _pending := {}
 
 
 static func master_url() -> String:
@@ -65,7 +70,7 @@ static func sanitize_entry(s: Dictionary) -> Dictionary:
 		"region": _short(s.get("region"), 16), "mode": _short(s.get("mode"), 24),
 		"players": clampi(int(s.get("players", 0)) if s.get("players") is float or s.get("players") is int else 0, 0, 64),
 		"max_players": clampi(int(s.get("max_players", 8)) if s.get("max_players") is float or s.get("max_players") is int else 8, 1, 64),
-		"password": s.get("password") == true, "ip": ip,
+		"password": s.get("password") is bool and s.get("password"), "ip": ip,
 		"port": clampi(int(s.get("port", 0)) if s.get("port") is float or s.get("port") is int else 0, 0, 65535),
 		"verified": s.get("verified") if s.get("verified") is bool else null, "source": "online",
 	}
@@ -95,6 +100,7 @@ func stop_hosting() -> void:
 	_token = ""
 	verified = null
 	registration_error = ""
+	_failures = 0
 
 
 func is_hosting() -> bool:
@@ -117,15 +123,19 @@ func _register() -> void:
 			_beat_every = clampf(float(data.get("heartbeat_seconds", 15)), 5.0, 60.0)
 			_beat = _beat_every
 			registration_error = ""
+			_failures = 0
 			registration_changed.emit("registered", String(data.get("address", "")))
 		else:
 			registration_error = err if err != "" else "The server list refused this server: %s" % \
 					(String(data.get("error", code)) if data is Dictionary else str(code))
-			_beat = RETRY
+			# Retry soon after a first failure (e.g. a busy first frame), then back off.
+			_failures += 1
+			_beat = 4.0 if _failures == 1 else RETRY
 			registration_changed.emit("failed", registration_error))
 
 
 func _process(delta: float) -> void:
+	_check_timeouts()
 	if not _hosting or _busy:
 		return
 	_beat -= delta
@@ -161,11 +171,13 @@ func _request(method: int, path: String, body: Variant, cb: Callable) -> void:
 		cb.call(0, null, "The master server address \"%s\" is not an http(s) URL." % url)
 		return
 	var http := HTTPRequest.new()
-	http.timeout = TIMEOUT
 	http.max_redirects = 2
 	http.body_size_limit = 512 * 1024
 	add_child(http)
 	http.request_completed.connect(func(result: int, code: int, _h: PackedStringArray, raw: PackedByteArray) -> void:
+		if not _pending.has(http):
+			return
+		_pending.erase(http)
 		http.queue_free()
 		if result != HTTPRequest.RESULT_SUCCESS:
 			var why := "timed out" if result == HTTPRequest.RESULT_TIMEOUT else "unreachable"
@@ -177,6 +189,19 @@ func _request(method: int, path: String, body: Variant, cb: Callable) -> void:
 	if err != OK:
 		http.queue_free()
 		cb.call(0, null, "Could not contact the server list at %s." % url)
+		return
+	_pending[http] = [Time.get_ticks_msec() + int(TIMEOUT * 1000.0), cb, url]
+
+
+func _check_timeouts() -> void:
+	var now := Time.get_ticks_msec()
+	for http: HTTPRequest in _pending.keys():
+		var p: Array = _pending[http]
+		if now > int(p[0]):
+			_pending.erase(http)
+			http.cancel_request()
+			http.queue_free()
+			(p[1] as Callable).call(0, null, "The server list (%s) did not answer in time. Check your connection or the master server address." % p[2])
 
 
 # --- Ping ---------------------------------------------------------------------------------

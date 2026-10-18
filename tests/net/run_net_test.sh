@@ -66,6 +66,38 @@ run 60 s6_client.log --role=client --runes=R12-R3-R3-R0 --name=Left --expect-hos
 wait
 report "host leaves" s6_host.log s6_client.log
 
+echo "== 7. public server: master list, browser join, password, whispers, chat flood limit"
+MPORT=47391
+MURL="http://127.0.0.1:$MPORT"
+python3 server/burn_master.py --port $MPORT --expiry 6 --probe-timeout 1 --log-level WARNING > "$LOG/s7_master.txt" 2>&1 &
+MASTER=$!
+for _ in $(seq 1 40); do grep -q BURN_MASTER_READY "$LOG/s7_master.txt" && break; sleep 0.25; done
+run 120 s7_host.log --role=public-host --master="$MURL" --server-name="Integration Fire" --password=ember &
+HPID=$!
+sleep 2
+run 120 s7_client.log --role=browser-client --master="$MURL" --server-name="Integration Fire" --password=ember --name=Rover
+wait $HPID
+report "public server + chat" s7_host.log s7_client.log
+# The host unregistered on leave; a host that vanishes without a word expires.
+python3 - "$MURL" > "$LOG/s7_expiry.log" 2>&1 <<'PY'
+import json, sys, time, urllib.request
+base = sys.argv[1]
+def get():
+    return json.load(urllib.request.urlopen(base + "/v1/servers", timeout=5))["count"]
+ok = True
+print("INFO: entries after the host left:", get()); ok &= get() == 0
+body = json.dumps({"name": "Ghost", "protocol": 5, "port": 47299, "max_players": 4}).encode()
+r = urllib.request.Request(base + "/v1/servers", data=body, method="POST", headers={"Content-Type": "application/json"})
+reg = json.load(urllib.request.urlopen(r, timeout=5))
+print("INFO: registered ghost", reg["id"], reg["address"]); ok &= get() == 1
+time.sleep(7.5)
+print("INFO: entries 7.5 s later:", get()); ok &= get() == 0
+print("PASS: master unregister + expiry" if ok else "FAIL: master unregister + expiry")
+print("RESULT expiry: ok" if ok else "RESULT expiry: failed")
+PY
+kill $MASTER 2>/dev/null
+report "master expiry" s7_expiry.log
+
 python3 tools/check_log.py "$LOG"/*.log || fail=1
 echo "logs: $LOG"
 exit $fail
