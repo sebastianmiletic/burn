@@ -42,6 +42,7 @@ var _mine_denied := Vector3i(1 << 30, 0, 0)
 var _highlight: BlockHighlight
 var _light: OmniLight3D
 var _interact_target: Node = null
+var _interact_text := ""
 var _prev_remote_pos := Vector3.ZERO
 var _remote_velocity := Vector3.ZERO
 var _remote_held := ""
@@ -167,6 +168,8 @@ func set_input_enabled(on: bool) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_local or not _input_enabled or dead:
+		return
+	if world().building != null and world().building.handle_input(self, event):
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		camera.look((event as InputEventMouseMotion).relative)
@@ -667,6 +670,9 @@ func _block_target() -> Dictionary:
 
 
 func _mining_update(delta: float, vw: VoxelWorld) -> void:
+	if world().building != null and world().building.try_strike(self, delta):
+		_highlight.show_target({}, false)
+		return
 	var info := inventory.selected_info()
 	var target := _block_target()
 	var holding_block := info.has("place_block")
@@ -761,6 +767,8 @@ func _sculpt_strike(target: Dictionary, block: int) -> void:
 
 
 func _use() -> void:
+	if world().building != null and world().building.try_place(self):
+		return
 	var id := inventory.selected_item()
 	var info := ItemDB.info(id)
 	if info.has("heal") or info.has("buff"):
@@ -910,9 +918,15 @@ func _find_interactable() -> void:
 		if score < best_score:
 			best_score = score
 			best = e
-	if best != _interact_target:
+	# A door, bed or chest you look straight at wins (player building).
+	var piece: Node = world().building.interact_target(self) if world().building != null else null
+	if piece != null:
+		best = piece
+	var text := "" if best == null else "[E] " + String(best.call("interact_prompt", self))
+	if best != _interact_target or (piece != null and text != _interact_text):
 		_interact_target = best
-		Events.interact_prompt.emit("" if best == null else "[E] " + String(best.call("interact_prompt", self)))
+		_interact_text = text
+		Events.interact_prompt.emit(text)
 
 
 func _interact() -> void:

@@ -32,6 +32,8 @@ var play_time := 0.0
 ## Wounded bosses remembered across despawns and reloads (entities/bosses/boss_ledger.gd).
 var boss_ledger := BossLedger.new()
 var replicator: Replicator
+## Player-built pieces and containers (world/building/building_world.gd).
+var building: BuildingWorld
 var director: LocationDirector
 var spawner: WildSpawner
 var tracker: LocationTracker
@@ -80,6 +82,8 @@ func setup(info: Dictionary) -> void:
 	replicator = Replicator.new()
 	replicator.name = "Replicator"
 	add_child(replicator)
+	building = BuildingWorld.new()
+	add_child(building)
 
 	var t0 := Time.get_ticks_msec()
 	loading.emit(0.02, "Reading the ashes")
@@ -896,6 +900,7 @@ func save_data() -> Dictionary:
 		"lit_shrines": lit_shrines.keys(),
 		"edits": {0: world_for(0).get_edits(), 1: world_for(1).get_edits(), 2: world_for(2).get_edits()},
 		"stations": placed_stations,
+		"building": building.save_state() if building != null else {},
 		"activities": ActivityDirector.of(self).save_state() if ActivityDirector.of(self) != null else {},
 		"ryft_unlocked": ryft_unlocked,
 		"time_of_day": sky.time_of_day,
@@ -929,6 +934,8 @@ func _load_world_state(save: Dictionary) -> void:
 	if Net.is_server() and ResourceLoader.exists("res://entities/interact/station.gd"):
 		for st: Dictionary in save.get("stations", []):
 			place_station(String(st["kind"]), st["pos"], float(st.get("yaw", 0.0)), int(st.get("dim", 0)))
+	if Net.is_server() and building != null:
+		building.load_state(save.get("building", {}))
 
 
 func is_ready_for_join() -> bool:
