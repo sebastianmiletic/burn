@@ -5,7 +5,7 @@ extends RefCounted
 ## Events.dialog_open; activity options come from the ActivityDirector.
 
 const ROLE_TITLES := {"elder": "Elder", "chief": "Chief", "blacksmith": "Blacksmith", "merchant": "Trader",
-		"guard": "Guard", "villager": "Villager"}
+		"guard": "Guard", "villager": "Villager", "fisher": "Fisher"}
 
 const RUMOURS := {
 	"emberfall": ["The crater woke and the sun went cold. We keep the fires lit anyway.",
@@ -150,11 +150,12 @@ static func build(info: Dictionary, q: QuestLog, extra: Dictionary = {}) -> Dict
 				lines.append(String(GIVER_HINTS[g]))
 	for o: Dictionary in extra.get("options", []):
 		options.append(o)
-	match role:
-		"blacksmith":
-			options.append({"text": "Let me use your forge.", "id": "shop:blacksmith"})
-		"merchant":
-			options.append({"text": "Show me your wares.", "id": "shop:merchant"})
+	if Professions.trades(String(info.get("profession", ""))):
+		options.append({"text": "Show me your wares." if role != "blacksmith" else "Let's trade.", "id": "trade"})
+	elif role == "merchant":
+		options.append({"text": "Show me your wares.", "id": "shop:merchant"})
+	if role == "blacksmith":
+		options.append({"text": "Let me use your forge.", "id": "shop:blacksmith"})
 	if lines.is_empty() or (lines.size() == 1 and bool(info.get("indoors", false)) and options.size() <= 1):
 		lines.append(idle_line(info, q, String(extra.get("rumour", ""))))
 	options.append({"text": "What's the news?", "id": "rumour"})
@@ -190,6 +191,8 @@ static func idle_line(info: Dictionary, q: QuestLog, rumour := "") -> String:
 			return "We endure as long as someone keeps the fire. The bounty board by the well pays for brave work."
 		"blacksmith":
 			return "Bring me iron, gold, ember crystal — or starmetal, if a star ever falls near you. I'll give it an edge."
+		"fisher":
+			return "Tide's turning. %s" % Professions.greeting("fisher") if not night else "Eels bite at night. Rest of us sleep."
 		"merchant":
 			return "Potions, torches, bread. And maps — old ones, with crosses on them. Gold for anything shiny you dig up."
 		"guard":

@@ -12,6 +12,8 @@ const BEAST_KINDS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "g
 ## Passive wildlife (entities/wildlife/*).
 const WILDLIFE_KINDS := ["deer", "stag", "rabbit", "goat", "boar"]
 const FLOCK_KINDS := ["bird_flock", "gull_flock", "crow_flock", "fish_school", "bat_swarm"]
+## Tameable animals and pets (entities/wildlife/pet.gd).
+const PET_KINDS := ["fox", "wild_dog", "cat", "raven", "phoenix"]
 
 
 static func create(kind: String, _data := {}) -> Entity:
@@ -49,6 +51,8 @@ static func create(kind: String, _data := {}) -> Entity:
 		return _from_script("res://entities/enemies/beast.gd", kind)
 	if kind in WILDLIFE_KINDS:
 		return _from_script("res://entities/wildlife/wildlife.gd", kind)
+	if kind in PET_KINDS:
+		return _from_script("res://entities/wildlife/pet.gd", kind)
 	if kind in FLOCK_KINDS:
 		return _from_script("res://entities/wildlife/flock.gd", kind)
 	if kind in BOSS_KINDS:

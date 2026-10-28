@@ -503,3 +503,43 @@ func test_clients_see_the_routine() -> void:
 	hidden._present(0.016)
 	check(not hidden._model.visible, "indoors people are hidden on clients")
 	arena.queue_free()
+
+
+func test_only_the_struck_villager_fights_back_then_calms() -> void:
+	var tree := _tree()
+	if tree == null:
+		return
+	var s := _sim()
+	var arena := Node3D.new()
+	tree.root.add_child(arena)
+	var a := _npc(s, arena, "villager", Vector3(9.5, GROUND, 16.5), 7, 61)
+	var b := _npc(s, arena, "villager", Vector3(11.5, GROUND, 16.5), 8, 62)
+	s.hour = 12.0
+	_run(s, [a, b], 2.0)
+	var p := _player(arena, a.global_position + Vector3(1.0, 0, 0), -9)
+	p.max_health = 1000.0
+	p.health = 1000.0
+	s.players = [p]
+	a.take_damage(10.0, p.net_id, "hit")
+	check(a._temper.active(), "the struck villager is angry")
+	var t := 0.0
+	while t < 8.0:
+		p.global_position = a.global_position + Vector3(1.0, 0, 0)
+		_run(s, [a, b], 0.5)
+		t += 0.5
+	check(s.damage_dealt > 0.0, "the struck villager hits back (%.0f damage)" % s.damage_dealt)
+	check((a.anim & Npc.ANGRY_FLAG) != 0, "anger is replicated in anim")
+	check(not b._temper.active() and (b.anim & Npc.ANGRY_FLAG) == 0, "the bystander stays calm")
+	check(a.interact_prompt(null) == "", "an angry villager will not talk")
+	p.global_position = Vector3(a.global_position.x + 40.0, GROUND, a.global_position.z)
+	_run(s, [a, b], 1.0)
+	check(not a._temper.active(), "calms once the striker is out of reach")
+	# A monster's blow does not anger anyone.
+	var monster: Node3D = load("res://entities/entity.gd").new()
+	monster.team = Entity.Team.MONSTERS
+	monster.net_id = 98
+	arena.add_child(monster)
+	s.entities.append(monster)
+	b.take_damage(5.0, 98, "hit")
+	check(not b._temper.active(), "only players anger villagers")
+	arena.queue_free()

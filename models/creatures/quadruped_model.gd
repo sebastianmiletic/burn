@@ -42,6 +42,9 @@ var species := "wolf"
 var spec := {}
 var fam := {}
 var grazing := false
+## Pets sitting on their haunches (fox, dog, cat).
+var sitting := false
+var _sit := 0.0
 ## Individual size (x the kind's base scale).
 var k := 1.0
 
@@ -80,6 +83,9 @@ func _init(kind_name := "wolf", variant_seed := 0) -> void:
 		"wolf": [Color(0.36, 0.34, 0.31), Color(0.45, 0.36, 0.26), Color(0.25, 0.24, 0.23), Color(0.55, 0.52, 0.48)],
 		"goat": [Color(0.85, 0.83, 0.78), Color(0.45, 0.38, 0.3), Color(0.25, 0.22, 0.2)],
 		"rabbit": [Color(0.5, 0.42, 0.32), Color(0.55, 0.53, 0.5), Color(0.38, 0.3, 0.22)],
+		"fox": [Color(0.78, 0.38, 0.13), Color(0.68, 0.3, 0.12), Color(0.86, 0.47, 0.18), Color(0.5, 0.48, 0.46)],
+		"wild_dog": [Color(0.55, 0.42, 0.28), Color(0.16, 0.14, 0.13), Color(0.42, 0.3, 0.2), Color(0.78, 0.74, 0.66), Color(0.62, 0.5, 0.3)],
+		"cat": [Color(0.45, 0.4, 0.34), Color(0.12, 0.11, 0.1), Color(0.85, 0.55, 0.25), Color(0.7, 0.68, 0.64), Color(0.5, 0.35, 0.22)],
 	}
 	if coats.has(species):
 		var list: Array = coats[species]
@@ -267,7 +273,7 @@ func _rig_data() -> Dictionary:
 	tbw.append({HIPS: 0.6, tail_bones[0]: 0.4})
 	for i in tj.size():
 		tpath.append(tj[i])
-		var rr := float(tr[i])
+		var rr := float(tr[i]) * float(spec.get("tail_k", 1.0))
 		trad.append(Vector2(rr, rr * (0.8 if croc else 1.0)))
 		tbw.append(tail_bones[mini(i, tail_bones.size() - 1)])
 	var trs := MobRig.resample(tpath, trad, tbw, tpath.size() * 4)
@@ -317,6 +323,8 @@ func _jaw_offset() -> Vector3:
 			return Vector3(0, -0.018, -0.02)
 		"croc":
 			return Vector3(0, -0.035, 0.02)
+		"feline":
+			return Vector3(0, -0.028, -0.015)
 	return Vector3(0, -0.03, -0.02)
 
 
@@ -334,6 +342,8 @@ func _ear_offset() -> Vector3:
 			return Vector3(0.018, 0.03, 0.01)
 		"croc":
 			return Vector3(0.08, 0.06, 0.02)
+		"feline":
+			return Vector3(0.042, 0.052, 0.012)
 	return Vector3(0.04, 0.05, 0.0)
 
 
@@ -377,6 +387,10 @@ func _body_tufts(r: MobRig) -> void:
 			r.tufts(tm, 70, 0.05, 0.95, -150.0, 150.0, base * 0.9, 0.85, 3)
 		"hare":
 			r.tufts(tm, 40, 0.0, 1.0, -180.0, 180.0, 0.012, 0.85, 3, 1.3)
+		"feline":
+			# Short sleek coat, a soft ruff at the cheeks and chest.
+			r.tufts(tm, 46, 0.05, 0.8, -140.0, 140.0, base * 0.55, 0.85, 3)
+			r.tufts(tm, 24, 0.74, 0.97, -180.0, 180.0, base * 0.9, 0.7, 5, 1.2)
 
 
 func _tail_tufts(r: MobRig) -> void:
@@ -388,6 +402,8 @@ func _tail_tufts(r: MobRig) -> void:
 			r.tufts(tm, 14, 0.8, 1.0, -180.0, 180.0, 0.05, 0.85, 15, 1.2)
 		"deer":
 			r.tufts(tm, 14, 0.3, 1.0, 120.0, 240.0, 0.05, 0.8, 13, 1.3)
+		"feline":
+			r.tufts(tm, 24, 0.05, 1.0, -180.0, 180.0, 0.03 * float(spec.get("fur_len", 1.0)), 0.85, 13, 1.1)
 		"boar":
 			r.tufts(tm, 6, 0.85, 1.0, -180.0, 180.0, 0.04, 0.9, 13)
 		"croc":
@@ -506,6 +522,13 @@ func _head(r: MobRig, hp: Vector3, jaw_at: Vector3) -> void:
 				"jaw_b": Vector3(0, 0.0, -0.045), "jaw": [[0.0, 0.016, 0.01], [1.0, 0.008, 0.006]],
 				"nose": [Vector3(0, -0.016, -0.075), Vector3(0.007, 0.006, 0.005)], "eye": [Vector3(0.025, 0.012, -0.022), 0.0095, 0.85],
 				"ear": [0.11, 0.022, "long"], "brow": false}
+		"feline":
+			g = {"skull_a": Vector3(0, 0.012, 0.045), "skull_b": Vector3(0, -0.02, -0.15),
+				"skull": [[0.0, 0.05, 0.05, 0.0], [0.15, 0.068, 0.064, 0.01], [0.35, 0.074, 0.066, 0.012], [0.55, 0.064, 0.055, 0.004],
+					[0.75, 0.046, 0.042, -0.008], [0.9, 0.032, 0.03, -0.012], [1.0, 0.015, 0.017, -0.01]],
+				"jaw_b": Vector3(0, -0.008, -0.115), "jaw": [[0.0, 0.036, 0.021], [0.5, 0.028, 0.016], [1.0, 0.014, 0.009]],
+				"nose": [Vector3(0, -0.006, -0.152), Vector3(0.012, 0.009, 0.008)], "eye": [Vector3(0.036, 0.026, -0.09), 0.017, 0.22],
+				"ear": [0.075, 0.042, "point"], "fangs": [Vector3(0.012, -0.03, -0.125), 0.02], "brow": false}
 		"croc":
 			g = {"skull_a": Vector3(0, 0.0, 0.1), "skull_b": Vector3(0, -0.02, -0.62),
 				"skull": [[0.0, 0.14, 0.08], [0.15, 0.15, 0.075], [0.35, 0.1, 0.052, -0.012], [0.6, 0.074, 0.038, -0.017],
@@ -535,7 +558,8 @@ func _head(r: MobRig, hp: Vector3, jaw_at: Vector3) -> void:
 		var out_dir := Vector3(side * float(ev[2]), 0.1, -1.0).normalized()
 		_hp(r, S_EYE, ModelKit.sphere(er, 10), hp, _put(ep), HEAD)
 		if not _eye_glow:
-			var pb := Basis.looking_at(out_dir, Vector3.UP).scaled_local(Vector3(0.62 if kind != "goat" else 0.9, 0.62 if kind != "goat" else 0.35, 0.3))
+			var pupil := Vector3(0.9, 0.35, 0.3) if kind == "goat" else (Vector3(0.22, 0.82, 0.3) if kind == "feline" else Vector3(0.62, 0.62, 0.3))
+			var pb := Basis.looking_at(out_dir, Vector3.UP).scaled_local(pupil)
 			_hp(r, S_DARK, ModelKit.sphere(er * 0.98, 8), hp, Transform3D(pb, ep + out_dir * er * 0.42), HEAD)
 		# Lids: a ring of skin round the eye.
 		var lid := BossKit.torus("qh_lid_%d" % int(er * 1000.0), er * 0.95, er * 0.28, 12, 5)
@@ -581,6 +605,14 @@ func _head(r: MobRig, hp: Vector3, jaw_at: Vector3) -> void:
 			var x := (float(t) - 1.5) * float(fg[1]) * 0.28
 			_hp(r, S_IVORY, OrganicMesh.bezier("qh_incisor_%d" % int(fl * 1000.0), Vector3.ZERO, Vector3(0, -fl * 0.2, 0), Vector3(0, -fl * 0.38, 0), fl * 0.08, fl * 0.05, 3, 5), hp, _put(Vector3(x, (fg[0] as Vector3).y, (fg[0] as Vector3).z - fl * 0.3)), HEAD)
 	match kind:
+		"feline":
+			# Whiskers fanning from the muzzle pads.
+			for side: float in [-1.0, 1.0]:
+				_hp(r, S_BODY, OrganicMesh.blob("qh_whisker_pad", Vector3(0.022, 0.018, 0.02), 0.15, 5, 8), hp, _put(Vector3(side * 0.018, -0.018, -0.135)), HEAD)
+				for wi in 4:
+					var a := float(wi) * 0.16 - 0.2
+					var wk := OrganicMesh.bezier("qh_whisker_%d_%d" % [int(side), wi], Vector3.ZERO, Vector3(side * 0.06, a * 0.1, 0.02), Vector3(side * 0.12, a * 0.25 - 0.02, 0.05), 0.0012, 0.0004, 5, 3)
+					_hp(r, S_IVORY, wk, hp, _put(Vector3(side * 0.025, -0.02 + wi * 0.004, -0.13)), HEAD)
 		"croc":
 			# Rows of interlocking teeth along both jaws, eye bumps, nostril knob.
 			for side: float in [-1.0, 1.0]:
@@ -769,6 +801,13 @@ func _animate(delta: float) -> void:
 			head_pitch += 0.3 * s
 			head_yaw += 0.4 * s
 			ear_back = s
+	_sit = damp(_sit, 1.0 if sitting and _speed < 0.4 and act == "" else 0.0, 4.0, delta)
+	if _sit > 0.01:
+		# On the haunches: hips down, chest up, tail curled round.
+		crouch += _sit * 0.24
+		pitch += _sit * 0.42
+		head_pitch -= _sit * 0.35
+		tail_lift += _sit * 0.25
 	_crouch = damp(_crouch, crouch, 12.0, delta)
 	_lunge = damp(_lunge, lunge, 12.0, delta)
 	_rear = damp(_rear, rear, 7.0, delta)

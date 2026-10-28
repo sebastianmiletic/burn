@@ -439,6 +439,8 @@ static func _static_init() -> void:
 	for rid: String in BASE_RECIPES:
 		RECIPES[rid] = BASE_RECIPES[rid]
 	BuildingItems.register(ITEMS, RECIPES)
+	# Village life: fishing tackle, the catch and trade goods (items/village_goods.gd).
+	VillageGoods.register(ITEMS, RECIPES)
 
 
 static func _add_gear(id: String, kind: String, tier: String) -> void:

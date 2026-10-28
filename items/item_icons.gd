@@ -76,6 +76,8 @@ static func _ensure_renderer() -> void:
 static func pose(id: String) -> String:
 	var inf := ItemDB.info(id)
 	var cat := String(inf.get("category", ""))
+	if inf.has("pose"):
+		return String(inf["pose"])
 	if cat in ["tool", "weapon"] or id in ["torch", "stick"]:
 		return "diagonal"
 	if cat == "armor" or cat == "key":

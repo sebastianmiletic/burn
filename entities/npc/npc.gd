@@ -26,6 +26,8 @@ const FIRST := ["Alda", "Bram", "Cora", "Dunstan", "Edda", "Fenn", "Gisla", "Hob
 
 enum Act { IDLE, WALK, WORK, TALK, INDOORS, COWER, PATROL, FIGHT }
 const TORCH_FLAG := 16
+## Set while this villager is fighting someone who struck them (NpcTemper).
+const ANGRY_FLAG := 32
 const ACT_MASK := 15
 
 const WALK_SPEED := 1.35
@@ -35,6 +37,9 @@ const FACE_RANGE := 3.0
 const TALK_SECONDS := 14.0
 
 var role := "villager"
+## Trade (Professions): smith, trader, fisher, farmer, herbalist, scribe, hunter, mason...
+var profession := ""
+var angry := false
 var village := ""
 var home := Vector3.ZERO          ## spawn point: where this person belongs during the day
 var npc_seed := 0
@@ -71,6 +76,7 @@ var _rng := RandomNumberGenerator.new()
 ## Diagnostics for tests: recoveries from being stuck or fallen.
 var recoveries := 0
 var replans_total := 0
+var _temper := NpcTemper.new()
 
 # --- Presentation (every machine)
 var _model: Node3D
@@ -82,6 +88,8 @@ var _shown_act := -1
 var _shown_gesture := -1.0
 var _marker_t := 0.0
 var _held := ""
+var _shown_health := -1.0
+var _plate: Label3D
 
 
 func _init() -> void:
@@ -100,6 +108,9 @@ func on_spawned(data: Dictionary) -> void:
 	home = global_position
 	_goal = home
 	_rng.seed = npc_seed * 31 + 7
+	profession = String(data.get("profession", ""))
+	if profession == "":
+		profession = Professions.of(role, npc_seed, VillageLife.near_water(_w(), village, dimension))
 	display_name = _make_name(npc_seed)
 	_model = HumanoidModel.new(CharStyles.villager(role, npc_seed))
 	add_child(_model)
@@ -115,6 +126,17 @@ func on_spawned(data: Dictionary) -> void:
 	_label.position = Vector3(0, 2.3, 0)
 	_label.visible = false
 	add_child(_label)
+	# Nameplate: name and trade, shown close up (red while angry).
+	_plate = Label3D.new()
+	_plate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_plate.pixel_size = 0.0032
+	_plate.font_size = 48
+	_plate.outline_size = 10
+	_plate.modulate = Color(0.95, 0.9, 0.8)
+	_plate.outline_modulate = Color(0.05, 0.03, 0.02, 0.85)
+	_plate.position = Vector3(0, 2.02, 0)
+	_plate.visible = false
+	add_child(_plate)
 	_prev_pos = global_position
 	_bind_layout()
 	if not Events.dialog_choice.is_connected(_on_choice):
@@ -137,7 +159,55 @@ func _make_name(s: int) -> String:
 
 
 func role_title() -> String:
+	if Professions.TITLES.has(profession):
+		return Professions.title(profession)
 	return String(NpcDialogue.ROLE_TITLES.get(role, "Villager"))
+
+
+## Players may strike villagers who are out and about (not behind their door).
+func can_be_struck() -> bool:
+	return not dead and act != Act.INDOORS
+
+
+func _on_damaged(amount: float, source_id: int, _kind: String) -> void:
+	if is_server():
+		_temper.on_hit(self, source_id, amount)
+
+
+## NpcTemper's news: "angered" / "calmed" / "yielded" at player `who`.
+func on_temper(event: String, who: int) -> void:
+	angry = event == "angered"
+	if angry:
+		_clear_path()
+		_talk_id = 0
+	else:
+		_goal_kind = ""
+		_think_t = 0.0
+		act = Act.IDLE
+	var w := world()
+	if w != null and w.replicator != null and sim_world == null:
+		w.replicator.broadcast_entity_event(net_id, "temper_" + event, who)
+
+
+## Entity events (every machine).
+func on_event(event: String, arg: Variant) -> void:
+	if not event.begins_with("temper_"):
+		return
+	var w := world()
+	var mine := w != null and w.local_player != null and int(arg) == w.local_player.net_id
+	match event:
+		"temper_angered":
+			Audio.play("hurt", center(), -4.0, 0.8)
+			if mine:
+				Events.notify.emit("%s is furious with you!" % display_name, "warn")
+				CharacterLife.of(w.local_player).add_rep(village, -NpcTemper.REP_LOSS)
+				Events.dialog_close.emit()
+		"temper_yielded":
+			if mine:
+				Events.notify.emit("%s backs away: \"Enough! Enough!\"" % display_name, "warn")
+		"temper_calmed":
+			if mine:
+				Events.notify.emit("%s has calmed down." % display_name, "info")
 
 
 ## The world this person lives in (tests substitute a stand-in).
@@ -264,7 +334,11 @@ func server_tick(delta: float) -> void:
 	_gesture_t -= delta
 	var want := Vector3.ZERO
 	var talker := _talker()
-	if talker != null:
+	if _temper.active():
+		want = _temper.tick(self, delta)
+	if _temper.active():
+		pass
+	elif talker != null:
 		# Stand still and look at whoever is talking to us.
 		_clear_path()
 		if act == Act.INDOORS:
@@ -298,7 +372,8 @@ func server_tick(delta: float) -> void:
 	_speed = Vector2(body.velocity.x, body.velocity.z).length()
 	var hr := _hour()
 	torch = (role == "guard" and (hr >= 19.0 or hr < 6.5)) or (_hurry and (hr >= 20.0 or hr < 6.0) and role != "villager")
-	anim = (act & ACT_MASK) | (TORCH_FLAG if torch else 0)
+	angry = _temper.active()
+	anim = (act & ACT_MASK) | (TORCH_FLAG if torch else 0) | (ANGRY_FLAG if angry else 0)
 
 
 ## Re-evaluate the routine and pick a goal.
@@ -749,6 +824,8 @@ func _guard_fight() -> void:
 # --- Interaction --------------------------------------------------------------------
 
 func server_interact(p: Entity) -> void:
+	if _temper.active():
+		return
 	_talk_id = p.net_id
 	_talk_until = _now() + TALK_SECONDS
 	_clear_path()
@@ -758,6 +835,8 @@ func server_interact(p: Entity) -> void:
 
 
 func interact_prompt(_p: Player) -> String:
+	if angry:
+		return ""
 	if act == Act.INDOORS:
 		if role in ["elder", "chief", "blacksmith", "merchant"]:
 			return "Knock — " + display_name
@@ -787,7 +866,7 @@ func _activities() -> Node:
 
 func _dialog_info() -> Dictionary:
 	var h := _hour()
-	return {"role": role, "village": village, "name": display_name, "net_id": net_id,
+	return {"role": role, "profession": profession, "village": village, "name": display_name, "net_id": net_id,
 		"night": h >= 20.0 or h < 6.0, "indoors": act == Act.INDOORS, "hour": h}
 
 
@@ -798,7 +877,9 @@ func _open_dialog() -> void:
 	if acts != null and acts.has_method("dialog_extra"):
 		extra = acts.call("dialog_extra", self)
 	var d := NpcDialogue.build(_dialog_info(), w.quests, extra)
-	var title := display_name if act != Act.INDOORS else display_name + " (at the door)"
+	var title := "%s, %s" % [display_name, role_title().to_lower()] if Professions.trades(profession) else display_name
+	if act == Act.INDOORS:
+		title += " (at the door)"
 	Events.dialog_open.emit(self, title, d["lines"], d["options"])
 
 
@@ -830,6 +911,10 @@ func _on_choice(npc: Node, option_id: String) -> void:
 		w.quests.accept(option_id.get_slice(":", 1))
 		Events.dialog_close.emit()
 		return
+	if option_id == "trade":
+		Events.dialog_close.emit()
+		Events.shop_open.emit("trade:%d" % net_id)
+		return
 	if option_id.begins_with("shop:"):
 		Events.dialog_close.emit()
 		Events.shop_open.emit(option_id.trim_prefix("shop:"))
@@ -850,6 +935,7 @@ func _process(delta: float) -> void:
 		interpolate(Net.server_time() if Net.has_method("server_time") else Time.get_ticks_msec() / 1000.0)
 		act = anim & ACT_MASK
 		torch = (anim & TORCH_FLAG) != 0
+		angry = (anim & ANGRY_FLAG) != 0
 	var moved := (global_position - _prev_pos) / maxf(delta, 0.001)
 	_prev_pos = global_position
 	if moved.length() > 12.0:
@@ -872,6 +958,7 @@ func _present(delta: float) -> void:
 	if indoors:
 		_shown_act = act
 		_label.visible = false
+		_plate.visible = false
 		return
 	var vel := body.velocity if is_server() else _vis_vel
 	var spd := Vector2(vel.x, vel.z).length()
@@ -880,10 +967,15 @@ func _present(delta: float) -> void:
 	HumanoidModel.drive(_model, self, Vector3(vel.x, 0.0, vel.z), true, spd > 2.2)
 	# Tools of the trade.
 	var held := ""
-	if role == "blacksmith" and act == Act.WORK:
+	if role == "blacksmith" and (act == Act.WORK or angry):
 		held = "warhammer_iron"
 	elif role == "guard":
 		held = "spear_iron"
+	elif profession == "fisher" and act in [Act.IDLE, Act.WORK] and not angry:
+		held = "rod_wood"
+	if health < _shown_health - 0.5 and _model.has_method("play"):
+		_model.call("play", "hit", 0.4)
+	_shown_health = health
 	if held != _held and _model.has_method("set_held"):
 		_held = held
 		_model.call("set_held", held)
@@ -938,6 +1030,7 @@ func _update_marker() -> void:
 	var w := world()
 	if w == null or w.local_player == null or w.local_player.dimension != dimension:
 		_label.visible = false
+		_plate.visible = false
 		return
 	var dist := w.local_player.global_position.distance_to(global_position)
 	var m := NpcDialogue.marker(w.quests, role, village) if dist < 60.0 else ""
@@ -947,3 +1040,11 @@ func _update_marker() -> void:
 	_label.text = m
 	_label.visible = m != ""
 	_label.modulate = Color(1.0, 0.78, 0.3) if m != "?" else Color(0.55, 1.0, 0.5)
+	if angry:
+		_plate.text = "%s  (furious)" % display_name
+		_plate.modulate = Color(1.0, 0.35, 0.25)
+		_plate.visible = dist < 30.0
+	else:
+		_plate.text = "%s\n%s" % [display_name, role_title()]
+		_plate.modulate = Color(0.95, 0.9, 0.8)
+		_plate.visible = dist < 9.0

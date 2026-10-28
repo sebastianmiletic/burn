@@ -30,6 +30,9 @@ const TIPS := [Vector3(0.58, 0.045, -0.05), Vector3(0.6, 0.03, 0.08), Vector3(0.
 
 var species := "bat"
 var size := 1.0
+## Birds at rest (a pet raven on the ground): wings folded, no beat.
+var perched := false
+var _perch := 0.0
 
 var _flap := 0.0
 var _dive := 0.0
@@ -41,7 +44,7 @@ func _init(kind_name := "bat", variant_seed := 0) -> void:
 	species = kind_name
 	var rng := RandomNumberGenerator.new()
 	rng.seed = variant_seed
-	size = rng.randf_range(0.85, 1.15) * (1.0 if species == "bat" else 0.5)
+	size = rng.randf_range(0.85, 1.15) * (1.0 if species == "bat" else (0.8 if species == "phoenix" else 0.5))
 	_flap = rng.randf() * TAU
 	dissolve_delay = 0.8
 
@@ -66,6 +69,12 @@ func _build() -> void:
 			CreatureSkin.keratin(Color(0.85, 0.8, 0.7), {"use_rest": true}),
 			CreatureSkin.eye(Color(1.0, 0.25, 0.1), 3.5, 0.1),
 			CreatureSkin.hide(Color(0.12, 0.08, 0.08), Color(0.2, 0.12, 0.12), {"use_rest": true, "pattern_scale": 60.0, "roughness": 0.45, "wet": 0.3})]
+	elif species == "phoenix":
+		mats = [CreatureSkin.feathers(Color(0.85, 0.22, 0.05), Color(1.0, 0.7, 0.15), {"use_rest": true, "pattern_scale": 60.0}),
+			CreatureSkin.feathers(Color(1.0, 0.55, 0.08), Color(1.0, 0.85, 0.3), {"use_rest": true, "pattern_scale": 30.0}),
+			CreatureSkin.keratin(Color(0.95, 0.8, 0.35), {"use_rest": true}),
+			CreatureSkin.eye(Color(1.0, 0.9, 0.4), 2.5, 0.0),
+			CreatureSkin.hide(Color(0.4, 0.12, 0.05), Color(0.5, 0.2, 0.05), {"use_rest": true})]
 	else:
 		mats = [CreatureSkin.feathers(Color(0.15, 0.14, 0.14), Color(0.3, 0.28, 0.26), {"use_rest": true, "pattern_scale": 60.0}),
 			CreatureSkin.feathers(Color(0.12, 0.11, 0.11), Color(0.2, 0.19, 0.18), {"use_rest": true, "pattern_scale": 30.0}),
@@ -197,10 +206,12 @@ func _animate(delta: float) -> void:
 	if _dead:
 		die = clampf(_dead_t / 0.5, 0.0, 1.0)
 		rate *= 1.0 - die
+	_perch = damp(_perch, 1.0 if perched and not _dead else 0.0, 6.0, delta)
+	rate *= 1.0 - _perch
 	_flap += delta * TAU * rate
-	var stroke := sin(_flap)
+	var stroke := sin(_flap) * (1.0 - _perch)
 	var down := -cos(_flap)
-	var fold := smoothstep(0.0, 1.0, maxf(0.0, -down)) * (0.9 if bat else 0.4)
+	var fold := lerpf(smoothstep(0.0, 1.0, maxf(0.0, -down)) * (0.9 if bat else 0.4), 1.0, _perch)
 	var dive := 0.0
 	var flinch := 0.0
 	var jaw := 0.05

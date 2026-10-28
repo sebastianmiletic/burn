@@ -635,7 +635,10 @@ func _resolve_swing(info: Dictionary) -> void:
 	var forward := Vector3(sin(yaw), 0, cos(yaw))
 	var hits: Array = []
 	for e in world().entities_near(center(), reach + 1.5, dimension):
-		if e == self or e.team == Team.PLAYERS or e.team == Team.NEUTRAL:
+		if e == self or e.team == Team.PLAYERS:
+			continue
+		# Villagers can be struck only on purpose (never by a swing at a monster beside them).
+		if e.team == Team.NEUTRAL and not (e.has_method("can_be_struck") and e.call("can_be_struck")):
 			continue
 		var to := e.center() - center()
 		to.y = 0
@@ -645,6 +648,15 @@ func _resolve_swing(info: Dictionary) -> void:
 		if to.length() > 0.5 and forward.dot(to.normalized()) < 0.25:
 			continue
 		hits.append(e.net_id)
+	if hits.size() > 1:
+		# Fighting monsters next to a villager hits only the monsters.
+		var hostile: Array = []
+		for id: int in hits:
+			var t := world().entity(id)
+			if t != null and t.team != Team.NEUTRAL:
+				hostile.append(id)
+		if not hostile.is_empty():
+			hits = hostile
 	if hits.is_empty():
 		return
 	var crit := randf() < float(a["crit"])
@@ -771,6 +783,10 @@ func _use() -> void:
 		return
 	var id := inventory.selected_item()
 	var info := ItemDB.info(id)
+	if info.has("use_script"):
+		# Items with their own right-click (fishing rods, coffers): items/village_goods.gd.
+		(load(String(info["use_script"])) as Script).call("use", self, id)
+		return
 	if info.has("heal") or info.has("buff"):
 		use_item_slot(inventory.selected)
 		return
@@ -1269,7 +1285,8 @@ func _process_remote(delta: float) -> void:
 
 func to_dict() -> Dictionary:
 	return {"name": display_name, "pos": global_position, "dim": dimension, "health": health, "xp": xp,
-		"inventory": inventory.to_dict(), "respawn": respawn_point, "respawn_dim": respawn_dimension, "yaw": yaw}
+		"inventory": inventory.to_dict(), "respawn": respawn_point, "respawn_dim": respawn_dimension, "yaw": yaw,
+		"life": CharacterLife.of(self).to_dict()}
 
 
 func load_from(d: Dictionary) -> void:
@@ -1285,6 +1302,7 @@ func load_from(d: Dictionary) -> void:
 	respawn_point = d.get("respawn", Vector3.ZERO)
 	respawn_dimension = int(d.get("respawn_dim", 0))
 	yaw = float(d.get("yaw", 0.0))
+	CharacterLife.of(self).from_dict(d.get("life", {}))
 	if camera != null:
 		camera.yaw = yaw + PI
 	_emit_stats()
