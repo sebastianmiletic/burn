@@ -101,6 +101,7 @@ func _ready() -> void:
 	if play.detail != "":
 		play.custom_minimum_size.y = 68
 	_add_main_button("Online", _show_online)
+	_add_main_button("Achievements", _show_achievements)
 	_add_main_button("Settings", _show_settings)
 	_add_main_button("Credits", _show_credits)
 	_add_main_button("Quit", func() -> void: get_tree().quit())
@@ -615,6 +616,23 @@ func _show_settings() -> void:
 		_column.visible = true
 		var f := _return_focus if _return_focus != null and is_instance_valid(_return_focus) else _first_button
 		f.grab_focus())
+
+
+func _show_achievements() -> void:
+	_open_panel("ACHIEVEMENTS", "", 760.0, true)
+	var text := RichTextLabel.new()
+	text.bbcode_enabled = true
+	text.scroll_active = true
+	text.focus_mode = Control.FOCUS_NONE
+	text.custom_minimum_size = Vector2(680, clampf(size.y * 0.5, 240.0, 520.0))
+	text.add_theme_font_size_override("normal_font_size", 15)
+	text.add_theme_font_size_override("bold_font_size", 16)
+	text.add_theme_color_override("default_color", UiTheme.TEXT)
+	text.text = Achievements.menu_bbcode()
+	_panel_box.add_child(text)
+	var back := _back_button()
+	_panel_box.add_child(back)
+	back.grab_focus()
 
 
 func _show_credits() -> void:

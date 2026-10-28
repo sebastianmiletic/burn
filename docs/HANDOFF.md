@@ -35,10 +35,43 @@ in-game). Look at `--capture-game` tours and `tests/gpu/ui_gallery.tscn -- --onl
 | `wip/r3-surface-biomes` `6847f8b` | desert + cyan oasis (no hostile spawns), Moony Meadows tall reactive grass + trapdoors to labyrinth, Dragons' Graveyard (ghosts, dragon fang/blood/femur), ravines/valleys/cliffs, biome blending, moving sand/quicksand |
 | `wip/r3-underground` `e84f5b7` | cave variety (moss, dripstone, colours, shapes), Everbloom cave (harvest leaves/fruit/sap; damaging the tree kills it and collapses the cave), Trollhunters-style underground city |
 | `wip/r3-volcano-atlantis` `0f50373` | volcano with lava rivers/falls, fire-people village, sword in the stone + eruption escape, Atlantis with the Kraken (deep, hard to reach), Scumport-style port and off-island adventures, more islands/island villages, celestial prison; delete its `tools/_*_tmp.gd` probes |
-| `wip/r3-roles-spells` `f7be110` | Warrior/Archer/Mage lobby even solo, slow per-role ranks (double jump, dash...), drawn-glyph spells (incl. invisibility, flight), spell/potion/crafting books with exact steps and failure outcomes, hard brewing, achievements on the menu, skins, PvP servers by category |
+| `wip/r3-roles-spells` `f7be110` | merged on branch `worktree-agent-a83c1e5793283820d` (see "Roles and spells merge" below); left: brewing screen, skins picker, rank-path screen, PvP server browser, MP checks |
 | `wip/r3-villagers-pets-fishing` `12b744f` | only the hit villager retaliates, profession trades (trade UI mid-rewrite), taming (birds/foxes/cats with fish, dogs with meat), phoenix and other ultra-rare pets, full fishing + rod tiers + coastal fishing shacks, villager daily work, farms |
 | `wip/r3-water-art-films` (rest) | randomised wave sizes/timing check, hyperreal swords and arms, two new loading films (dragon in clouds; Atlantis without the kraken) |
 | Not started | phasing through 3D models/props (collision audit), better Hades/all portal visuals, larger mapped ocean, rideable sea creatures (user: later) |
+
+### Roles and spells merge (28 Oct 2026, branch `worktree-agent-a83c1e5793283820d`, not yet on main)
+
+`wip/r3-roles-spells` merged on top of main (no textual conflicts; main's swimming/breath kept) and wired in:
+
+- **Role pick before loading, solo too:** the run screen (Play -> pick a run) has a Warrior/Archer/Mage picker above
+  PLAY, stored in the profile (`PlayerProfile.role()`, `user://profile/profile.burn`). `GameWorld` applies it after
+  `load_from` (`Player.set_role`, or the role a PvP category forces via `PvpArena.forced_role`). New characters get
+  that role's kit (`Roles.ROLES[*].kit`: sword / hunting bow + 40 arrows / apprentice staff + mana potions); an old
+  character switching role gets the new weapon once (`give_role_kit_once`). XP and rank are kept per role.
+- **Ranks:** `ItemDB.RANK_XP` is steeper; every rank of every role grants a perk or a spell (`Roles.PATH`): dash,
+  double jump, glide, wall kick, air dash, health/mana/power/draw/swim, undying, piercing arrows.
+- **Glyph spells:** hold a cast key (`ability_fire` / `ability_burst`, Q/E by default) and move the mouse to draw;
+  release to cast (`PlayerArcana`); right click cancels. `ui/glyph_overlay.gd` draws the stroke and the verdict.
+  Recogniser = $1-style templates (`GlyphRecognizer`); clean / shaky (weak) / wrong (similar known glyph) / fizzle.
+  New: **Veil** (invisibility; `GameWorld.nearest_player` skips you, a melee hit breaks it) on the horizontal-line
+  glyph and **Flight** (hold jump to climb, sprint to dive, hover otherwise, no fall damage) on the vertical-line
+  glyph, both book-gated (adept / master spell tomes). The old fireball/burst keys now start a glyph instead.
+- **Books:** spell/potion/crafting books now drop from chests (`ArcanaItems.CHEST_LOOT` appended in `Chest`);
+  right click reads them (adds to `Player.knowledge`).
+- **Achievements:** new main-menu ACHIEVEMENTS panel (`Achievements.menu_bbcode`); toasts in game.
+- Tests: `tests/unit/test_roles_spells.gd` (glyphs, resolution, kits, perks, Veil/Flight, books, menu list).
+
+**Not done / unverified:**
+- The step-by-step **brewing screen** does not exist (`BrewingScreen` was referenced but never written). `Brewing`
+  (exact steps, wrong order/heat/timing -> failure or a different brew) is logic only; the cauldron currently opens
+  the alchemy table (`station.gd`, TODO).
+- No **skin picker** UI (skins unlock via `PlayerProfile.unlock_skin` on rank/quest/PvP wins; `Player.set_look`
+  works) and no rank-path screen (`Roles.rank_rows` is ready for one).
+- **PvP servers by category:** `PvpArena` + `Net.option("pvp")` exist, but no lobby/browser UI sets the option.
+- Invisibility is only honoured where the host knows the buff (solo / host's own player); remote guests' buffs are
+  client-side. No visual fade for the invisible player.
+- Nothing here was tried with a window/GPU or in multiplayer (`SpellNet` RPCs untested).
 
 ## 000. PAUSED round 3 (18 Oct 2026) — historical
 

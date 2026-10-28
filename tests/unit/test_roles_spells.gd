@@ -164,6 +164,30 @@ func test_flight_climbs_hovers_and_dives() -> void:
 	check(PlayerArcana.flight_velocity_y(0.0, false, true, 1.0) < -5.0, "sprint dives")
 
 
+func test_achievements_menu_lists_every_category() -> void:
+	var text := Achievements.menu_bbcode()
+	check(text.contains("/ %d unlocked" % Achievements.LIST.size()), "menu shows the unlocked count")
+	for id: String in Achievements.LIST:
+		var a: Dictionary = Achievements.LIST[id]
+		check(String(a.get("cat", "")) in Achievements.CATEGORIES, "%s has a known category" % id)
+		if not bool(a.get("secret", false)):
+			check(text.contains(String(a["name"])), "menu lists %s" % id)
+
+
+func test_books_teach_their_gated_spells_and_drop_from_chests() -> void:
+	var dropped := {}
+	for tier: int in ArcanaItems.CHEST_LOOT:
+		for entry: Array in ArcanaItems.CHEST_LOOT[tier]:
+			check(ItemDB.exists(String(entry[0])), "chest loot %s exists" % entry[0])
+			dropped[String(entry[0])] = true
+	for id: String in Spells.SPELLS:
+		var book := String(Spells.SPELLS[id].get("book", ""))
+		if book == "":
+			continue
+		check(dropped.has(book), "%s (for %s) can be found in chests" % [book, id])
+	check(Spells.can_cast("veil", "warrior", 4, {"book_spells_adept": true}), "warrior Veil with the adept tome")
+
+
 func test_rank_rows_cover_every_rank() -> void:
 	for r: String in Roles.ORDER:
 		var rows := Roles.rank_rows(r)

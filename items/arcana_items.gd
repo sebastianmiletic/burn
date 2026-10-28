@@ -129,8 +129,8 @@ const RECIPES := {
 ## What reading each book teaches: spells, brews (Brewing.RECIPES ids) and crafts (ItemDB recipe ids).
 const BOOKS := {
 	"book_spells_novice": {"spells": ["frost_lance", "ward", "blink"]},
-	"book_spells_adept": {"spells": ["chain_lightning", "earthshatter", "arcane_nova", "rain_of_arrows"]},
-	"book_spells_master": {"spells": ["meteor", "whirlwind"]},
+	"book_spells_adept": {"spells": ["chain_lightning", "earthshatter", "arcane_nova", "rain_of_arrows", "veil"]},
+	"book_spells_master": {"spells": ["meteor", "whirlwind", "flight"]},
 	"book_potions_novice": {"brews": ["potion_mana", "potion_swiftness", "potion_featherfall"]},
 	"book_potions_adept": {"brews": ["potion_fireward", "elixir_everbloom"]},
 	"book_potions_master": {"brews": ["potion_dragon_vigor", "elixir_bonemarrow"]},

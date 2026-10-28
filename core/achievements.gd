@@ -70,6 +70,27 @@ static func is_unlocked(id: String) -> bool:
 	return PlayerProfile.has_achievement(id)
 
 
+## The main menu's achievements list, grouped by category. Secret ones stay
+## hidden ("???") until unlocked.
+static func menu_bbcode() -> String:
+	var out := "[b]%d / %d unlocked[/b]\n" % [count_unlocked(), LIST.size()]
+	for cat: String in CATEGORIES:
+		var lines := PackedStringArray()
+		for id: String in LIST:
+			var a: Dictionary = LIST[id]
+			if String(a.get("cat", "")) != cat:
+				continue
+			var got := is_unlocked(id)
+			if bool(a.get("secret", false)) and not got:
+				lines.append("[color=#777777]  ???[/color]")
+			else:
+				lines.append("%s %s[color=#999999] - %s[/color]" % ["[color=#ffb347]*[/color]" if got else "[color=#555555]o[/color]",
+					String(a["name"]), String(a["desc"])])
+		if not lines.is_empty():
+			out += "\n[b]%s[/b]\n%s\n" % [cat, "\n".join(lines)]
+	return out
+
+
 static func count_unlocked() -> int:
 	var n := 0
 	for id: String in LIST:

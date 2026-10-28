@@ -73,7 +73,8 @@ func server_interact(_p: Player) -> void:
 	opened = true
 	world().opened_chests[chest_key] = true
 	world().replicator.broadcast_entity_event(net_id, "opened")
-	for entry: Array in LOOT.get(tier, LOOT[1]):
+	# Plus books (spells, potions, crafting), arrows and mana potions (ArcanaItems).
+	for entry: Array in LOOT.get(tier, LOOT[1]) + ArcanaItems.CHEST_LOOT.get(tier, []):
 		if randf() < float(entry[1]):
 			world().drop_item(global_position + Vector3(0, 0.9, 0), entry[0], randi_range(int(entry[2]), int(entry[3])), dimension)
 	world().replicator.give_gold_to(_p.peer_id, randi_range(5, 15) * tier)
