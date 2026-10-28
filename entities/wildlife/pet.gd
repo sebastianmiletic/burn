@@ -19,8 +19,12 @@ const SPECIES := {
 	"wild_dog": {"name": "Wild Dog", "food": "meat", "feeds": 3, "chance": 0.45, "speed": 1.5, "run": 7.8, "radius": 0.38, "height": 0.7, "shy": 8.0, "defends": true},
 	"cat": {"name": "Stray Cat", "food": "fish", "feeds": 2, "chance": 0.5, "speed": 1.0, "run": 6.5, "radius": 0.2, "height": 0.33, "shy": 4.5, "defends": false},
 	"raven": {"name": "Raven", "food": "fish", "feeds": 4, "chance": 0.35, "speed": 1.2, "run": 8.0, "radius": 0.22, "height": 0.35, "shy": 9.0, "defends": false, "bird": true},
+	# Ultra-rare: never sold by anyone; seen only now and then over the peaks and canyons,
+	# and it will take nothing but an Ember Eel (fished from the boiling vents).
+	"phoenix": {"name": "Phoenix", "food": "fish_ember_eel", "feeds": 5, "chance": 0.25, "speed": 1.4, "run": 9.0, "radius": 0.3, "height": 0.45, "shy": 14.0,
+		"defends": true, "bird": true, "rare": true},
 }
-const PET_NAMES := {"fox": "Fox", "wild_dog": "Dog", "cat": "Cat", "raven": "Raven"}
+const PET_NAMES := {"fox": "Fox", "wild_dog": "Dog", "cat": "Cat", "raven": "Raven", "phoenix": "Phoenix"}
 
 const MODE_WILD := 0
 const MODE_FLEE := 1
@@ -124,8 +128,10 @@ func accepts(item: String) -> bool:
 	match String(spec.get("food", "fish")):
 		"meat":
 			return VillageGoods.is_meat(item)
-		_:
+		"fish":
 			return VillageGoods.is_fish(item) and ItemDB.category(item) == "consumable"
+		var only:
+			return item == String(only)
 
 
 # --- Server -------------------------------------------------------------------------------
@@ -545,6 +551,8 @@ func _mood_line() -> String:
 			return "It blinks at you slowly. That is love, in cat."
 		"raven":
 			return "It tilts its head and croaks something that sounds like your name."
+		"phoenix":
+			return "Its feathers smoulder gold. The air around it is warm as a hearth."
 	return "It watches you with bright, clever eyes."
 
 

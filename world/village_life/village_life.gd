@@ -20,11 +20,11 @@ const WILD := {
 	WorldGen.Biome.FOREST: [["fox", 1.0], ["raven", 0.5], ["wild_dog", 0.3]],
 	WorldGen.Biome.REDWOOD: [["fox", 0.8], ["raven", 0.6]],
 	WorldGen.Biome.MARSH: [["raven", 1.0], ["cat", 0.15]],
-	WorldGen.Biome.PEAKS: [["fox", 0.5], ["raven", 0.5]],
+	WorldGen.Biome.PEAKS: [["fox", 0.5], ["raven", 0.5], ["phoenix", 0.012]],
 	WorldGen.Biome.ALPINE: [["fox", 0.7], ["raven", 0.4]],
 	WorldGen.Biome.TUNDRA: [["fox", 0.8], ["raven", 0.3]],
 	WorldGen.Biome.WASTES: [["wild_dog", 1.0], ["raven", 0.4]],
-	WorldGen.Biome.CANYON: [["wild_dog", 0.8], ["raven", 0.5]],
+	WorldGen.Biome.CANYON: [["wild_dog", 0.8], ["raven", 0.5], ["phoenix", 0.012]],
 	WorldGen.Biome.FJORD: [["raven", 0.8], ["fox", 0.5]],
 }
 const VILLAGE_STRAYS := [["cat", 1.0], ["wild_dog", 0.3]]

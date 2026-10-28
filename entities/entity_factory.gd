@@ -13,7 +13,7 @@ const BEAST_KINDS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "g
 const WILDLIFE_KINDS := ["deer", "stag", "rabbit", "goat", "boar"]
 const FLOCK_KINDS := ["bird_flock", "gull_flock", "crow_flock", "fish_school", "bat_swarm"]
 ## Tameable animals and pets (entities/wildlife/pet.gd).
-const PET_KINDS := ["fox", "wild_dog", "cat", "raven"]
+const PET_KINDS := ["fox", "wild_dog", "cat", "raven", "phoenix"]
 
 
 static func create(kind: String, _data := {}) -> Entity:

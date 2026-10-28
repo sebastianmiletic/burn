@@ -22,7 +22,7 @@ const PLAYER_COLOURS := [
 const WARM_KINDS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "deer", "stag", "rabbit", "goat", "boar", "bog_lurker",
 	"giant_spider", "spiderling", "scorpion", "cave_bat", "cave_crawler", "shark", "rock_golem", "fire_elemental", "imp", "shade",
 	"skeleton", "archer", "ghoul", "troll", "drowned", "bird_flock", "crow_flock", "gull_flock", "fish_school", "bat_swarm",
-	"fox", "wild_dog", "cat", "raven"]
+	"fox", "wild_dog", "cat", "raven", "phoenix"]
 
 
 ## Build every ordinary creature once (a few per frame) under a hidden node,
@@ -95,8 +95,8 @@ static func create_mob(kind: String, seed_value: int) -> CreatureModel:
 			return ArachnidModel.new("spider" if kind == "giant_spider" else kind, seed_value)
 		"wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "deer", "stag", "rabbit", "goat", "boar", "bog_lurker", "fox", "wild_dog", "cat":
 			return QuadrupedModel.new(kind, seed_value)
-		"raven":
-			return FlyerModel.new("raven", seed_value)
+		"raven", "phoenix":
+			return FlyerModel.new(kind, seed_value)
 		"cave_bat":
 			return FlyerModel.new("bat", seed_value)
 		"bird_flock", "gull_flock", "crow_flock", "fish_school", "bat_swarm":

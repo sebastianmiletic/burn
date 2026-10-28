@@ -150,6 +150,24 @@ func test_taming_foods() -> void:
 	check(dog.accepts("raw_meat"), "dogs take meat")
 	check(not dog.accepts("fish_perch"), "dogs refuse fish")
 	dog.free()
+	# The phoenix: only an Ember Eel will do, and nobody sells one.
+	var ph := Pet.create("phoenix")
+	ph.spec = Pet.SPECIES["phoenix"]
+	check(ph.accepts("fish_ember_eel"), "a phoenix takes an Ember Eel")
+	check(not ph.accepts("fish_perch") and not ph.accepts("raw_meat"), "a phoenix refuses ordinary food")
+	ph.free()
+	check(EntityFactory.PET_KINDS.has("phoenix"), "phoenixes spawn as pets")
+	for prof: String in Professions.TRADES:
+		for e: Array in Professions.TRADES[prof]["sells"]:
+			check(String(e[0]) != "phoenix", "nobody sells a phoenix")
+	var model := FlyerModel.new("phoenix", 3)
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree != null:
+		tree.root.add_child(model)
+		check(model.get_child_count() > 0, "the phoenix has a model")
+		model.queue_free()
+	else:
+		model.free()
 
 
 func test_trade_screen_lists_the_villagers_wares_and_trades() -> void:
