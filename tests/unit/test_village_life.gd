@@ -3,6 +3,24 @@ extends TestCase
 ## fishing (rod tiers/recipes, bites, the reel fight) and taming rules.
 
 
+## Stand-in GameWorld for the trade screen (UiContext finds it by group).
+class MockWorld:
+	extends Node
+	var local_player: Node
+	var villager: Node
+
+	func entity(id: int) -> Variant:
+		return villager if villager != null and int(villager.get("net_id")) == id else null
+
+	func day() -> int:
+		return 4
+
+
+class MockPlayer:
+	extends Node
+	var inventory := Inventory.new()
+
+
 func _who(profession: String) -> Dictionary:
 	return {"key": "testville:%s" % profession, "village": "testville", "profession": profession, "name": "Tester"}
 
@@ -132,3 +150,37 @@ func test_taming_foods() -> void:
 	check(dog.accepts("raw_meat"), "dogs take meat")
 	check(not dog.accepts("fish_perch"), "dogs refuse fish")
 	dog.free()
+
+
+func test_trade_screen_lists_the_villagers_wares_and_trades() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null or tree.root.get_node_or_null("Events") == null:
+		return
+	var w := MockWorld.new()
+	w.add_to_group(&"game_world")
+	var p := MockPlayer.new()
+	p.inventory.gold = 50
+	w.local_player = p
+	w.add_child(p)
+	var npc := Npc.new()
+	npc.net_id = 77
+	npc.village = "testville"
+	npc.npc_seed = 5
+	npc.profession = "fisher"
+	npc.display_name = "Edda"
+	w.villager = npc
+	tree.root.add_child(w)
+	var screen := ShopScreen.new()
+	w.add_child(screen)
+	screen.open_shop("trade:77")
+	check(screen.is_open, "the trade screen opens for a villager")
+	check_eq(String(screen._who.get("profession", "")), "fisher", "trading with the fisher")
+	check(screen._tabs.get_tab_count() == 2, "buy and sell tabs")
+	screen._trade(true, "bait_worms")
+	check(p.inventory.has("bait_worms"), "bought bait through the screen")
+	check(p.inventory.gold < 50, "paid for it")
+	screen.close()
+	screen.open_shop("trade:999")
+	check(not screen.is_open, "no screen for a villager who is not there")
+	npc.free()
+	w.queue_free()

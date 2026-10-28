@@ -72,9 +72,7 @@ func open_shop(shop_kind: String) -> void:
 
 
 func _villager(id: int) -> Node:
-	var p := UiContext.player() as Entity
-	var w := p.world() if p != null else null
-	return w.entity(id) as Node if w != null else null
+	return UiContext.world_call("entity", [id]) as Node
 
 
 func _life() -> CharacterLife:
@@ -82,9 +80,7 @@ func _life() -> CharacterLife:
 
 
 func _day() -> int:
-	var p := UiContext.player() as Entity
-	var w := p.world() if p != null else null
-	return w.day() if w != null else 0
+	return int(UiContext.world_call("day", [], 0))
 
 
 func _on_open() -> void:
