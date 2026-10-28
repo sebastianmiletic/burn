@@ -79,7 +79,7 @@ func _frame(p: Player, vw: VoxelWorld, yaw: float, pitch: float, input: Vector2,
 
 
 func test_swimmer_lies_down_and_fits_a_1m_gap() -> void:
-	# A lake (floor y = 0, surface 7.88) cut by a rock wall at x 4..9 with a
+	# A lake (floor y = 0, surface 7 + ChunkMesher.WATER_TOP) cut by a rock wall at x 4..9 with a
 	# flooded tunnel 1 m high (y 2..3) and 5 m wide through it.
 	var vw := _pool(func(c: Vector3i) -> bool:
 		return c.y < 0 or (c.x >= 4 and c.x <= 9 and c.y <= 8 and not (c.y == 2 and absi(c.z) <= 2)),
@@ -112,9 +112,9 @@ func test_diving_reaches_the_seabed() -> void:
 	for f in 240:
 		clear = _frame(p, vw, EAST, 0.0, Vector2.ZERO) and clear
 	var eye := p.global_position.y + p.eye_height()
-	check(p.swimming and absf(eye - 7.88 - Player.TREAD_EYE) < 0.15, "treading flat with the eyes above the surface (eye %.2f)" % eye)
+	check(p.swimming and absf(eye - (7.0 + ChunkMesher.WATER_TOP) - Player.TREAD_EYE) < 0.15, "treading flat with the eyes above the surface (eye %.2f)" % eye)
 	check(not p.head_under, "head out of the water while treading")
-	check(p.global_position.y > 7.88 - 1.0, "floating at the surface, not sinking (y %.2f)" % p.global_position.y)
+	check(p.global_position.y > 7.0 + ChunkMesher.WATER_TOP - 1.0, "floating at the surface, not sinking (y %.2f)" % p.global_position.y)
 	# Look down and swim forward: down until the body rests on the bottom.
 	for f in 420:
 		clear = _frame(p, vw, EAST, -0.8, Vector2(0, -1)) and clear
@@ -150,7 +150,7 @@ func test_standing_up_needs_room() -> void:
 
 
 func test_climbing_out_of_the_water_stands_up() -> void:
-	# A lake (surface 7.88) against a shelf whose top (y = 8) is just above the water.
+	# A lake (surface 7 + ChunkMesher.WATER_TOP) against a shelf whose top (y = 8) is just above the water.
 	var vw := _pool(func(c: Vector3i) -> bool: return c.y < 0 or (c.x >= 4 and c.y <= 7),
 		func(c: Vector3i) -> bool: return c.y <= 7)
 	var p := _player(Vector3(1.5, 6.0, 0.5))
