@@ -188,9 +188,17 @@ func _crafting_screen() -> UiModal:
 	return get_tree().get_first_node_in_group(&"crafting_screen") as UiModal
 
 
+## The chest/barrel screen (ui/container_screen.gd), added on first use.
+func _container_screen() -> UiModal:
+	return get_tree().get_first_node_in_group(&"container_screen") as UiModal
+
+
 func any_screen_open() -> bool:
 	var craft := _crafting_screen()
 	if craft != null and craft.is_open:
+		return true
+	var box := _container_screen()
+	if box != null and box.is_open:
 		return true
 	return inventory_screen.is_open or shop_screen.is_open or quest_log.is_open or map_screen.is_open \
 			or pause_menu.is_open or dialog.is_open or death_screen.is_open or victory_screen.is_open or chat.is_typing()
@@ -219,6 +227,9 @@ func _close_screens(except: Control = null) -> void:
 	var craft := _crafting_screen()
 	if craft != null:
 		screens.append(craft)
+	var box := _container_screen()
+	if box != null:
+		screens.append(box)
 	for s: UiModal in screens:
 		if s != except and s.is_open:
 			s.close()

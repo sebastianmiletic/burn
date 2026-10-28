@@ -599,8 +599,8 @@ func _place_on_server(peer: int, kind: String, mat: String, anchor: Vector3i, ro
 	_broadcast(&"_added", [[id, kind, mat, anchor, posmod(rot, 4), dim, BuildPieces.max_hp(kind, mat), 0, ground]])
 	if BuildPieces.use_of(kind) == "container":
 		var slots := []
-		slots.resize(BuildPieces.container_slots(kind))
-		slots.fill({})
+		for i in BuildPieces.container_slots(kind):
+			slots.append({})  # one Dictionary per slot (fill() would share one)
 		containers["p%d" % id] = slots
 
 
@@ -865,8 +865,13 @@ func _contents(key: String, slots: Array, title: String, at: Vector3) -> void:
 		if screen == null:
 			var hud := gw().hud
 			if hud != null:
+				# Beside the inventory screen so the HUD's modal handling covers it.
 				screen = ContainerScreen.new()
-				hud.add_child(screen)
+				var inv_screen := hud.get("inventory_screen") as Node
+				var parent: Node = inv_screen.get_parent() if inv_screen != null and inv_screen.get_parent() != null else hud
+				parent.add_child(screen)
+				if parent != hud:
+					parent.move_child(screen, inv_screen.get_index() + 1)
 		if screen != null:
 			screen.call("open_container")
 

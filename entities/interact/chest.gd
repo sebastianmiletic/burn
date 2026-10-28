@@ -66,8 +66,8 @@ func local_interact(_p: Player) -> void:
 ## Chests already looted in saves from before containers stay empty.
 func fill_loot(peer: int) -> Array:
 	var slots: Array = []
-	slots.resize(SLOTS)
-	slots.fill({})
+	for k in SLOTS:
+		slots.append({})  # one Dictionary per slot (fill() would share one)
 	var w := world()
 	if w.opened_chests.has(chest_key):
 		return slots

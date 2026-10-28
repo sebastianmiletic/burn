@@ -13,6 +13,18 @@ func test_every_piece_registers_an_item_and_recipe() -> void:
 		check(BuildPieces.max_hp(String(pair[0]), String(pair[1])) > 0.0, "hp for " + id)
 
 
+func test_every_piece_builds_a_mesh() -> void:
+	for pair: Array in BuildPieces.all_pairs():
+		var model := PieceMesh.get_model(String(pair[0]), String(pair[1]))
+		var mesh: Mesh = model.get("mesh")
+		check(mesh != null and mesh.get_surface_count() > 0, "mesh for %s %s" % [pair[0], pair[1]])
+	for kind: String in ["door", "chest", "barrel"]:
+		var mats: Array = BuildPieces.PIECES[kind].get("mats", [""])
+		var leaves: Array = PieceMesh.get_model(kind, String(mats[0]))["leaves"]
+		if kind != "barrel":
+			check(not leaves.is_empty(), kind + " has a moving leaf (door / lid)")
+
+
 func test_containers_have_slots() -> void:
 	for kind: String in ["chest", "chest_iron", "barrel"]:
 		check_eq(BuildPieces.use_of(kind), "container", kind + " is a container")
