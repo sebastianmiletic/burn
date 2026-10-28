@@ -99,6 +99,9 @@ func _run() -> void:
 		if stop.begins_with("og_") or stop.begins_with("swim_") or stop == "drown_fade":
 			await _water_stop(w, stop, report)
 			continue
+		if stop.begins_with("dark_"):
+			await _dark_ocean_stop(w, stop, report)
+			continue
 		# "<stop>+wall": after framing, turn to the side and walk into the wall (camera clipping checks).
 		var wall_press := stop.ends_with("+wall")
 		stop = stop.trim_suffix("+wall")
@@ -525,6 +528,48 @@ func _breakdown(w: GameWorld, report: PackedStringArray) -> void:
 		await _frames(10)
 	report.append(line)
 	await _frames(20)
+
+
+## Revision 5 Dark Ocean stops (new worlds only): dark_surface (afloat, looking out),
+## dark_under (5 m down with a roaming kraken and leviathan placed in view).
+func _dark_ocean_stop(w: GameWorld, stop: String, report: PackedStringArray) -> void:
+	var g := w.gen_for(0)
+	var at := Vector2.INF
+	for z in range(1000, g.size, 48):
+		for x in range(1000, g.size, 48):
+			if not at.is_finite() and g.dark_ocean_amount(x, z) >= 1.0:
+				at = Vector2(x, z)
+	if not at.is_finite():
+		report.append("%s: no Dark Ocean in this world (revision %d)" % [stop, g.revision])
+		return
+	var p := w.local_player
+	p.invulnerable_until = Time.get_ticks_msec() / 1000.0 + 3600.0
+	var under := stop == "dark_under"
+	var pos := Vector3(at.x, WorldGen.SEA_LEVEL - (5.0 if under else 0.4), at.y)
+	var vw := w.world_for(0)
+	p.global_position = pos
+	p.body.velocity = Vector3.ZERO
+	p.body.fly = true
+	vw.focus = pos
+	var t0 := Time.get_ticks_msec()
+	while (not vw.is_area_loaded(pos) or vw.loading_progress() < 0.95) and Time.get_ticks_msec() - t0 < 25000:
+		await get_tree().process_frame
+	w.sky.time_of_day = 15.0
+	OceanMood.reset(1.0)
+	if under:
+		for spec: Array in [["deep_leviathan", Vector3(-6, -4, -24)], ["abyssal_kraken", Vector3(8, -3, -16)], ["anglerfish", Vector3(-1.5, -0.5, -5)]]:
+			var e := w.spawn_entity(spec[0], pos + spec[1], 0, {})
+			if e != null:
+				e.set_meta("wild", true)
+	p.global_position = pos
+	p.camera.yaw = 0.0
+	p.camera.pitch = -0.05 if under else 0.02
+	await _frames(150)
+	p.camera.yaw = 0.0
+	p.camera.pitch = -0.05 if under else 0.02
+	report.append("%s at %s: %s, dark %.2f" % [stop, str(pos.round()), g.region_name(pos.x, pos.z), OceanMood.dark])
+	await _shot(stop)
+	p.body.fly = false
 
 
 ## Ogygia and water stops (they need the island, which no Location names):
