@@ -42,6 +42,8 @@ const SEA_LEVEL := 12
 const LAVA_LEVEL := 0  ## hell
 const COARSE := 4      ## metres per coarse map cell
 const BLEND := 32      ## revision 3: metres per biome-blend cell
+const VEIN_SHIFT := 3  ## revision 5: ore veins live in 8 m cells (one vein at most per cell)
+const VEIN_CHANCE := 0.6  ## revision 5: chance an 8 m rock cell holds a vein
 const Y_MIN := -128
 const Y_MAX := 383
 
@@ -1663,6 +1665,38 @@ func _ore(x: int, y: int, z: int) -> int:
 	return _ore_kind(y, t)
 
 
+## Revision 5 ore: each 8 m cell may hold one small vein, a short ragged capsule
+## (2-6 blocks long, ~1 block thick) of a single ore picked by the cell's depth.
+## Only the voxel's own cell is tested (a vein reaching past its cell is clipped).
+func _vein_ore(x: int, y: int, z: int) -> int:
+	var cx := x >> VEIN_SHIFT
+	var cy := y >> VEIN_SHIFT
+	var cz := z >> VEIN_SHIFT
+	var s := world_seed * 31
+	if _hash01(cx, cy, cz, s + 401) >= VEIN_CHANCE:
+		return Blocks.AIR
+	var cell := float(1 << VEIN_SHIFT)
+	var base := Vector3(cx, cy, cz) * cell
+	var a := base + Vector3(2.5 + _hash01(cx, cy, cz, s + 402) * 3.0, 2.5 + _hash01(cx, cy, cz, s + 403) * 3.0,
+			2.5 + _hash01(cx, cy, cz, s + 404) * 3.0)
+	var dir := Vector3(_hash01(cx, cy, cz, s + 405) - 0.5, (_hash01(cx, cy, cz, s + 406) - 0.5) * 0.6,
+			_hash01(cx, cy, cz, s + 407) - 0.5)
+	if dir.length_squared() < 0.0001:
+		dir = Vector3.RIGHT
+	var b := a + dir.normalized() * (1.0 + _hash01(cx, cy, cz, s + 408) * 2.0)
+	a -= dir.normalized() * (0.5 + _hash01(cx, cy, cz, s + 409) * 1.0)
+	var p := Vector3(x, y, z) + Vector3(0.5, 0.5, 0.5)
+	var ab := b - a
+	var t := clampf((p - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
+	var r := 0.75 + _hash01(cx, cy, cz, s + 410) * 0.55
+	if p.distance_squared_to(a + ab * t) > r * r:
+		return Blocks.AIR
+	# Ragged edges: a few blocks of the capsule stay plain rock.
+	if _hash01(x, y, z, s + 411) < 0.2:
+		return Blocks.AIR
+	return _ore_kind(cy * (1 << VEIN_SHIFT) + 4, _hash01(cx, cy, cz, s + 412))
+
+
 ## Which ore a deposit at depth y holds (t: 0..1 roll).
 static func _ore_kind(y: int, t: float) -> int:
 	if y < -100 and t < 0.35:
@@ -1906,9 +1940,14 @@ func _rock_v3(x: int, y: int, z: int, depth: int, group: int, st: int, o1: int, 
 	if y <= Y_MIN + 2:
 		if y <= Y_MIN + 1 + (_hash3(x, 0, z, 5) & 1):
 			return Blocks.BEDROCK
+	if revision >= 5:
+		# Revision 5: small scattered veins instead of large lenses.
+		var vein := _vein_ore(x, y, z)
+		if vein != Blocks.AIR:
+			return vein
 	# Ore veins: thin sheets inside irregular lenses, and rounder pockets.
-	var sheet := absi(o1 - 128) < 12 and o2 > 155
-	if sheet or o2 > 220:
+	var sheet := revision < 5 and absi(o1 - 128) < 12 and o2 > 155
+	if sheet or (revision < 5 and o2 > 220):
 		var ore := _ore_kind(y, _hash01(x >> 3, y >> 3, z >> 3, 79))
 		if ore != Blocks.AIR:
 			return ore
