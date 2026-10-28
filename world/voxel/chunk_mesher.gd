@@ -10,10 +10,20 @@ extends RefCounted
 ## Per vertex: COLOR.rgb = ambient occlusion (cube faces) or colour (torches, liquids), COLOR.a = ASCII
 ## material class / 7, UV = position on the face (for edge shading),
 ## UV2 = (block id, skylight).
+## Liquid top faces instead carry UV = (water depth under the corner in metres, 0): 0 on
+## the shore, so the wave shader can calm the swell there and let it shoal in the shallows.
+## Water also gets a "shore skirt": its surface continues one cell into the solid ground
+## around it, so the water's edge is wherever the smooth terrain rises through the surface
+## (the shader fades it out by depth) instead of a stair-stepped voxel outline.
 
 const P := 18
 const P2 := 324
 const AO_CURVE := [0.42, 0.62, 0.8, 1.0]
+## Drawn height of a water surface above its top block's base (the swim physics use it too).
+## The generator floods a column when its ground (the smooth surface, at the column height
+## + 0.5..1.5) is below the half block, so the surface at +0.5 meets the terrain exactly
+## where the water blocks end; any higher and dry land next to the water would sit under it.
+const WATER_TOP := 0.5
 
 static var _face_corners: Array = []  # [dir] -> Array of 4 Vector3
 static var _face_ao: Array = []       # [dir] -> PackedInt32Array 12 deltas (side1, side2, corner) x4
@@ -63,7 +73,9 @@ static func _delta(o: Vector3i) -> int:
 
 ## neighbours: Array of 27 PackedByteArray (index (dx+1) + (dy+1)*3 + (dz+1)*9),
 ## empty arrays meaning all air. surface: 256 column heights for skylight.
-static func build(neighbours: Array, surface: PackedInt32Array, origin_y: int) -> Dictionary:
+## ground: 17x17 generated ground heights at the chunk's column corners (index cx + cz * 17,
+## empty = unknown), used for the water depth that shapes the waves.
+static func build(neighbours: Array, surface: PackedInt32Array, origin_y: int, ground := PackedFloat32Array()) -> Dictionary:
 	var pad := pad_blocks(neighbours)
 	var opaque := _occluders()
 	var family := Blocks.family_table()
@@ -164,19 +176,27 @@ static func build(neighbours: Array, surface: PackedInt32Array, origin_y: int) -
 					var start: int
 					if is_liquid:
 						start = l_verts.size()
-						var lift := Vector3(0, -0.12, 0) if d == 2 else Vector3.ZERO
-						l_verts.append(bpos + corner[cb] + lift)
-						l_verts.append(bpos + corner[cb + 1] + lift)
-						l_verts.append(bpos + corner[cb + 2] + lift)
-						l_verts.append(bpos + corner[cb + 3] + lift)
+						# Top faces sit at the water surface; side faces (falls, drop-offs)
+						# end there too unless more water stands on top.
+						var top_open := liquid[pad[pi + P2]] == 0
+						for i in 4:
+							var cv := corner[cb + i]
+							if cv.y > 0.5 and (d == 2 or top_open):
+								cv.y = WATER_TOP
+							l_verts.append(bpos + cv)
 						for i in 4:
 							l_norms.append(nrm)
 							l_cols.append(Color(col.r, col.g, col.b, cls))
 							l_uv2s.append(fsky)
-						l_uvs.append(uv0)
-						l_uvs.append(uv1)
-						l_uvs.append(uv2)
-						l_uvs.append(uv3)
+						if d == 2:
+							for i in 4:
+								var cv := corner[cb + i]
+								l_uvs.append(Vector2(_corner_depth(pad, pi, b, int(cv.x), int(cv.z), x, z, wy, ground), 0.0))
+						else:
+							l_uvs.append(uv0)
+							l_uvs.append(uv1)
+							l_uvs.append(uv2)
+							l_uvs.append(uv3)
 						l_idx.append_array([start, start + 1, start + 2, start, start + 2, start + 3])
 						if d == 2:
 							# Seen from below too (inside caves, underwater).
@@ -208,6 +228,8 @@ static func build(neighbours: Array, surface: PackedInt32Array, origin_y: int) -
 						idx.append_array([start + 1, start + 2, start + 3, start + 1, start + 3, start])
 					else:
 						idx.append_array([start, start + 1, start + 2, start, start + 2, start + 3])
+	if pad.has(Blocks.WATER):
+		_shore_skirt(pad, surface, origin_y, opaque, liquid, corner, l_verts, l_norms, l_cols, l_uvs, l_uv2s, l_idx)
 	var out := {}
 	if not verts.is_empty():
 		out["opaque"] = _arrays(verts, norms, cols, uvs, uv2s, idx)
@@ -226,6 +248,88 @@ static func _arrays(v: PackedVector3Array, n: PackedVector3Array, c: PackedColor
 	arrays[Mesh.ARRAY_TEX_UV2] = u2
 	arrays[Mesh.ARRAY_INDEX] = i
 	return arrays
+
+
+## Water depth (m) under the top-face corner (cx, cz in 0/1) of the liquid cell at pad index
+## pi: 0 unless all four cells around the corner are this liquid (the shoreline), else the
+## depth to the generated ground (at least 1 m: dug pools, caves). Only pad data and world
+## columns go in, so neighbouring chunks agree on shared corners.
+static func _corner_depth(pad: PackedByteArray, pi: int, b: int, cx: int, cz: int, x: int, z: int, wy: int, ground: PackedFloat32Array) -> float:
+	var c := pi + (cx - 1) + (cz - 1) * P
+	if pad[c] != b or pad[c + 1] != b or pad[c + P] != b or pad[c + P + 1] != b:
+		return 0.0
+	if ground.is_empty():
+		return 4.0
+	return clampf(float(wy) + WATER_TOP - ground[(x + cx) + (z + cz) * (Chunk.SIZE + 1)], 1.0, 40.0)
+
+
+## The water surface continued over the solid cells next to open water (8-neighbours on
+## the same level), at the same height, with depth 0 so no waves lift it. The smooth
+## terrain hides it wherever the ground is above the water; where the ground dips below
+## the water level inside such a cell the water now covers it, so the visible shoreline
+## follows the terrain contour (softened by the shader's depth fade), not the voxel grid.
+## Water cells in the pad border count too, so skirts match across chunk borders.
+static func _shore_skirt(pad: PackedByteArray, surface: PackedInt32Array, origin_y: int, opaque: PackedByteArray, liquid: PackedByteArray,
+		corner: PackedVector3Array, l_verts: PackedVector3Array, l_norms: PackedVector3Array, l_cols: PackedColorArray,
+		l_uvs: PackedVector2Array, l_uv2s: PackedVector2Array, l_idx: PackedInt32Array) -> void:
+	var w := Blocks.WATER
+	var family := Blocks.family_table()
+	var mark := PackedByteArray()
+	mark.resize(Chunk.VOLUME)
+	var any := false
+	for y in Chunk.SIZE:
+		for pz in P:
+			var row := pz * P + (y + 1) * P2
+			for px in P:
+				var pi := row + px
+				if pad[pi] != w:
+					continue
+				var up := pad[pi + P2]
+				if up == w or opaque[up] == 1 or liquid[up] == 1:
+					continue
+				for dz in range(-1, 2):
+					var nz := pz - 1 + dz
+					if nz < 0 or nz >= Chunk.SIZE:
+						continue
+					for dx in range(-1, 2):
+						var nx := px - 1 + dx
+						if nx < 0 or nx >= Chunk.SIZE:
+							continue
+						var ni := pi + dx + dz * P
+						# Only ground: a plant or torch cell stands on lower ground.
+						var c := pad[ni]
+						if family[c] != Blocks.Family.SMOOTH and opaque[c] == 0:
+							continue
+						var above := pad[ni + P2]
+						if liquid[above] == 1 or opaque[above] == 1:
+							continue
+						mark[nx + nz * Chunk.SIZE + y * Chunk.AREA] = 1
+						any = true
+	if not any:
+		return
+	var cb := 2 * 4
+	var lift := Vector3(0, WATER_TOP - 1.0, 0)
+	var nrm := Vector3.UP
+	var col: Color = Blocks.color_table()[w]
+	var cls := float(Blocks.class_table()[w]) / 7.0
+	var zero := Vector2.ZERO
+	for i in Chunk.VOLUME:
+		if mark[i] == 0:
+			continue
+		var x := i % Chunk.SIZE
+		var z := (i / Chunk.SIZE) % Chunk.SIZE
+		var y := i / Chunk.AREA
+		var sky := clampf(1.0 - float(surface[x + z * Chunk.SIZE] - (origin_y + y) - 1) / 7.0, 0.04, 1.0)
+		var bpos := Vector3(x, y, z) + lift
+		var start := l_verts.size()
+		for c in 4:
+			l_verts.append(bpos + corner[cb + c])
+			l_norms.append(nrm)
+			l_cols.append(Color(col.r, col.g, col.b, cls))
+			l_uvs.append(zero)
+			l_uv2s.append(Vector2(w, sky))
+		l_idx.append_array([start, start + 1, start + 2, start, start + 2, start + 3])
+		l_idx.append_array([start, start + 2, start + 1, start, start + 3, start + 2])
 
 
 ## Faces are hidden only behind other crisp cubes: smooth terrain may not

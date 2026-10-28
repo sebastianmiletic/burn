@@ -133,7 +133,7 @@ static func _water_top(vw: VoxelWorld, cell: Vector3i) -> float:
 	while top < cell.y + 30 and vw.get_block(Vector3i(cell.x, top + 1, cell.z)) == Blocks.WATER:
 		top += 1
 	var above := vw.get_block(Vector3i(cell.x, top + 1, cell.z))
-	return float(top) + (0.88 if above == Blocks.AIR or above < 0 else 1.0)
+	return float(top) + (ChunkMesher.WATER_TOP if above == Blocks.AIR or above < 0 else 1.0)
 
 
 static func _depth(vw: VoxelWorld, p: Vector3) -> float:

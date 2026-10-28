@@ -420,7 +420,7 @@ static func water_surface_at(vw: VoxelWorld, feet: Vector3) -> float:
 	# Covered water (a flooded tunnel) is full to its ceiling; open water's
 	# drawn surface sits a little below the block top.
 	var above := vw.get_block(Vector3i(floori(feet.x), top + 1, floori(feet.z)))
-	return float(top) + (0.88 if above == Blocks.AIR or above < 0 else 1.0)
+	return float(top) + (ChunkMesher.WATER_TOP if above == Blocks.AIR or above < 0 else 1.0)
 
 
 func _water_update(vw: VoxelWorld) -> void:

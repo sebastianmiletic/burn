@@ -324,7 +324,7 @@ static func docks(b: ArchBuild, spec: Dictionary, rng: RandomNumberGenerator) ->
 		var q := e + side * s * 1.1
 		m.cylinder(Vector3(q.x, b.ground(q) - 0.5, q.z), Vector3(q.x, deck + 0.7, q.z), 0.16, 0.14, 7)
 	var boat := e - dir * 3.0 - side * 2.6
-	boat.y = float(WorldGen.SEA_LEVEL) + 0.85 - b.origin.y
+	boat.y = float(WorldGen.SEA_LEVEL) + ChunkMesher.WATER_TOP - 0.03 - b.origin.y
 	_rowboat(b, boat, atan2(dir.x, dir.z))
 	# Drying rack with nets on the bank.
 	var rack := a - side * 3.0 + dir * 0.5

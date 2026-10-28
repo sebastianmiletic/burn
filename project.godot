@@ -67,6 +67,10 @@ rain_amount={
 "type": "float",
 "value": 0.0
 }
+dark_ocean_amount={
+"type": "float",
+"value": 0.0
+}
 sky_zenith_color={
 "type": "vec3",
 "value": Vector3(0.2, 0.3, 0.45)

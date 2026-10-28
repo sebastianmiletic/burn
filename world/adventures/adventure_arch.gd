@@ -402,7 +402,7 @@ static func scumport(b: ArchBuild, prop: Dictionary) -> void:
 			d.beam(a + sidev * 1.55 * sg + Vector3(0, deck_y + 0.75 - a.y, 0), z + sidev * 1.55 * sg + Vector3(0, deck_y + 0.75 - z.y, 0), 0.04, 0.04)
 		# A moored skiff at the end of each pier.
 		var bp := z + sidev * 3.2
-		bp.y = float(WorldGen.SEA_LEVEL) + 0.85 - b.origin.y
+		bp.y = float(WorldGen.SEA_LEVEL) + ChunkMesher.WATER_TOP - 0.03 - b.origin.y
 		VillageGreen._rowboat(b, bp, atan2(dir.x, dir.z))
 	# Lanterns on poles: grimy glass, warm light (lit all the time; it's Scumport).
 	for lw: Vector3 in prop["lamps"]:
