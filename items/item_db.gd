@@ -214,6 +214,13 @@ const BASE := {
 		"desc": "Warm to the touch. Found deep below. Can be set into gear."},
 	"frost_shard": {"name": "Frost Shard", "category": "material", "glyph": "*", "color": Color(0.6, 0.9, 1.0), "stack": 99, "value": 20, "rarity": 2,
 		"desc": "Never melts. Can be set into gear."},
+	# Revision 5: alchemy ingredients from the Dragons' Graveyard (its ghosts and skeletons carry them).
+	"dragon_fang": {"name": "Dragon Fang", "category": "material", "glyph": "^", "color": Color(0.93, 0.9, 0.8), "stack": 99, "value": 45, "rarity": 3,
+		"desc": "Long as a forearm and still sharp. From the Dragons' Graveyard."},
+	"dragon_blood": {"name": "Dragon Blood", "category": "material", "glyph": "!", "color": Color(0.6, 0.05, 0.08), "stack": 99, "value": 70, "rarity": 3,
+		"desc": "Dark, thick and faintly warm after all these years. A potent brewing ingredient."},
+	"dragon_femur": {"name": "Dragon Femur", "category": "material", "glyph": "-", "color": Color(0.82, 0.78, 0.66), "stack": 99, "value": 40, "rarity": 3,
+		"desc": "A thighbone taller than a man, from the Dragons' Graveyard."},
 	"hellstone": {"name": "Hellstone", "category": "material", "glyph": "*", "color": Color(0.9, 0.2, 0.1), "stack": 99, "value": 60, "rarity": 3,
 		"desc": "Mined in the underworld. Burns without fire."},
 	"ruby": {"name": "Ruby", "category": "gem", "glyph": "◆", "color": Color(0.95, 0.15, 0.22), "stack": 99, "value": 40, "rarity": 2,

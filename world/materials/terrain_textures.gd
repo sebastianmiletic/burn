@@ -82,6 +82,12 @@ static func _table() -> Dictionary:
 	t[SmoothMesher.CODE_FOREST_FLOOR] = [L.FOREST, L.DIRT, 0.3, 1.0, Color(1.0, 0.93, 0.85), ASCII_GROUND]
 	t[SmoothMesher.CODE_HELL_ASH] = [L.ASH, L.DARK, 0.25, 1.0, Color(0.75, 0.55, 0.5), ASCII_GROUND]
 	t[SmoothMesher.CODE_PEAK_GRASS] = [L.LUSH, L.ROCK, 0.28, 1.0, Color(0.78, 0.82, 0.72), ASCII_GROUND]
+	# World revision 5 lands (SurfaceBiomes): pale wind-rippled dunes, the oasis' deep green,
+	# Moony Meadows' silvery sward, the Dragons' Graveyard's grey soil.
+	t[SurfaceBiomes.CODE_DUNE_SAND] = [L.SAND, L.SANDSTONE, 0.3, 1.0, Color(1.08, 0.98, 0.82), ASCII_GROUND]
+	t[SurfaceBiomes.CODE_OASIS_GRASS] = [L.LUSH, L.DIRT, 0.28, 1.0, Color(0.8, 1.05, 0.78), ASCII_GROUND]
+	t[SurfaceBiomes.CODE_MOON_GRASS] = [L.LUSH, L.DIRT, 0.28, 1.0, Color(0.86, 0.94, 0.98), ASCII_GROUND]
+	t[SurfaceBiomes.CODE_GRAVE_SOIL] = [L.DIRT, L.ROCK, 0.3, 1.0, Color(0.7, 0.7, 0.72), ASCII_GROUND]
 	# (Ore amounts and glow are kept low: the modelled crusts and crystals of CaveDecor carry the
 	# look; the shader adds only faint stains around them.)
 	# Crisp cube blocks (voxel.gdshader).

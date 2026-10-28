@@ -785,7 +785,7 @@ func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) 
 			var wx := o.x + x
 			var wz := o.z + z
 			surface[x + z * Chunk.SIZE] = int(gen.column(wx, wz, detail, ridge).x) if gen.in_bounds(wx, wz) else -64
-			biomes[x + z * Chunk.SIZE] = gen.biome_at(wx, wz)
+			biomes[x + z * Chunk.SIZE] = gen.surface_biome_at(wx, wz)
 	var result := ChunkMesher.build(neighbours, surface, o.y)
 	var smooth := SmoothMesher.build(neighbours, densities, _sky_heights(surface, o), biomes, o, dimension)
 	if smooth.has("terrain"):

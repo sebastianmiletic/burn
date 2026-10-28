@@ -9,7 +9,8 @@ extends Node
 ##   * wildlife - deer, stags, rabbits, goats and boars, bird flocks (gulls
 ##     on the coast, crows over the marsh and wastes), fish schools in any
 ##     water, bat swarms in caves. Fewer at night.
-## None inside villages or other locations (they bring their own); anything
+## None inside villages or other locations (they bring their own), nor (revision 5) in the
+## Sunscar Oasis or Moony Meadows (SurfaceBiomes); anything
 ## spawned here despawns once every player is far away.
 
 const CHECK_SECONDS := 4.0
@@ -157,6 +158,12 @@ func _populate(w: GameWorld, p: Player) -> void:
 	if in_sea and _rng.randf() < 0.6:
 		_spawn_hostiles(w, p, WATER, 3, "water")
 	var table: Array = (SURFACE_NIGHT if night else SURFACE_DAY).get(biome, [])
+	if vw.gen.revision >= 5:
+		# Revision 5 surface lands: the oasis and Moony Meadows are peaceful, the dunes and the
+		# Dragons' Graveyard have their own tables.
+		var land_table: Variant = SurfaceBiomes.spawn_table(vw.gen, pos, night)
+		if land_table != null:
+			table = land_table
 	_spawn_hostiles(w, p, table, 5 if night else 2, "surface")
 	var animals: Array = ANIMALS.get(biome, [])
 	_spawn_animals(w, p, animals, 3 if night else 6, "surface")
@@ -191,13 +198,18 @@ func _spawn_hostiles(w: GameWorld, p: Player, table: Array, cap: int, where: Str
 	var pos := _find_spot(w.world_for(p.dimension), p.global_position, spot_mode, 22.0, 36.0, 4 if kind == "sea_serpent" else 2)
 	if pos == Vector3.INF or _in_location(w, pos, p.dimension) or (p.dimension == 0 and w.gen_for(0).revision >= 2 and CaveBiomes.sanctuary(pos, w.gen_for(0).world_seed, w.gen_for(0).revision)):
 		return
+	if p.dimension == 0 and SurfaceBiomes.is_peaceful(w.gen_for(0), pos):
+		return  # revision 5: never inside the oasis or Moony Meadows
 	var n := _rng.randi_range(int(pick[2]), int(pick[3]))
+	var extra: Array = SurfaceBiomes.land_loot(w.gen_for(0), pos) if p.dimension == 0 else []
 	for i in n:
 		var off := Vector3(_rng.randf_range(-2.5, 2.5), 0, _rng.randf_range(-2.5, 2.5)) if i > 0 else Vector3.ZERO
 		var e := w.spawn_entity(kind, pos + off, p.dimension, {})
 		if e != null:
 			e.set_meta("wild", true)
 			e.set_meta("wild_role", "hostile")
+			if not extra.is_empty() and e.get("loot") is Array:
+				e.set("loot", (e.get("loot") as Array) + extra)  # revision 5: dragon parts
 
 
 func _spawn_animals(w: GameWorld, p: Player, table: Array, cap: int, where: String) -> void:

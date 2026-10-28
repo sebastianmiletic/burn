@@ -40,11 +40,12 @@ const OASIS_POOL := 17.0       ## spring pool radius
 const SAFE_RADIUS := 55.0      ## hostiles never enter this disc around the oasis
 ## Value WorldGen.surface_biome_at() returns for a land column: LAND_CODE + Land.
 const LAND_CODE := 32
-## Mesher material codes (SmoothMesher / TerrainTextures / Flora): biome variants of a block.
-const CODE_DUNE_SAND := 130
-const CODE_OASIS_GRASS := 131
-const CODE_MOON_GRASS := 132
-const CODE_GRAVE_SOIL := 133
+## Mesher material codes (SmoothMesher / TerrainTextures / Flora): biome variants of a block,
+## in the 120..127 range Blocks reserves for them (the texture tables hold 128 codes).
+const CODE_DUNE_SAND := 123
+const CODE_OASIS_GRASS := 124
+const CODE_MOON_GRASS := 125
+const CODE_GRAVE_SOIL := 126
 ## Places the landforms keep away from (planned settlements, boss sites).
 const KEEP_CLEAR := [Vector2(1024, 1024), Vector2(1215, 875), Vector2(1575, 1045), Vector2(1000, 575), Vector2(540, 905),
 	Vector2(850, 1510), Vector2(410, 1110), Vector2(1024, 300), Vector2(1040, 1800), Vector2(1024, 1555),
@@ -607,6 +608,7 @@ func plan_caves(gen: WorldGen, net: CaveNetwork) -> void:
 
 # --- Safe zones (server AI and spawning) ------------------------------------------------------
 
+## True inside a safe disc of the last prepared revision-5 overworld (static registry).
 static func is_safe(pos: Vector3) -> bool:
 	for z in safe_zones:
 		if Vector2(pos.x - z.x, pos.z - z.y).length_squared() < z.z * z.z:
@@ -614,23 +616,31 @@ static func is_safe(pos: Vector3) -> bool:
 	return false
 
 
-## True inside a peaceful land (no hostile wild spawns).
+## True inside a peaceful land of `gen` (no hostile wild spawns): the oasis' safe disc and lush
+## ring, and Moony Meadows. Always false for worlds without lands (revision < 5).
 static func is_peaceful(gen: Object, pos: Vector3) -> bool:
-	if is_safe(pos):
-		return true
 	var land: Variant = gen.get("land") if gen != null else null
 	if land == null:
 		return false
-	var lw: Vector2 = (land as SurfaceBiomes).land_weight(Vector2(pos.x, pos.z))
-	return int(lw.x) == Land.MEADOW and lw.y > 0.4
+	var sb := land as SurfaceBiomes
+	var p := Vector2(pos.x, pos.z)
+	if p.distance_squared_to(Vector2(sb.oasis.x, sb.oasis.z)) < SAFE_RADIUS * SAFE_RADIUS:
+		return true
+	var lw := sb.land_weight(p)
+	return (int(lw.x) == Land.MEADOW and lw.y > 0.4) or int(lw.x) == Land.OASIS
 
 
-## Where a hostile at `from` may head for `target`: never into a safe zone (the point is
-## pushed back to the rim); from inside one, straight out.
-static func keep_out(from: Vector3, target: Vector3) -> Vector3:
-	for z in safe_zones:
+## True inside this world's oasis safe disc (instance form of is_safe(); no static state).
+func safe_at(pos: Vector3) -> bool:
+	return Vector2(pos.x - oasis.x, pos.z - oasis.z).length_squared() < SAFE_RADIUS * SAFE_RADIUS
+
+
+## Where a hostile at `from` may head for `target`: never into this world's oasis (the point is
+## pushed back to the rim); from inside it, straight out.
+func keep_out(from: Vector3, target: Vector3) -> Vector3:
+	for z in [Vector3(oasis.x, oasis.z, SAFE_RADIUS)]:
 		var c := Vector2(z.x, z.y)
-		var r := z.z + 1.5
+		var r: float = z.z + 1.5
 		var f := Vector2(from.x, from.z)
 		var t := Vector2(target.x, target.z)
 		if f.distance_to(c) < r:
@@ -638,10 +648,23 @@ static func keep_out(from: Vector3, target: Vector3) -> Vector3:
 			var e := c + out * (r + 4.0)
 			return Vector3(e.x, from.y, e.y)
 		if t.distance_to(c) < r:
-			var dir := (t - c).normalized() if t.distance_to(c) > 0.1 else (f - c).normalized()
+			# Wait on the rim on the hostile's own side (never walk across the oasis).
+			var dir := (f - c).normalized()
 			var e := c + dir * r
 			return Vector3(e.x, target.y, e.y)
 	return target
+
+
+## Extra loot for a hostile spawned at `pos` (WildSpawner): dragon fang, blood and femur in the
+## Dragons' Graveyard; [] elsewhere and in older worlds.
+static func land_loot(gen: Object, pos: Vector3) -> Array:
+	var land: Variant = gen.get("land") if gen != null else null
+	if land == null:
+		return []
+	var lw: Vector2 = (land as SurfaceBiomes).land_weight(Vector2(pos.x, pos.z))
+	if int(lw.x) != Land.GRAVEYARD or lw.y < 0.5:
+		return []
+	return [["dragon_fang", 0.18, 1, 1], ["dragon_blood", 0.1, 1, 1], ["dragon_femur", 0.12, 1, 1]]
 
 
 ## Wild spawn table override for lands ([] = none), or null for the host table.
@@ -656,7 +679,8 @@ static func spawn_table(gen: Object, pos: Vector3, night: bool) -> Variant:
 		return null
 	match int(lw.x):
 		Land.GRAVEYARD:
-			return [["ghost", 1.0, 1, 2], ["skeleton", 0.6, 1, 2]] if night else [["ghost", 0.6, 1, 1], ["skeleton", 0.5, 1, 1]]
+			# Ghosts: shades drift among the bones (by day too).
+			return [["shade", 1.0, 1, 2], ["skeleton", 0.6, 1, 2]] if night else [["shade", 0.6, 1, 1], ["skeleton", 0.5, 1, 1]]
 		Land.DESERT:
 			return [["scorpion", 1.0, 1, 2], ["skeleton", 0.6, 1, 2], ["archer", 0.3, 1, 1]] if night else [["scorpion", 1.0, 1, 2], ["fire_elemental", 0.15, 1, 1]]
 	return null

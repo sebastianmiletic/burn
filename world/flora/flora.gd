@@ -62,6 +62,8 @@ const BLOCK_ASH := 22
 const BLOCK_DRY_GRASS := 34
 const BLOCK_MUD := 38
 const BLOCK_SOUL_SAND := 39
+## Revision 5: Moony Meadows' grass (SurfaceBiomes.CODE_MOON_GRASS, a mesher material code).
+const BLOCK_MOON_GRASS := 125
 
 static var _warm := false
 static var _quality := -1
@@ -355,6 +357,7 @@ const PAL := {
 	"tuft": [Color(0.5, 0.48, 0.26), Color(0.44, 0.44, 0.22)],
 	"beach": [Color(0.62, 0.62, 0.4), Color(0.55, 0.58, 0.36), Color(0.7, 0.64, 0.42)],
 	"soul": [Color(0.55, 0.6, 0.6), Color(0.62, 0.66, 0.64), Color(0.48, 0.55, 0.58)],
+	"moon": [Color(0.5, 0.56, 0.52), Color(0.58, 0.62, 0.6), Color(0.44, 0.52, 0.46), Color(0.64, 0.66, 0.62)],
 	"daisy": [Color(0.95, 0.94, 0.88), Color(0.95, 0.94, 0.88), Color(0.28, 0.4, 0.9), Color(0.95, 0.85, 0.9)],
 	"buttercup": [Color(1.0, 0.78, 0.08), Color(1.0, 0.85, 0.2)],
 	"poppy": [Color(0.85, 0.1, 0.05), Color(0.9, 0.18, 0.05), Color(0.95, 0.42, 0.06)],
@@ -384,6 +387,10 @@ const RULES := {
 		[L.POPPY, 0.4, 0.8, 1.15, 1.0, 1.0, "poppy", 0.0, 0.2, true], [L.SPIKE, 0.12, 0.75, 1.2, 0.85, 1.15, "spike", 0.0, 0.1, true],
 		[L.BUSH_AUTUMN, 0.01, 0.7, 1.3, 0.9, 1.4, "bush", 0.05, 0.0, true], [L.BOULDER, 0.004, 0.6, 1.5, 0.9, 1.3, "boulder", 0.15, 0.6, true],
 		[L.PEBBLES, 0.03, 0.7, 1.4, 1.0, 1.0, "pebble", 0.0, 1.0, true]],
+	# Moony Meadows: a sea of silvery grass as tall as a person (the "tall" clump is ~0.55-0.95 m,
+	# scaled x2-2.3), bending away from whoever wades through it (FoliageInteraction).
+	125: [[L.TALL_GRASS, 4.5, 2.0, 2.3, 0.7, 0.9, "moon", 0.02, 0.15, true], [L.GRASS, 3.0, 0.35, 0.6, 0.85, 1.3, "grass", 0.02, 0.3, true],
+		[L.DAISY, 0.25, 0.9, 1.3, 1.0, 1.0, "daisy", 0.0, 0.2, true], [L.BOULDER, 0.004, 0.6, 1.4, 0.9, 1.3, "boulder", 0.15, 0.6, true]],
 	38: [[L.REEDS, 2.2, 1.1, 1.8, 0.8, 1.1, "reeds", 0.02, 0.1, true], [L.GRASS, 1.6, 0.35, 0.6, 0.85, 1.3, "grass_mud", 0.02, 0.3, true],
 		[L.IRIS, 0.3, 0.85, 1.2, 1.0, 1.0, "iris", 0.0, 0.1, true], [L.FERN, 0.2, 0.55, 0.9, 0.9, 1.2, "fern", 0.03, 0.3, true]],
 	5: [[L.TUFT, 0.6, 0.2, 0.38, 0.9, 1.3, "frost", 0.01, 0.3, true], [L.HEATHER, 0.06, 0.7, 1.1, 0.9, 1.4, "heather", 0.02, 0.4, false],
