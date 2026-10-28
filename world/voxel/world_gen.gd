@@ -1673,28 +1673,35 @@ func _vein_ore(x: int, y: int, z: int) -> int:
 	var cy := y >> VEIN_SHIFT
 	var cz := z >> VEIN_SHIFT
 	var s := world_seed * 31
-	if _hash01(cx, cy, cz, s + 401) >= VEIN_CHANCE:
+	# Every cell parameter comes from bit fields of three hashes (this runs per rock voxel).
+	var h1 := _hash3(cx, cy, cz, s + 401)
+	if float(h1 & 255) >= VEIN_CHANCE * 256.0:
 		return Blocks.AIR
 	var cell := float(1 << VEIN_SHIFT)
-	var base := Vector3(cx, cy, cz) * cell
-	var a := base + Vector3(2.5 + _hash01(cx, cy, cz, s + 402) * 3.0, 2.5 + _hash01(cx, cy, cz, s + 403) * 3.0,
-			2.5 + _hash01(cx, cy, cz, s + 404) * 3.0)
-	var dir := Vector3(_hash01(cx, cy, cz, s + 405) - 0.5, (_hash01(cx, cy, cz, s + 406) - 0.5) * 0.6,
-			_hash01(cx, cy, cz, s + 407) - 0.5)
+	var a := Vector3(cx * cell + 2.5 + float((h1 >> 8) & 127) / 127.0 * 3.0,
+			cy * cell + 2.5 + float((h1 >> 15) & 127) / 127.0 * 3.0,
+			cz * cell + 2.5 + float((h1 >> 22) & 127) / 127.0 * 3.0)
+	var p := Vector3(x, y, z) + Vector3(0.5, 0.5, 0.5)
+	if p.distance_squared_to(a) > 20.0:  # beyond the longest vein's reach (3 + 1.3 m)
+		return Blocks.AIR
+	var h2 := _hash3(cx, cy, cz, s + 402)
+	var dir := Vector3(float(h2 & 127) / 127.0 - 0.5, (float((h2 >> 7) & 127) / 127.0 - 0.5) * 0.6,
+			float((h2 >> 14) & 127) / 127.0 - 0.5)
 	if dir.length_squared() < 0.0001:
 		dir = Vector3.RIGHT
-	var b := a + dir.normalized() * (1.0 + _hash01(cx, cy, cz, s + 408) * 2.0)
-	a -= dir.normalized() * (0.5 + _hash01(cx, cy, cz, s + 409) * 1.0)
-	var p := Vector3(x, y, z) + Vector3(0.5, 0.5, 0.5)
+	dir = dir.normalized()
+	var b := a + dir * (1.0 + float((h2 >> 21) & 31) / 31.0 * 2.0)
+	a -= dir * (0.5 + float((h2 >> 26) & 31) / 31.0)
+	var h3 := _hash3(cx, cy, cz, s + 403)
 	var ab := b - a
 	var t := clampf((p - a).dot(ab) / ab.length_squared(), 0.0, 1.0)
-	var r := 0.75 + _hash01(cx, cy, cz, s + 410) * 0.55
+	var r := 0.75 + float(h3 & 255) / 255.0 * 0.55
 	if p.distance_squared_to(a + ab * t) > r * r:
 		return Blocks.AIR
 	# Ragged edges: a few blocks of the capsule stay plain rock.
 	if _hash01(x, y, z, s + 411) < 0.2:
 		return Blocks.AIR
-	return _ore_kind(cy * (1 << VEIN_SHIFT) + 4, _hash01(cx, cy, cz, s + 412))
+	return _ore_kind(cy * (1 << VEIN_SHIFT) + 4, float((h3 >> 8) & 0xffff) / 65535.0)
 
 
 ## Which ore a deposit at depth y holds (t: 0..1 roll).
