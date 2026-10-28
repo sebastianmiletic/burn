@@ -111,13 +111,23 @@ const FJORDS := [
 ]
 ## Revision 4 ocean biomes (sea columns only; biome_at() still says OCEAN): HUD names,
 ## map tints, and [depth below the surface, sea-bed relief] blended between the seeds.
-enum Sea { NONE, GREY, SHELF, REEF, SEAGRASS, KELP, FROZEN, VENTS, ABYSS, MAELSTROM }
+## Revision 5 adds DARK, the Dark Ocean: the open water far from any coast, much deeper,
+## near-black, where abyssal things roam (WildSpawner.DARK_WATER).
+enum Sea { NONE, GREY, SHELF, REEF, SEAGRASS, KELP, FROZEN, VENTS, ABYSS, MAELSTROM, DARK }
 const SEA_NAMES := ["", "The Grey Sea", "The Pale Shelf", "The Shimmering Shallows", "The Drowned Meadows",
-		"The Kelpwood Deep", "The Rime Sea", "The Boiling Shoals", "The Abyssal Trench", "The Maelstrom"]
+		"The Kelpwood Deep", "The Rime Sea", "The Boiling Shoals", "The Abyssal Trench", "The Maelstrom", "The Dark Ocean"]
 const SEA_COLORS := [Color(0, 0, 0), Color(0.08, 0.12, 0.16), Color(0.2, 0.32, 0.34), Color(0.16, 0.52, 0.54), Color(0.12, 0.3, 0.26),
-		Color(0.1, 0.22, 0.2), Color(0.42, 0.5, 0.56), Color(0.18, 0.13, 0.12), Color(0.02, 0.04, 0.08), Color(0.06, 0.1, 0.16)]
+		Color(0.1, 0.22, 0.2), Color(0.42, 0.5, 0.56), Color(0.18, 0.13, 0.12), Color(0.02, 0.04, 0.08), Color(0.06, 0.1, 0.16),
+		Color(0.008, 0.012, 0.03)]
 const SEA_SHAPE := [Vector2(26, 3), Vector2(26, 3), Vector2(12, 2), Vector2(5.2, 1.4), Vector2(6.5, 1.0), Vector2(17, 3.5),
-		Vector2(20, 3), Vector2(21, 4), Vector2(30, 3), Vector2(30, 2)]
+		Vector2(20, 3), Vector2(21, 4), Vector2(30, 3), Vector2(30, 2), Vector2(26, 3)]
+## Revision 5 Dark Ocean: open sea this far (m) beyond the coast starts to darken and deepen,
+## fully dark/deep at DARK_FULL; DARK_DEPTH extra metres of water at full darkness.
+const DARK_FROM := 300.0
+const DARK_FULL := 520.0
+const DARK_DEPTH := 26.0
+## Ocean kinds the Dark Ocean never replaces (they keep their own character).
+const DARK_KEEPS := [Sea.ABYSS, Sea.MAELSTROM, Sea.FROZEN, Sea.VENTS]
 const SEA_SEEDS := [
 	[Vector2(250, 3000), Sea.REEF], [Vector2(300, 3750), Sea.REEF], [Vector2(1100, 4380), Sea.REEF], [Vector2(1950, 4250), Sea.REEF], [Vector2(130, 2450), Sea.REEF],
 	[Vector2(2150, 1550), Sea.SEAGRASS], [Vector2(2250, 1950), Sea.SEAGRASS], [Vector2(2450, 3200), Sea.SEAGRASS], [Vector2(2550, 3750), Sea.SEAGRASS],
@@ -611,6 +621,8 @@ func _rows_v3(row: int) -> void:
 			var tr := _trench(p)
 			var md := p.distance_to(MAELSTROM_SITE)
 			var depth := sea.x + tr * 72.0 + 14.0 * (1.0 - smoothstep(60.0, 260.0, md))
+			var dark := _dark_weight(p, s) if revision >= 5 else 0.0
+			depth += DARK_DEPTH * dark * (1.0 - tr)
 			var take := smoothstep(0.85, 1.0, t) * smoothstep(30.0, 130.0, s)
 			ocean = Vector3(lerpf(ocean.x, SEA_LEVEL - depth, take), lerpf(ocean.y, sea.y, take), 0.0)
 			var best_sea := 1e20
@@ -626,6 +638,8 @@ func _rows_v3(row: int) -> void:
 				sea_kind = Sea.MAELSTROM
 			elif sea_kind == Sea.GREY and s < 200.0:
 				sea_kind = Sea.SHELF
+			if dark > 0.5 and not sea_kind in DARK_KEEPS:
+				sea_kind = Sea.DARK
 		base = lerpf(base, ocean.x, t)
 		var amp := lerpf(shape.y, ocean.y, t)
 		var ridge := lerpf(shape.z, ocean.z, t)
@@ -753,6 +767,40 @@ func _trench(p: Vector2) -> float:
 	return best
 
 
+## Revision 5: 0..1 how far into the Dark Ocean a sea point lies (`s` = signed distance
+## beyond the coast). Kept clear of the outer isles, Atlantis and the Maelstrom.
+func _dark_weight(p: Vector2, s: float) -> float:
+	var w := smoothstep(DARK_FROM, DARK_FULL, s)
+	if w <= 0.0:
+		return 0.0
+	for key: String in AdventureTerrain.ISLES:
+		var isle: Array = AdventureTerrain.ISLES[key]
+		var r: float = isle[1]
+		w *= smoothstep(r + 120.0, r + 360.0, p.distance_to(isle[0]))
+	w *= smoothstep(AdventureTerrain.ATLANTIS_R + 60.0, AdventureTerrain.ATLANTIS_R + 260.0, p.distance_to(AdventureTerrain.ATLANTIS))
+	w *= smoothstep(300.0, 520.0, p.distance_to(MAELSTROM_SITE))
+	return w
+
+
+## The kind of ocean at a point (a WorldGen.Sea value; Sea.NONE on land and before
+## revision 4). Revision 5 adds Sea.DARK, the Dark Ocean.
+func ocean_kind_at(x: float, z: float) -> int:
+	return sea_at(x, z)
+
+
+## 0..1: how deep into the Dark Ocean a point is, blurred over ~60 m so the water
+## shader and the fog can fade in (OceanMood). Always 0 before revision 5.
+func dark_ocean_amount(x: float, z: float) -> float:
+	if revision < 5 or _ocean.is_empty():
+		return 0.0
+	var n := 0.0
+	for o: Vector2 in [Vector2.ZERO, Vector2(60, 0), Vector2(-60, 0), Vector2(0, 60), Vector2(0, -60),
+			Vector2(42, 42), Vector2(-42, 42), Vector2(42, -42), Vector2(-42, -42)]:
+		if sea_at(x + o.x, z + o.y) == Sea.DARK:
+			n += 1.0
+	return n / 9.0
+
+
 ## Revision 4: the ocean biome of a sea column (Sea.NONE on land and in older worlds).
 func sea_at(x: float, z: float) -> int:
 	if _ocean.is_empty():
@@ -789,6 +837,12 @@ func _seabed(x: int, z: int, h: float, sk: int) -> float:
 			h += sin(x * 0.6 + z * 0.21 + _vnoise(x, z, 17.0, world_seed + 83) * 7.0) * 0.22
 		Sea.KELP, Sea.FROZEN, Sea.MAELSTROM:
 			h += maxf(0.0, _vnoise(x, z, 5.0, world_seed + 85) - 0.55) * 7.0
+		Sea.DARK:
+			# Revision 5: a black, silent plain broken by lone basalt needles.
+			h += sin(x * 0.11 + _vnoise(x, z, 31.0, world_seed + 97) * 5.0) * 0.4
+			var nd := _vnoise(x, z, 9.0, world_seed + 99)
+			if nd > 0.86:
+				h += (nd - 0.86) / 0.14 * 9.0
 		Sea.VENTS:
 			var cx := floori(x / 22.0)
 			var cz := floori(z / 22.0)
@@ -821,6 +875,8 @@ func _sea_floor(x: int, z: int, h: int, n: float) -> int:
 			return (Blocks.BASALT if n < 0.6 else Blocks.SCORIA) | (Blocks.BASALT << 8)
 		Sea.ABYSS:
 			return (Blocks.SILT if n < 0.7 else Blocks.MUD) | (Blocks.SLATE << 8)
+		Sea.DARK:
+			return (Blocks.MUD if n < 0.55 else (Blocks.BASALT if n < 0.85 else Blocks.OBSIDIAN)) | (Blocks.BASALT << 8)
 	return (Blocks.SILT if n < 0.35 else Blocks.SAND) | (Blocks.SANDSTONE << 8)
 
 

@@ -74,6 +74,15 @@ func _init(kind_name := "leviathan") -> void:
 		k = 0.36
 		body_length = 18.0
 		bones = 16
+	elif variant == "deep_leviathan":
+		# The Dark Ocean's wandering leviathan (an ordinary mob, not the boss): half size.
+		k = 0.5
+		body_length = 25.0
+		bones = 20
+	elif variant == "abyssal_eel":
+		k = 0.15
+		body_length = 7.0
+		bones = 12
 	dissolve_delay = 3.5
 	dissolve_time = 3.0
 	durations["bite"] = 1.6
@@ -95,7 +104,24 @@ func _lod_size() -> float:
 	return 22.0 * k
 
 
+## Mob variants (Enemy animation codes) borrow the boss's moves.
+const MOB_ACTIONS := {"attack": "bite", "lunge": "bite", "throw": "breath", "slam": "swipe"}
+
+
+func play(action: String, duration := -1.0) -> void:
+	if variant in ["deep_leviathan", "abyssal_eel"] and MOB_ACTIONS.has(action):
+		action = MOB_ACTIONS[action]
+		duration = maxf(duration, float(durations.get(action, 0.6)) * (0.6 if variant == "abyssal_eel" else 1.0))
+	super.play(action, duration)
+
+
 func _palette() -> Dictionary:
+	if variant == "deep_leviathan":
+		return {"back": Color(0.03, 0.04, 0.06), "belly": Color(0.2, 0.22, 0.26), "accent": Color(0.01, 0.01, 0.02),
+			"eye": Color(1.0, 0.25, 0.2), "fin": Color(0.08, 0.1, 0.16), "glow": Color(0.45, 0.35, 1.0)}
+	if variant == "abyssal_eel":
+		return {"back": Color(0.04, 0.03, 0.06), "belly": Color(0.16, 0.12, 0.2), "accent": Color(0.01, 0.01, 0.02),
+			"eye": Color(0.9, 0.95, 0.6), "fin": Color(0.1, 0.06, 0.14), "glow": Color(0.75, 0.4, 1.0)}
 	if variant == "sea_serpent":
 		return {"back": Color(0.12, 0.2, 0.14), "belly": Color(0.62, 0.6, 0.42), "accent": Color(0.05, 0.09, 0.07),
 			"eye": Color(1.0, 0.75, 0.25), "fin": Color(0.35, 0.45, 0.3), "glow": Color(0.6, 1.0, 0.5)}

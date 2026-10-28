@@ -62,6 +62,8 @@ global uniform vec3 sky_horizon_color;
 global uniform vec3 sky_horizon_sun_color;
 global uniform vec3 sun_direction;
 global uniform vec3 sun_radiance;
+// Set by OceanMood (revision 5): 0..1 out on the Dark Ocean, where the water goes near-black.
+global uniform float dark_ocean_amount;
 
 varying vec3 v_world;
 varying vec3 v_wnormal;
@@ -427,6 +429,7 @@ void fragment() {
 		// down you see deeper (darker, greener); out of the sky light it is dark.
 		float facing = clamp(dot(n, view_dir_world), 0.0, 1.0);
 		vec3 body = mix(shallow_color, deep_color, facing) * (0.35 + 0.65 * v_sky);
+		body *= 1.0 - 0.8 * dark_ocean_amount;
 		vec3 albedo = body;
 		vec3 emission = vec3(0.0);
 		bool from_above = top && CAMERA_POSITION_WORLD.y > v_world.y - 0.05;
@@ -455,6 +458,7 @@ void fragment() {
 			}
 			float path = thick_r + depth;   // down to the bed and back up for its light
 			vec3 trans = exp(-absorption * path * 0.5);
+			trans *= exp(-vec3(0.35, 0.24, 0.18) * path * dark_ocean_amount);   // the Dark Ocean swallows the light
 			vec3 under = textureLod(refr_tex, uv, clamp(path * 0.15, 0.0, 3.0)).rgb;
 			// Caustics on the bed, fading with depth and out of the sun.
 			float cst = caustic(bed.xz + n.xz * 0.6, t) * caustics * exp(-depth * 0.22) * smoothstep(0.02, 0.6, depth);
@@ -522,6 +526,7 @@ void fragment() {
 			vec3 tr = refract(incident, -nd, 1.0 / 1.33);
 			float cosi = clamp(dot(view_dir_world, nd), 0.0, 1.0);
 			vec3 water_light = scatter_color * (sky_zenith_color * 0.6 + sun_radiance * 0.15) * v_sky;
+			water_light *= 1.0 - 0.85 * dark_ocean_amount;
 			if (dot(tr, tr) < 0.01) {
 				emission = water_light * 0.5;
 			} else {

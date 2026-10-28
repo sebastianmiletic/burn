@@ -29,6 +29,9 @@ func _process(delta: float) -> void:
 	var w := gw()
 	if w == null or w.local_player == null:
 		return
+	var cam := get_viewport().get_camera_3d()
+	OceanMood.update(w.gen_for(w.local_player.dimension), cam.global_position if cam != null else w.local_player.global_position,
+			w.local_player.dimension, delta)
 	_timer -= delta
 	_biome_time += delta
 	if _timer > 0.0:
@@ -141,7 +144,7 @@ static func music_for(w: GameWorld, biome: int, is_underground: bool) -> String:
 			var pos := w.local_player.global_position if w.local_player != null else Vector3.ZERO
 			var g := w.gen_for(dim)
 			var sea := g.sea_at(pos.x, pos.z) if g != null else WorldGen.Sea.NONE
-			if sea in [WorldGen.Sea.ABYSS, WorldGen.Sea.VENTS, WorldGen.Sea.MAELSTROM]:
+			if sea in [WorldGen.Sea.ABYSS, WorldGen.Sea.VENTS, WorldGen.Sea.MAELSTROM, WorldGen.Sea.DARK]:
 				return "biome_deep"
 			if sea == WorldGen.Sea.FROZEN:
 				return "biome_tundra"

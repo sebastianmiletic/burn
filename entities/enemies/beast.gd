@@ -121,7 +121,7 @@ func _swim_steer(target: Vector3, speed: float, delta: float) -> void:
 	if not is_nan(_water_top):
 		var lo := (_water_floor + 0.8) if not is_nan(_water_floor) else _water_top - 6.0
 		var hi := _water_top - (0.9 if kind == "shark" else 1.4)
-		var aim := target.y if _target != null else _water_top - 2.5
+		var aim := target.y if _target != null else _water_top - float(stats.get("idle_depth", 2.5))
 		want = clampf(aim, minf(lo, hi), hi)
 	body.velocity.y = lerpf(body.velocity.y, clampf((want - global_position.y) * 1.5, -3.0, 3.0), 1.0 - exp(-3.0 * delta))
 

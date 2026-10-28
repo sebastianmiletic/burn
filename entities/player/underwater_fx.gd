@@ -19,6 +19,7 @@ uniform float underwater = 0.0;
 uniform float suffocate = 0.0;
 uniform float time_s = 0.0;
 uniform vec3 water_col = vec3(0.07, 0.24, 0.27);
+global uniform float dark_ocean_amount;   // OceanMood: the Dark Ocean's black murk
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
@@ -32,8 +33,8 @@ void fragment() {
 	// Water swallows red first, then everything into a blue-green murk.
 	float lum = dot(col, vec3(0.3, 0.59, 0.11));
 	vec3 absorbed = col * vec3(0.8, 0.95, 1.0);
-	vec3 murk = water_col * (0.55 + 0.5 * lum);
-	vec3 wet = mix(absorbed, murk, 0.08 + 0.12 * r);   // depth murk: DepthEffects
+	vec3 murk = mix(water_col, vec3(0.006, 0.012, 0.024), dark_ocean_amount) * (0.55 + 0.5 * lum);
+	vec3 wet = mix(absorbed, murk, 0.08 + 0.12 * r + 0.5 * dark_ocean_amount);   // depth murk: DepthEffects
 	col = mix(col, wet, underwater);
 	// Out of air: grey, then the dark creeps in from the edges to a full blackout.
 	col = mix(col, vec3(dot(col, vec3(0.3, 0.59, 0.11))), suffocate * 0.7);

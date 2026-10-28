@@ -265,8 +265,9 @@ func _think(delta: float) -> void:
 				return
 			if _state_t <= 0.0:
 				var a := _rng.randf() * TAU
-				_patrol_to = spawn_point + Vector3(cos(a), 0, sin(a)) * _rng.randf_range(3.0, 9.0)
-				_set_state(State.PATROL, 8.0)
+				var roam := float(stats.get("roam", 1.0))  # wanderers (the Dark Ocean's giants) range wider
+				_patrol_to = spawn_point + Vector3(cos(a), 0, sin(a)) * _rng.randf_range(3.0, 9.0) * roam
+				_set_state(State.PATROL, 8.0 * roam)
 		State.PATROL:
 			if _scan(w, aggro):
 				return
