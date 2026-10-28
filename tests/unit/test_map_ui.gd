@@ -112,6 +112,8 @@ func test_place_kinds_and_registration() -> void:
 	check_eq(drew.size(), 1, "registered glyph drawer is used")
 	canvas.free()
 	check(&"test_glyph" in MapIcons.glyphs())
+	# A static registry must not outlive the test's lambda (freed scripts abort at exit).
+	MapIcons._glyphs.erase(&"test_glyph")
 
 
 func test_markers_save_with_the_fog() -> void:
