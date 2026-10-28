@@ -5,7 +5,7 @@ extends TestCase
 
 
 func _lake() -> VoxelWorld:
-	# Stone floor at y = 0, water up to y = 7 (surface drawn at 7.88), air above.
+	# Stone floor at y = 0, water up to y = 7 (surface drawn at 7 + ChunkMesher.WATER_TOP), air above.
 	var vw := VoxelWorld.new()
 	for cz in range(-2, 2):
 		for cy in range(-2, 2):
@@ -27,7 +27,7 @@ func _lake() -> VoxelWorld:
 
 func test_water_surface_and_buoyancy() -> void:
 	var vw := _lake()
-	check_near(Player.water_surface_at(vw, Vector3(0.5, 3.0, 0.5)), 7.88, 0.01, "surface over deep water")
+	check_near(Player.water_surface_at(vw, Vector3(0.5, 3.0, 0.5)), (7.0 + ChunkMesher.WATER_TOP), 0.01, "surface over deep water")
 	check_eq(Player.water_surface_at(vw, Vector3(0.5, 9.0, 0.5)), -INF, "no water above the lake")
 	# A swimming body with the player's treading rule floats up from the bottom
 	# and settles with its eyes above the surface; it never sinks or launches.
@@ -46,13 +46,13 @@ func test_water_surface_and_buoyancy() -> void:
 		body.step(owner, vw, 1.0 / 60.0)
 		top = maxf(top, owner.global_position.y)
 	var eye := owner.global_position.y + 1.62
-	check(eye > 7.88 and eye < 8.3, "treading keeps the eyes just above water (eye %.2f)" % eye)
-	check(top < 7.88 - 1.0, "buoyancy never throws the body out of the water (top %.2f)" % top)
+	check(eye > (7.0 + ChunkMesher.WATER_TOP) and eye < 7.0 + ChunkMesher.WATER_TOP + 0.42, "treading keeps the eyes just above water (eye %.2f)" % eye)
+	check(top < (7.0 + ChunkMesher.WATER_TOP) - 1.0, "buoyancy never throws the body out of the water (top %.2f)" % top)
 	# Not swimming: the old water physics still sink slowly.
 	body.swimming = false
 	for f in 120:
 		body.step(owner, vw, 1.0 / 60.0)
-	check(owner.global_position.y < 7.88 - 1.42, "without swimming the body sinks")
+	check(owner.global_position.y < (7.0 + ChunkMesher.WATER_TOP) - 1.42, "without swimming the body sinks")
 	owner.queue_free()
 	vw.free()
 
