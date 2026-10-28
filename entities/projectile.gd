@@ -15,6 +15,12 @@ const KINDS := {
 	# Creature venom / bile: lobbed globs that splash (Leviathan, spiders, the Bog Hag).
 	"bile": {"gravity": 9.0, "radius": 0.5, "explode": 2.6, "damage_kind": "hit", "life": 6.0, "visual": "bile", "size": 1.2},
 	"venom": {"gravity": 6.0, "radius": 0.3, "explode": 1.2, "damage_kind": "hit", "life": 4.0, "visual": "bile", "size": 0.6},
+	# Player bows, staffs and spells (SpellNet).
+	"arrow_pierce": {"gravity": 9.0, "radius": 0.18, "explode": 0.0, "damage_kind": "hit", "life": 5.0, "visual": "arrow", "size": 1.0, "pierce": 1},
+	"arrow_fire": {"gravity": 9.0, "radius": 0.18, "explode": 0.0, "damage_kind": "fire", "life": 5.0, "visual": "arrow", "size": 1.0},
+	"arcane_bolt": {"gravity": 0.0, "radius": 0.3, "explode": 0.8, "damage_kind": "hit", "life": 3.0, "visual": "arcane", "size": 0.6},
+	"frost_lance": {"gravity": 0.0, "radius": 0.3, "explode": 1.0, "damage_kind": "hit", "life": 4.0, "visual": "frost", "size": 0.8},
+	"meteor": {"gravity": 6.0, "radius": 1.0, "explode": 5.0, "damage_kind": "fire", "life": 6.0, "visual": "fire", "size": 2.4},
 }
 
 var kind := "fireball"
@@ -28,6 +34,7 @@ var _cfg := {}
 var _life := 6.0
 var _done := false
 var _spin: Node3D
+var _pierced := {}
 
 
 func setup(projectile_kind: String, origin: Vector3, vel: Vector3, owner: int, owner_team: int, dim: int, dmg: float) -> Projectile:
@@ -49,7 +56,7 @@ func _ready() -> void:
 	_build_visual()
 	if kind in ["fireball", "player_fireball"]:
 		Audio.play("fireball_cast", global_position, -4.0)
-	elif kind == "arrow":
+	elif kind.begins_with("arrow"):
 		Audio.play("arrow", global_position, -6.0)
 
 
@@ -81,6 +88,12 @@ func _physics_process(delta: float) -> void:
 	for i in steps:
 		var p := from.lerp(to, float(i + 1) / steps)
 		var hit := _entity_hit(p, radius)
+		if hit != null and _pierced.size() < int(_cfg.get("pierce", 0)):
+			# Piercing arrows wound the first thing they meet and fly on.
+			_pierced[hit] = true
+			if _is_server() and GameWorld.instance != null:
+				GameWorld.instance.damage(hit, damage, owner_id, String(_cfg["damage_kind"]))
+			hit = null
 		if hit != null:
 			_impact(p, hit)
 			return
@@ -88,7 +101,7 @@ func _physics_process(delta: float) -> void:
 			_impact(p - velocity.normalized() * 0.2, null)
 			return
 	global_position = to
-	if kind == "arrow" and velocity.length_squared() > 0.01:
+	if (kind.begins_with("arrow") or kind == "frost_lance") and velocity.length_squared() > 0.01:
 		look_at(global_position + velocity, Vector3.UP if absf(velocity.normalized().y) < 0.99 else Vector3.RIGHT)
 	elif _spin != null:
 		_spin.rotate_x(delta * 6.0)
@@ -103,14 +116,25 @@ func _entity_hit(p: Vector3, radius: float) -> Entity:
 	var world := GameWorld.instance
 	if world == null:
 		return null
-	for e: Entity in world.entities_near(p, radius + 4.0, dimension, _target_team()):
-		if e.dead or e.net_id == owner_id:
+	for e: Entity in _candidates(world, p, radius + 4.0):
+		if e.dead or e.net_id == owner_id or _pierced.has(e):
 			continue
 		var c := e.global_position
 		var horiz := Vector2(p.x - c.x, p.z - c.z).length()
 		if horiz <= radius + e.hit_radius and p.y >= c.y - radius and p.y <= c.y + e.hit_height + radius:
 			return e
 	return null
+
+
+## What this projectile can hit: the other team, and in a PvP arena other players too.
+func _candidates(world: GameWorld, p: Vector3, r: float) -> Array[Entity]:
+	if team == Entity.Team.PLAYERS and PvpArena.active():
+		var out: Array[Entity] = []
+		for e: Entity in world.entities_near(p, r, dimension):
+			if e.team == Entity.Team.MONSTERS or e.team == Entity.Team.PLAYERS:
+				out.append(e)
+		return out
+	return world.entities_near(p, r, dimension, _target_team())
 
 
 func _nearest_target(p: Vector3, max_dist: float) -> Entity:
@@ -138,8 +162,8 @@ func _impact(point: Vector3, hit: Entity) -> void:
 		if hit != null:
 			world.damage(hit, damage, owner_id, dkind)
 		if explode > 0.0:
-			for e: Entity in world.entities_near(point, explode + 2.0, dimension, _target_team()):
-				if e == hit or e.dead:
+			for e: Entity in _candidates(world, point, explode + 2.0):
+				if e == hit or e.dead or e.net_id == owner_id:
 					continue
 				var d := e.center().distance_to(point)
 				if d <= explode + e.hit_radius:
@@ -168,6 +192,11 @@ func _play_impact(point: Vector3, explode: float) -> void:
 			_shake(point, 0.6)
 		"arrow":
 			Audio.play("block_hit", point, -8.0, 1.4)
+		"arcane", "frost":
+			var cols := [Color(0.9, 0.8, 1.0), Color(0.55, 0.3, 1.0)] if String(_cfg["visual"]) == "arcane" else [Color(0.9, 0.97, 1.0), Color(0.3, 0.65, 1.0)]
+			ModelKit.burst(parent, point, 30, 0.3, 4.0, 0.35, cols[0], cols[1], 0.5)
+			ModelKit.flash_light(parent, point, cols[1], 3.0, 6.0)
+			Audio.play("fireball_hit", point, -6.0, 1.5)
 		"bile":
 			CreatureFx.play(parent, "venom", point, maxf(0.8, explode * 0.6))
 			Audio.play("splash", point, -2.0, 1.4)
@@ -213,6 +242,25 @@ func _build_visual() -> void:
 			light.light_color = Color(0.4, 0.6, 1.0)
 			light.light_energy = 2.0
 			light.omni_range = 6.0
+			add_child(light)
+		"arcane", "frost":
+			var arcane := String(_cfg["visual"]) == "arcane"
+			var core := MeshInstance3D.new()
+			if arcane:
+				var quad := QuadMesh.new()
+				quad.size = Vector2(0.6, 0.6)
+				core.mesh = quad
+				core.material_override = MaterialLibrary.fx(Color(0.92, 0.85, 1.0), Color(0.55, 0.3, 1.0), 8.0)
+			else:
+				core.mesh = ModelKit.cone(0.09, 1.1, 6)
+				core.rotation_degrees = Vector3(-90, 0, 0)
+				core.material_override = MaterialLibrary.fx(Color(0.92, 0.98, 1.0), Color(0.35, 0.7, 1.0), 5.0)
+			core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(core)
+			var light := OmniLight3D.new()
+			light.light_color = Color(0.6, 0.4, 1.0) if arcane else Color(0.5, 0.8, 1.0)
+			light.light_energy = 1.6
+			light.omni_range = 5.0
 			add_child(light)
 		"bile":
 			var size := float(_cfg["size"])

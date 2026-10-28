@@ -7,7 +7,7 @@ extends Entity
 ## station (Events.station_open), and crafting itself is client-local.
 ## The furnace burns: firelight, flame, sparks, chimney smoke and a crackle.
 
-const KINDS := ["workbench", "furnace", "anvil", "alchemy", "campfire"]
+const KINDS := ["workbench", "furnace", "anvil", "alchemy", "campfire", "cauldron"]
 const CRACKLE_RANGE := 14.0
 
 var station_kind := "workbench"
@@ -32,7 +32,11 @@ func on_spawned(data: Dictionary) -> void:
 	display_name = ItemDB.station_name(station_kind)
 	yaw = float(data.get("yaw", 0.0))
 	rotation.y = yaw
-	_model = StationModels.build(station_kind, true)
+	if station_kind == "cauldron":
+		_model = Node3D.new()
+		ArcanaModels.cauldron(_model, true)
+	else:
+		_model = StationModels.build(station_kind, true)
 	add_child(_model)
 
 
@@ -41,6 +45,10 @@ func interact_prompt(_p: Node) -> String:
 
 
 func local_interact(_p: Node) -> void:
+	if station_kind == "cauldron":
+		Audio.play("potion", global_position, -6.0)
+		BrewingScreen.open_for(self)
+		return
 	Audio.play("chest" if station_kind == "workbench" else ("hit_metal" if station_kind == "anvil" else ("fire" if station_kind == "campfire" else "potion")), global_position, -6.0)
 	Events.station_open.emit(station_kind, self)
 

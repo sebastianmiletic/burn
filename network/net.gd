@@ -511,6 +511,7 @@ func _go_offline() -> void:
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	players = {}
 	lobby_options = DEFAULT_LOBBY_OPTIONS.duplicate()
+	session_info = {}   # a finished session's rules (PvP, respawns) must not leak into the next game
 	runes = PackedInt32Array()
 	_pending_hello.clear()
 	_incoming.clear()
