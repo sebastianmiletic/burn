@@ -54,6 +54,9 @@ var velocity := Vector3.ZERO
 var sprinting := false
 ## In deep water: breaststroke when moving, treading water when still.
 var swimming := false
+## Where the owner wants the hips while swimming (model-local metres above the
+## root; the centre of a swimmer's low hit box). Negative: the default height.
+var swim_hips_height := -1.0
 ## Block id under the feet (dust colour, snow puffs). -1 unknown.
 var ground_block := -1
 ## Optional ground height probe for foot planting: func(world_pos: Vector3) -> float (NAN = unknown).
@@ -801,10 +804,15 @@ func _pose_swim(t: PackedVector3Array) -> void:
 	var cyc := _time * lerpf(2.4, 3.6, mvn)
 	var stroke := sin(cyc)
 	var crawl := smoothstep(2.9, 3.8, _speed * _s)
-	var lie := lerpf(-0.18, -1.45, mvn)
+	# Flat in the water whether moving or still (the swimmer's hit box is low
+	# and level); still, the chest rides a little higher for treading.
+	var lie := lerpf(-1.2, -1.45, mvn) if swim_hips_height >= 0.0 else lerpf(-0.18, -1.45, mvn)
 	_hips_q_override = true
 	_hips_q = Quaternion.IDENTITY.slerp(Quaternion.from_euler(Vector3(lie, 0, 0)), w)
-	_hips_tgt = _hips_tgt.lerp(_rest[R.HIPS] + Vector3(0, -0.05 - 0.25 * mvn, 0.0), w)
+	var hips := _rest[R.HIPS] + Vector3(0, -0.05 - 0.25 * mvn, 0.0)
+	if swim_hips_height >= 0.0:
+		hips = Vector3(_rest[R.HIPS].x, swim_hips_height / _s, _rest[R.HIPS].z)
+	_hips_tgt = _hips_tgt.lerp(hips, w)
 	_ik_target = lerpf(_ik_target, 0.0, w)
 	_ik_w = lerpf(_ik_w, 0.0, w)
 	var kick := sin(cyc * 2.0)

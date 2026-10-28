@@ -172,7 +172,7 @@ func cast(spell: String, power: float) -> bool:
 	Events.ability_cooldown.emit("glyph", float(s["cooldown"]), float(s["cooldown"]))
 	player._start_action("cast", 0.45)
 	var ray := player.camera.aim_ray()
-	var origin: Vector3 = player.global_position + Vector3(0, 1.45, 0) + Vector3(sin(player.yaw), 0, cos(player.yaw)) * 0.8
+	var origin: Vector3 = player.global_position + Vector3(0, player.eye_height() - 0.17, 0) + Vector3(sin(player.yaw), 0, cos(player.yaw)) * 0.8
 	var dir: Vector3 = ray[1]
 	var aim: Vector3 = ray[0] + dir * 60.0
 	var hit := player.voxels().raycast(ray[0], dir, 60.0)
@@ -275,7 +275,7 @@ func weapon_update(delta: float, info: Dictionary) -> bool:
 		_bolt_cd = BOLT_COOLDOWN
 		player._start_action("cast", 0.35)
 		var ray := player.camera.aim_ray()
-		var origin := player.global_position + Vector3(0, 1.5, 0) + Vector3(sin(player.yaw), 0, cos(player.yaw)) * 0.7
+		var origin := player.global_position + Vector3(0, player.eye_height() - 0.12, 0) + Vector3(sin(player.yaw), 0, cos(player.yaw)) * 0.7
 		var aim: Vector3 = ray[0] + ray[1] * 50.0
 		var hit := player.voxels().raycast(ray[0], ray[1], 50.0)
 		if not hit.is_empty():
@@ -299,7 +299,7 @@ func _loose(info: Dictionary, frac: float) -> void:
 	player.inventory.remove(arrow, 1)
 	var ainf := ItemDB.info(arrow)
 	var ray := player.camera.aim_ray()
-	var origin := player.global_position + Vector3(0, 1.5, 0) + Vector3(sin(player.yaw), 0, cos(player.yaw)) * 0.6
+	var origin := player.global_position + Vector3(0, player.eye_height() - 0.12, 0) + Vector3(sin(player.yaw), 0, cos(player.yaw)) * 0.6
 	var aim: Vector3 = ray[0] + ray[1] * 80.0
 	var hit := player.voxels().raycast(ray[0], ray[1], 80.0)
 	if not hit.is_empty():

@@ -80,11 +80,31 @@ const SWIM_VERTICAL := 2.6
 ## Feet this far below the water surface float (chest-deep); treading keeps the eyes just above it.
 const SWIM_DEPTH := 1.2
 const TREAD_DEPTH := 1.42
+## Treading water holds the eyes this far above the surface.
+const TREAD_EYE := 0.2
+## Swimming, the body lies flat: its box shrinks from 1.8 m to a low 0.7 m one
+## round the torso (VoxelBody boxes are axis-aligned and don't turn with the
+## body, so the length is left to the model and a wider hit radius). It fits
+## through 1 m gaps and reaches down to the seabed.
+const STAND_HALF_HEIGHT := 0.9
+const SWIM_HALF_HEIGHT := 0.35
+const STAND_EYE := 1.62
+## Eye above the lying box's bottom (head raised), and towards the head end.
+const SWIM_EYE := 0.6
+const SWIM_EYE_FORWARD := 0.3
+const STAND_HIT_RADIUS := 0.45
+const SWIM_HIT_RADIUS := 0.7
+## Lying down / standing up takes about 0.3 s.
+const LIE_RATE := 3.5
+## Smooth ground a lying body slides up without help (keeps its sides solid in tunnels).
+const SWIM_CLIMB := 0.3
 ## Seconds the head can stay under before blacking out (never shown to the player).
 const BREATH_TIME := 36.0
 ## The last seconds of air: vision closes in from the edges, blurs, sound muffles, the heart pounds.
 const BREATH_FADE := 12.0
 var swimming := false
+## 0 standing .. 1 lying flat (swimming, or stuck low until there is room to stand).
+var lie := 0.0
 var head_under := false
 ## Water surface height above the feet column (-INF when not in water).
 var water_surface := -INF
@@ -103,9 +123,9 @@ var _water_fx: UnderwaterFx
 func _init() -> void:
 	kind = "player"
 	team = Team.PLAYERS
-	hit_radius = 0.45
-	hit_height = 1.8
-	body.half_extents = Vector3(0.32, 0.9, 0.32)
+	hit_radius = STAND_HIT_RADIUS
+	hit_height = STAND_HALF_HEIGHT * 2.0
+	body.half_extents = Vector3(0.32, STAND_HALF_HEIGHT, 0.32)
 	max_health = BASE_HEALTH
 	health = max_health
 
@@ -275,6 +295,7 @@ func _process(delta: float) -> void:
 			Events.notify.emit("You bled out and rise at your shrine.", "warn")
 			request_respawn(true)
 	_water_update(vw)
+	_posture_update(vw, delta)
 	_breath_update(delta)
 	if not dead:
 		_move(delta, vw)
@@ -290,13 +311,19 @@ func _process(delta: float) -> void:
 	_update_light(delta)
 	_animate(delta)
 	camera.move_speed = _move_speed
-	camera.grounded = body.on_floor
+	camera.grounded = body.on_floor and not swimming
+	camera.eye_height = eye_height()
+	camera.eye_forward = lerpf(PlayerCamera.EYE_FORWARD, SWIM_EYE_FORWARD, lie)
+	camera.chest_height = lerpf(1.0, SWIM_HALF_HEIGHT, lie)
+	camera.pivot_height = lerpf(PlayerCamera.PIVOT_HEIGHT, SWIM_EYE + 0.05, lie)
 	camera.follow(vw, global_position + Vector3(0, _visual_offset, 0), delta)
 
 
 func _move(delta: float, vw: VoxelWorld) -> void:
 	var boots: Dictionary = inventory.equipment.get("feet", {})
 	body.climb_step = 1.15 if boots.get("id", "") == "hiking_boots" or creative else VoxelBody.MAX_STEP
+	if lie > 0.5:
+		body.climb_step = SWIM_CLIMB
 	var input := Vector2.ZERO
 	if _input_enabled:
 		input = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
@@ -311,6 +338,8 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 		speed *= 0.6
 	elif _action == "drink":
 		speed *= 0.5
+	# Lying low out of the water (no room to stand yet): crawl.
+	speed *= lerpf(1.0, 0.4, lie)
 	var target_vel := wish * speed
 	if _action == "dodge":
 		target_vel = _dodge_dir * 11.0 * (1.0 - _action_time / 0.5) * (arcana.dash_mult() if arcana != null else 1.0)
@@ -337,7 +366,7 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 		_jump_buffer = 0.0
 	if swimming:
 		pass  # swim() handles up/down
-	elif _input_enabled and _jump_buffer < 0.14 and (body.on_floor or _coyote < 0.12) and body.velocity.y <= 0.5 and body.in_liquid == 0:
+	elif _input_enabled and _jump_buffer < 0.14 and lie < 0.5 and (body.on_floor or _coyote < 0.12) and body.velocity.y <= 0.5 and body.in_liquid == 0:
 		_jump_buffer = 1.0
 		_coyote = 1.0
 		body.velocity.y = JUMP_VELOCITY
@@ -427,15 +456,20 @@ func _water_update(vw: VoxelWorld) -> void:
 	if vw == null:
 		return
 	water_surface = water_surface_at(vw, global_position)
-	var depth := water_surface - global_position.y if water_surface > -INF else 0.0
+	# Depth of the feet of a standing body round the same centre (the lying
+	# box is shorter, so its own bottom says little).
+	var centre := global_position.y + body.half_extents.y
+	var depth := water_surface - (centre - STAND_HALF_HEIGHT) if water_surface > -INF else 0.0
 	var was := swimming
 	if dead:
 		swimming = false
 	elif swimming:
-		swimming = depth > SWIM_DEPTH - 0.35  # hysteresis: wade out on the shallows
+		# Hysteresis: keep swimming until out of the water or over ground
+		# shallow enough to stand on (and with room to stand there).
+		swimming = depth > SWIM_DEPTH - 0.5 and not _can_stand_in_shallows(vw)
 	else:
 		swimming = depth > SWIM_DEPTH and not (body.on_floor and depth < SWIM_DEPTH + 0.25)
-	head_under = water_surface > -INF and global_position.y + 1.56 < water_surface
+	head_under = water_surface > -INF and global_position.y + eye_height() - 0.06 < water_surface
 	if swimming and not was:
 		var impact := -minf(body.velocity.y, _fall_speed)
 		Audio.play("splash_big" if impact > 9.0 else ("splash" if impact > 3.0 else "splash_small"), global_position + Vector3(0, 1.0, 0), -4.0 + minf(impact, 14.0) * 0.3)
@@ -444,33 +478,111 @@ func _water_update(vw: VoxelWorld) -> void:
 			camera.add_trauma(0.12)
 
 
+## Swimming over ground shallow enough to wade (chest-deep at most, under the
+## depth a standing body starts swimming at), with room to stand there.
+func _can_stand_in_shallows(vw: VoxelWorld) -> bool:
+	var p := global_position
+	var floor_y := vw.ground_below(p.x, p.y + 0.1, p.z, STAND_HALF_HEIGHT * 2.0)
+	if floor_y == INF:
+		return false
+	if body.on_floor:
+		floor_y = maxf(floor_y, p.y)
+	if floor_y == -INF or water_surface - floor_y >= SWIM_DEPTH - 0.1:
+		return false
+	return _fits_with_half(vw, Vector3(p.x, floor_y + 0.01, p.z), STAND_HALF_HEIGHT)
+
+
+## Room for the body with a box `half` tall at `pos`: clear by VoxelBody's
+## rules, and (stricter, since this decides whether to grow) with no rock in
+## its head or under the middle of its feet.
+func _fits_with_half(vw: VoxelWorld, pos: Vector3, half: float) -> bool:
+	var old := body.half_extents.y
+	body.half_extents.y = half
+	var ok := body.fits(vw, pos)
+	body.half_extents.y = old
+	if not ok or vw.field(pos + Vector3(0, 0.02, 0)) >= 0.5:
+		return false
+	var h := body.half_extents
+	for o: Vector2 in [Vector2.ZERO, Vector2(h.x, h.z), Vector2(-h.x, h.z), Vector2(h.x, -h.z), Vector2(-h.x, -h.z)]:
+		if vw.field(pos + Vector3(o.x, half * 2.0, o.y)) >= 0.5:
+			return false
+	return true
+
+
+# --- Posture: lying flat to swim ----------------------------------------------------
+
+## Eye height above the body's bottom (standing 1.62 m; lying, the raised head
+## near the top of the low box).
+func eye_height() -> float:
+	return lerpf(STAND_EYE, SWIM_EYE, lie)
+
+
+func _apply_lie(value: float, bottom_y: float) -> void:
+	lie = value
+	body.half_extents.y = lerpf(STAND_HALF_HEIGHT, SWIM_HALF_HEIGHT, value)
+	hit_height = body.half_extents.y * 2.0
+	hit_radius = lerpf(STAND_HIT_RADIUS, SWIM_HIT_RADIUS, value)
+	if bottom_y != global_position.y:
+		global_position.y = bottom_y
+
+
+## Swimming lies the body down (the box shrinks round its centre: always
+## room); out of deep water it stands up again only where the taller box
+## fits (keeping its centre, its feet or its head), never into rock. With no
+## room it stays low and crawls until there is.
+func _posture_update(vw: VoxelWorld, delta: float) -> void:
+	var want := 1.0 if swimming and not dead else 0.0
+	if lie == want:
+		return
+	var next := move_toward(lie, want, delta * LIE_RATE)
+	var half := lerpf(STAND_HALF_HEIGHT, SWIM_HALF_HEIGHT, next)
+	var bottom := global_position.y
+	var centre := bottom + body.half_extents.y
+	if next > lie or vw == null:
+		_apply_lie(next, centre - half)
+		return
+	var top := bottom + body.half_extents.y * 2.0
+	for y: float in [centre - half, bottom, top - half * 2.0]:
+		if _fits_with_half(vw, Vector3(global_position.x, y, global_position.z), half):
+			_apply_lie(next, y)
+			return
+
+
 ## Breaststroke where you look: forward follows the view (pitch included),
 ## jump rises, dodge (Ctrl) dives; with no input the body floats up to tread
 ## water with the eyes just above the surface.
 func _swim(delta: float, input: Vector2, sprint: bool) -> void:
-	var look := Basis(Vector3.UP, camera.yaw) * Basis(Vector3.RIGHT, camera.pitch)
-	var wish := look * Vector3(input.x, 0, input.y)
-	var speed := (SWIM_SPRINT if sprint else SWIM_SPEED) * armour_swim_factor() \
-			* (1.0 + float(ItemDB.info(held_item()).get("swim_speed", 0.0)) + (arcana.swim_bonus() if arcana != null else 0.0))
-	var target := wish * speed
 	var up := 0.0
 	if _input_enabled and Input.is_action_pressed("jump"):
 		up += 1.0
 	if _input_enabled and Input.is_action_pressed("dodge"):
 		up -= 1.0
-	var tread_y := water_surface - TREAD_DEPTH
+	swim_steer(delta, Basis(Vector3.UP, camera.yaw) * Basis(Vector3.RIGHT, camera.pitch), input, up, sprint)
+
+
+## The swimming velocity for one frame: `look` is the view, `input` the move
+## stick (forward is -y), `up` +1 rising / -1 diving.
+func swim_steer(delta: float, look: Basis, input: Vector2, up: float, sprint: bool) -> void:
+	var wish := look * Vector3(input.x, 0, input.y)
+	var speed := (SWIM_SPRINT if sprint else SWIM_SPEED) * armour_swim_factor() \
+			* (1.0 + float(ItemDB.info(held_item()).get("swim_speed", 0.0)) + (arcana.swim_bonus() if arcana != null else 0.0))
+	var target := wish * speed
+	var tread_y := water_surface + TREAD_EYE - eye_height()
 	if up != 0.0:
 		target.y = clampf(target.y + up * SWIM_VERTICAL, -speed, speed)
 		if up > 0.0 and global_position.y > tread_y - 0.05:
 			target.y = minf(target.y, (tread_y + 0.15 - global_position.y) * 4.0 + 0.3)
 	elif absf(wish.y) < 0.25:
 		# Buoyancy: drift up, then hold at treading depth (bobbing gently).
+		# Swimming along under water it only drifts a little, so level
+		# tunnels and the seabed can be followed.
 		var bob := sin(Time.get_ticks_msec() / 1000.0 * 1.7) * 0.04
-		target.y += clampf((tread_y + bob - global_position.y) * 2.2, -1.4, 0.9)
+		var lift := 0.25 if head_under and input.length() > 0.1 else 1.0
+		target.y += clampf((tread_y + bob - global_position.y) * 2.2, -1.4, 0.9) * lift
 	body.velocity = body.velocity.lerp(target, 1.0 - exp(-3.2 * delta))
 	# Out onto a ledge or shore: swimming into a bank at the surface hauls you up.
 	_vault_cd -= delta
-	if body.hit_wall and input.y < -0.3 and _vault_cd <= 0.0 and global_position.y > water_surface - 1.75:
+	if body.hit_wall and input.y < -0.3 and _vault_cd <= 0.0 and global_position.y + eye_height() > water_surface - 0.15:
 		_vault_cd = 0.6
 		body.velocity.y = 6.4
 		Audio.play("splash_small", global_position + Vector3(0, 1.2, 0), -6.0)
@@ -729,7 +841,7 @@ func _block_target() -> Dictionary:
 	var hit := vw.raycast(origin, dir, (0.2 if camera.first_person else camera.distance) + REACH + 1.0)
 	if hit.is_empty():
 		return {}
-	var eye := global_position + Vector3(0, 1.5, 0)
+	var eye := global_position + Vector3(0, eye_height() - 0.12, 0)
 	if (Vector3(hit["pos"]) + Vector3(0.5, 0.5, 0.5)).distance_to(eye) > REACH:
 		return {}
 	return hit
@@ -898,7 +1010,7 @@ func _cast_fireball() -> void:
 	var hit := voxels().raycast(ray[0], ray[1], 60.0)
 	if not hit.is_empty():
 		aim_point = hit["point"]
-	var origin := global_position + Vector3(0, 1.45, 0) + Vector3(sin(yaw), 0, cos(yaw)) * 0.8
+	var origin := global_position + Vector3(0, eye_height() - 0.17, 0) + Vector3(sin(yaw), 0, cos(yaw)) * 0.8
 	var vel := (aim_point - origin).normalized() * 26.0
 	world().replicator.request_projectile("player_fireball", origin, vel, 22.0 + rank * 3.0)
 
@@ -1344,12 +1456,14 @@ func _animate(_delta: float) -> void:
 	if model == null:
 		return
 	model.position.y = _visual_offset
+	if "swim_hips_height" in model:
+		model.set("swim_hips_height", body.half_extents.y + 0.05)
 	if "move_speed" in model:
 		model.set("move_speed", _move_speed)
 	if "grounded" in model:
 		model.set("grounded", body.on_floor if is_local else not _remote_swim)
 	if "swimming" in model:
-		model.set("swimming", swimming if is_local else _remote_swim)
+		model.set("swimming", (swimming or lie > 0.5) if is_local else _remote_swim)
 	if "velocity" in model:
 		model.set("velocity", body.velocity if is_local else _remote_velocity)
 	if "sprinting" in model:
@@ -1392,6 +1506,8 @@ func _process_remote(delta: float) -> void:
 	_remote_velocity = _remote_velocity.lerp((global_position - _prev_remote_pos) / maxf(delta, 0.001), 1.0 - exp(-delta * 10.0))
 	_move_speed = Vector2(_remote_velocity.x, _remote_velocity.z).length()
 	_prev_remote_pos = global_position
+	# Hit box follows the swimming posture the owner reports.
+	_apply_lie(move_toward(lie, 1.0 if _remote_swim else 0.0, delta * LIE_RATE), global_position.y)
 	_update_light(delta)
 	_animate(delta)
 
@@ -1401,7 +1517,7 @@ func _process_remote(delta: float) -> void:
 func to_dict() -> Dictionary:
 	role_xp[role] = xp
 	return {"name": display_name, "pos": global_position, "dim": dimension, "health": health, "xp": xp,
-		"inventory": inventory.to_dict(), "respawn": respawn_point, "respawn_dim": respawn_dimension, "yaw": yaw,
+		"lie": lie, "inventory": inventory.to_dict(), "respawn": respawn_point, "respawn_dim": respawn_dimension, "yaw": yaw,
 		"life": CharacterLife.of(self).to_dict(),
 		"role": role, "role_xp": role_xp.duplicate(), "knowledge": knowledge.duplicate(), "kits_given": kits_given.duplicate()}
 
@@ -1411,6 +1527,8 @@ func load_from(d: Dictionary) -> void:
 		return
 	dimension = int(d.get("dim", 0))
 	global_position = d.get("pos", Vector3.ZERO)
+	# Saved lying in a low tunnel: keep the low box (it stands up when there is room).
+	_apply_lie(clampf(float(d.get("lie", 0.0)), 0.0, 1.0), global_position.y)
 	# Older saves have one XP pool: it becomes the pool of the role they were played as.
 	var saved_role := String(d.get("role", Roles.DEFAULT))
 	role_xp = (d.get("role_xp") as Dictionary).duplicate() if d.get("role_xp") is Dictionary else {}
