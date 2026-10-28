@@ -101,6 +101,7 @@ func _ready() -> void:
 	if play.detail != "":
 		play.custom_minimum_size.y = 68
 	_add_main_button("Online", _show_online)
+	_add_main_button("Achievements", _show_achievements)
 	_add_main_button("Settings", _show_settings)
 	_add_main_button("Credits", _show_credits)
 	_add_main_button("Quit", func() -> void: get_tree().quit())
@@ -274,6 +275,28 @@ func _close_panel() -> void:
 	f.grab_focus()
 
 
+## Warrior / Archer / Mage, chosen before loading (solo too). Kept in the
+## profile (PlayerProfile) and applied when the world loads (GameWorld).
+func _role_picker() -> Control:
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var pick := OptionButton.new()
+	for r: String in Roles.ORDER:
+		pick.add_item("Role: %s (%s)" % [Roles.role_name(r), String(Roles.ROLES[r]["weapon"])])
+	pick.select(maxi(0, Roles.ORDER.find(PlayerProfile.role())))
+	pick.custom_minimum_size = Vector2(320, 34)
+	box.add_child(pick)
+	var hint := UiTheme.label(String(Roles.ROLES[PlayerProfile.role()]["desc"]), UiTheme.SIZE_SMALL, UiTheme.TEXT_DIM)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD
+	hint.custom_minimum_size.x = 320
+	box.add_child(hint)
+	pick.item_selected.connect(func(i: int) -> void:
+		var r: String = Roles.ORDER[clampi(i, 0, Roles.ORDER.size() - 1)]
+		PlayerProfile.set_role(r)
+		hint.text = String(Roles.ROLES[r]["desc"]))
+	return box
+
+
 func _panel_button(text: String, cb: Callable, width := 300.0, size_px := 17) -> MenuOption:
 	var b := MenuOption.new(text.to_upper(), cb, size_px)
 	b.custom_minimum_size = Vector2(width, size_px * 2.4)
@@ -440,6 +463,7 @@ func _select_run(info: Dictionary) -> void:
 		_details.add_child(UiTheme.label("from an earlier version (%s)" % str(info["id"]).replace("_", " "), UiTheme.SIZE_SMALL, UiTheme.TEXT_FAINT))
 	_details.add_child(UiTheme.spacer(8))
 	var id := _selected_id
+	_details.add_child(_role_picker())
 	_play_button = _panel_button("Play", func() -> void: _play_run(id), 320.0, 18)
 	_details.add_child(_play_button)
 	var host := _panel_button("Host for friends", func() -> void: UiContext.game_call("open_lobby_host", [id]), 320.0, 15)
@@ -592,6 +616,23 @@ func _show_settings() -> void:
 		_column.visible = true
 		var f := _return_focus if _return_focus != null and is_instance_valid(_return_focus) else _first_button
 		f.grab_focus())
+
+
+func _show_achievements() -> void:
+	_open_panel("ACHIEVEMENTS", "", 760.0, true)
+	var text := RichTextLabel.new()
+	text.bbcode_enabled = true
+	text.scroll_active = true
+	text.focus_mode = Control.FOCUS_NONE
+	text.custom_minimum_size = Vector2(680, clampf(size.y * 0.5, 240.0, 520.0))
+	text.add_theme_font_size_override("normal_font_size", 15)
+	text.add_theme_font_size_override("bold_font_size", 16)
+	text.add_theme_color_override("default_color", UiTheme.TEXT)
+	text.text = Achievements.menu_bbcode()
+	_panel_box.add_child(text)
+	var back := _back_button()
+	_panel_box.add_child(back)
+	back.grab_focus()
 
 
 func _show_credits() -> void:

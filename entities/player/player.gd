@@ -22,6 +22,14 @@ var respawn_dimension := 0
 var offhand_light := false
 var camera: PlayerCamera
 var model: Node3D
+## Role (Roles), outfit (Skins), XP per role (xp is the current role's pool),
+## books read (knowledge ids) and role kits already handed out. See PlayerArcana.
+var role := Roles.DEFAULT
+var skin := Skins.DEFAULT
+var role_xp := {}
+var knowledge := {}
+var kits_given := {}
+var arcana: PlayerArcana
 
 var _input_enabled := true
 ## Session-only inspection mode. Never inherited by a saved character.
@@ -133,6 +141,9 @@ func _ready() -> void:
 		add_child(look)
 		_highlight = BlockHighlight.new()
 		add_child(_highlight)
+		arcana = PlayerArcana.new()
+		arcana.player = self
+		add_child(arcana)
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		inventory.changed.connect(_on_inventory_changed)
 		_emit_stats()
@@ -142,7 +153,37 @@ func _make_model() -> Node3D:
 	var colour := 0
 	if Net.players.has(peer_id):
 		colour = Net.players.keys().find(peer_id)
+	if not is_local:
+		var look := SpellNet.look_of(peer_id)
+		if not look.is_empty():
+			role = String(look[0])
+			skin = String(look[1])
+	if skin != Skins.DEFAULT and Skins.SKINS.has(skin):
+		return HumanoidModel.new(Skins.style(skin, colour, is_local))
 	return Models.player(colour, is_local)
+
+
+## Role and outfit changed (lobby choice, or a remote player's announcement).
+func set_look(new_role: String, new_skin: String) -> void:
+	if Roles.is_role(new_role):
+		role = new_role
+	if new_skin == skin or not Skins.SKINS.has(new_skin) or model == null:
+		skin = new_skin if Skins.SKINS.has(new_skin) else skin
+		return
+	skin = new_skin
+	var old := model
+	model = _make_model()
+	add_child(model)
+	if model.has_signal("footstep"):
+		_model_steps = true
+		model.connect("footstep", _on_model_footstep)
+	if "terrain_probe" in model:
+		model.set("terrain_probe", func(p: Vector3) -> float: return HumanoidModel.ground_probe(self, p))
+	old.queue_free()
+	_model_call("set_held", [held_item()])
+	_apply_view()
+	if dead:
+		_model_call("set_dead", [true])
 
 
 ## First person hides the head and hood from the inside (you still see your
@@ -170,6 +211,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not is_local or not _input_enabled or dead:
 		return
 	if world().building != null and world().building.handle_input(self, event):
+		return
+	if arcana != null and arcana.handle_input(event):
 		return
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		camera.look((event as InputEventMouseMotion).relative)
@@ -201,10 +244,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_use()
 	elif event.is_action_pressed("interact"):
 		_interact()
-	elif event.is_action_pressed("ability_fire"):
-		_cast_fireball()
-	elif event.is_action_pressed("ability_burst"):
-		_cast_burst()
 	elif event.is_action_pressed("potion"):
 		_drink_best_potion()
 	elif event.is_action_pressed("dodge"):
@@ -265,7 +304,7 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	var wish := cam_basis * Vector3(input.x, 0, input.y)
 	var sprint := _input_enabled and Settings.action_held("sprint") and input.y < 0.0
 	_sprinting = sprint and body.on_floor
-	var speed := SPRINT_SPEED if sprint else WALK_SPEED
+	var speed := (SPRINT_SPEED if sprint else WALK_SPEED) * (arcana.speed_mult() if arcana != null else 1.0)
 	if _action == "attack" or _action == "attack2" or _action == "cast":
 		speed *= 0.45
 	elif _action == "mine":
@@ -274,7 +313,7 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 		speed *= 0.5
 	var target_vel := wish * speed
 	if _action == "dodge":
-		target_vel = _dodge_dir * 11.0 * (1.0 - _action_time / 0.5)
+		target_vel = _dodge_dir * 11.0 * (1.0 - _action_time / 0.5) * (arcana.dash_mult() if arcana != null else 1.0)
 	# Snappy on the ground (quicker to stop than to start), some steering in the air.
 	var accel := (18.0 if target_vel.length() < 0.1 else 13.0) if body.on_floor else 5.0
 	if body.in_liquid == Blocks.WATER:
@@ -307,6 +346,10 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 		Audio.play("jump", global_position, -6.0, randf_range(0.92, 1.08))
 	elif _input_enabled and body.in_liquid != 0 and Input.is_action_pressed("jump"):
 		body.velocity.y = 4.0  # swim up
+	elif arcana != null and _input_enabled and _jump_buffer == 0.0 and not body.on_floor and arcana.try_air_jump():
+		_jump_buffer = 1.0
+	if arcana != null:
+		arcana.movement(delta)
 	var falling := body.velocity.y
 	body.step(self, vw, delta)
 	if body.stepped > 0.0:
@@ -322,7 +365,7 @@ func _move(delta: float, vw: VoxelWorld) -> void:
 	else:
 		if not _was_on_floor and _air_time > 0.12:
 			_land(-_fall_speed, vw)
-		if _fall_speed < -17.0 and body.in_liquid == 0:
+		if _fall_speed < -17.0 and body.in_liquid == 0 and not (arcana != null and arcana.no_fall_damage()):
 			receive_damage((-_fall_speed - 17.0) * 4.5, Vector3.INF, "fall", "the fall")
 		_fall_speed = 0.0
 		_air_time = 0.0
@@ -408,7 +451,7 @@ func _swim(delta: float, input: Vector2, sprint: bool) -> void:
 	var look := Basis(Vector3.UP, camera.yaw) * Basis(Vector3.RIGHT, camera.pitch)
 	var wish := look * Vector3(input.x, 0, input.y)
 	var speed := (SWIM_SPRINT if sprint else SWIM_SPEED) * armour_swim_factor() \
-			* (1.0 + float(ItemDB.info(held_item()).get("swim_speed", 0.0)))
+			* (1.0 + float(ItemDB.info(held_item()).get("swim_speed", 0.0)) + (arcana.swim_bonus() if arcana != null else 0.0))
 	var target := wish * speed
 	var up := 0.0
 	if _input_enabled and Input.is_action_pressed("jump"):
@@ -608,6 +651,8 @@ func _combat_update(delta: float) -> void:
 	var holding := inventory.selected_item()
 	var info := ItemDB.info(holding)
 	var is_tool: bool = info.get("category", "") == "tool"
+	if arcana != null and arcana.weapon_update(delta, info):
+		return
 	if _input_enabled and Settings.action_held("attack") and _action == "":
 		var target := _block_target()
 		if is_tool and not target.is_empty():
@@ -634,8 +679,9 @@ func _resolve_swing(info: Dictionary) -> void:
 	var base := float(a["damage"])
 	var forward := Vector3(sin(yaw), 0, cos(yaw))
 	var hits: Array = []
+	var pvp_hits: Array = []
 	for e in world().entities_near(center(), reach + 1.5, dimension):
-		if e == self or e.team == Team.PLAYERS:
+		if e == self or (e.team == Team.PLAYERS and not PvpArena.active()):
 			continue
 		# Villagers can be struck only on purpose (never by a swing at a monster beside them).
 		if e.team == Team.NEUTRAL and not (e.has_method("can_be_struck") and e.call("can_be_struck")):
@@ -647,7 +693,10 @@ func _resolve_swing(info: Dictionary) -> void:
 			continue
 		if to.length() > 0.5 and forward.dot(to.normalized()) < 0.25:
 			continue
-		hits.append(e.net_id)
+		if e.team == Team.PLAYERS:
+			pvp_hits.append(e.net_id)
+		else:
+			hits.append(e.net_id)
 	if hits.size() > 1:
 		# Fighting monsters next to a villager hits only the monsters.
 		var hostile: Array = []
@@ -657,12 +706,17 @@ func _resolve_swing(info: Dictionary) -> void:
 				hostile.append(id)
 		if not hostile.is_empty():
 			hits = hostile
-	if hits.is_empty():
+	if hits.is_empty() and pvp_hits.is_empty():
 		return
+	inventory.buffs.erase("invisible")   # striking breaks the Veil
 	var crit := randf() < float(a["crit"])
-	var amount := base * (1.0 + rank * 0.06) * (1.75 if crit else 1.0)
+	var mult := arcana.power_mult(String(info.get("kind", ""))) if arcana != null else 1.0 + rank * 0.06
+	var amount := base * mult * (1.75 if crit else 1.0)
 	var kind := "crit" if crit else ("burn_hit" if float(a["burn"]) > 0.0 else "hit")
-	world().request_attack(hits, amount, kind)
+	if not hits.is_empty():
+		world().request_attack(hits, amount, kind)
+	if not pvp_hits.is_empty():
+		SpellNet.request_pvp_hits(self, pvp_hits, amount)
 	Events.hit_stop.emit(0.05 if not crit else 0.09)
 	camera.add_trauma(0.12 if not crit else 0.25)
 
@@ -787,7 +841,9 @@ func _use() -> void:
 		# Items with their own right-click (fishing rods, coffers): items/village_goods.gd.
 		(load(String(info["use_script"])) as Script).call("use", self, id)
 		return
-	if info.has("heal") or info.has("buff"):
+	if arcana != null and arcana.use_item(id):
+		return
+	if info.has("heal") or info.has("buff") or info.has("mana"):
 		use_item_slot(inventory.selected)
 		return
 	if info.has("place_station"):
@@ -863,9 +919,13 @@ func _cast_burst() -> void:
 
 
 func _dodge() -> void:
-	if not _cooldown_ready("dodge") or not body.on_floor:
+	var air := not body.on_floor
+	if not _cooldown_ready("dodge") or (air and not (arcana != null and arcana.can_air_dash())):
 		return
-	_trigger_cooldown("dodge", 0.8)
+	if air:
+		arcana.used_air_dash()
+		body.velocity.y = maxf(body.velocity.y, 1.5)
+	_trigger_cooldown("dodge", 0.6 if arcana != null and arcana.dash_mult() > 1.0 else 0.8)
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var dir := Basis(Vector3.UP, camera.yaw) * Vector3(input.x, 0, input.y)
 	if dir.length() < 0.2:
@@ -898,6 +958,8 @@ func _drink(id: String) -> void:
 	if h > 0.0:
 		heal_local(h)
 		Events.damage_number.emit(center() + Vector3(0, 0.6, 0), int(h), false, "heal")
+	if arcana != null:
+		arcana.on_drink(id)
 	Audio.play("potion", global_position)
 
 
@@ -973,13 +1035,52 @@ func give_item(id: String, count: int) -> void:
 
 
 func give_starting_kit() -> void:
-	inventory.add("sword_rusty", 1)
-	inventory.add("pickaxe_stone", 1)
-	inventory.add("torch", 8)
-	inventory.add("bread", 3)
-	inventory.add("potion_health", 2)
-	inventory.gold = 10
+	var r: Dictionary = Roles.ROLES.get(role, Roles.ROLES[Roles.DEFAULT])
+	for entry: Array in r["kit"]:
+		inventory.add(String(entry[0]), int(entry[1]))
+	inventory.gold = int(r.get("gold", 10))
+	kits_given[role] = true
 	inventory.select(0)
+
+
+## A character entering as a role it never played gets that role's weapon and
+## ammunition once (not the whole starting kit again).
+func give_role_kit_once() -> void:
+	if kits_given.has(role):
+		return
+	kits_given[role] = true
+	for entry: Array in Roles.ROLES.get(role, Roles.ROLES[Roles.DEFAULT])["kit"]:
+		var id := String(entry[0])
+		if id in ["pickaxe_stone", "torch", "bread", "potion_health"] or (int(ItemDB.info(id).get("stack", 1)) == 1 and inventory.has(id)):
+			continue
+		give_item(id, int(entry[1]))
+
+
+## Rank per role (the current role from xp, the others from role_xp).
+func role_ranks() -> Dictionary:
+	var out := {}
+	for r: String in Roles.ORDER:
+		out[r] = ItemDB.rank_for_xp(xp if r == role else int(role_xp.get(r, 0)))
+	return out
+
+
+func _max_health_for(r: int) -> float:
+	return BASE_HEALTH + HEALTH_PER_RANK * r + float(Roles.perks(role, r)["health"])
+
+
+## Switch the played role (lobby choice): XP pools swap, rank and stats follow.
+func set_role(new_role: String) -> void:
+	if not Roles.is_role(new_role):
+		return
+	role_xp[role] = xp
+	role = new_role
+	xp = int(role_xp.get(role, 0))
+	rank = ItemDB.rank_for_xp(xp)
+	max_health = _max_health_for(rank)
+	health = clampf(health, 1.0, max_health)
+	if arcana != null:
+		arcana.on_rank_changed()
+	_emit_stats()
 
 
 func use_item_slot(i: int) -> void:
@@ -987,7 +1088,9 @@ func use_item_slot(i: int) -> void:
 	if s.is_empty():
 		return
 	var info := ItemDB.info(s["id"])
-	if info.has("heal") or info.has("buff"):
+	if arcana != null and arcana.use_item(String(s["id"])):
+		return
+	if info.has("heal") or info.has("buff") or info.has("mana"):
 		if not _cooldown_ready("potion"):
 			return
 		inventory.remove_from_slot(i, 1)
@@ -1024,6 +1127,7 @@ func craft(recipe_id: String) -> bool:
 		return false
 	Events.item_picked_up.emit(String(res["item"]), int(res["count"]))
 	Audio.play_ui("levelup")
+	Achievements.progress("crafted")
 	if is_local and world() != null:
 		world().quests.on_event("craft", String(res["item"]), int(res["count"]))
 	return true
@@ -1066,6 +1170,8 @@ func receive_damage(amount: float, from: Vector3, kind: String, source_name: Str
 	if now < invulnerable_until:
 		return
 	amount *= inventory.damage_taken_multiplier(kind) * Game.damage_taken_scale()
+	if health - amount <= 0.0 and arcana != null and arcana.try_undying():
+		amount = maxf(0.0, health - 1.0)
 	health = maxf(0.0, health - amount)
 	_last_damage_time = now
 	Events.damage_number.emit(center() + Vector3(0, 0.7, 0), int(round(amount)), false, "player")
@@ -1093,7 +1199,11 @@ func heal_local(amount: float) -> void:
 func _die(cause: String) -> void:
 	if dead:
 		return
-	if Net.is_online():
+	if arcana != null:
+		arcana.cancel_draw()
+	if PvpArena.active():
+		pass  # the arena brings you back itself (PvpArena)
+	elif Net.is_online():
 		if bool(Net.option("shrine_respawn", false)):
 			# Shrine respawns on: rise at your shrine on your own after a moment.
 			get_tree().create_timer(4.0).timeout.connect(func() -> void:
@@ -1192,11 +1302,16 @@ func add_xp(amount: int) -> void:
 	var new_rank := ItemDB.rank_for_xp(xp)
 	if new_rank > rank:
 		rank = new_rank
-		max_health = BASE_HEALTH + HEALTH_PER_RANK * rank
+		max_health = _max_health_for(rank)
 		health = max_health
 		Events.rank_up.emit(rank, ItemDB.RANK_TITLES[rank])
-		Events.notify.emit("Rank up: %s" % ItemDB.RANK_TITLES[rank], "rank")
+		Events.notify.emit("Rank up: %s %s. %s" % [Roles.role_name(role), ItemDB.RANK_TITLES[rank],
+			String((Roles.PATH[role][rank] as Dictionary).get("note", ""))], "rank")
 		Audio.play_ui("levelup")
+		if arcana != null:
+			arcana.on_rank_changed()
+		if is_local:
+			SpellNet.on_local_rank(self)
 	_emit_stats()
 
 
@@ -1284,9 +1399,11 @@ func _process_remote(delta: float) -> void:
 # --- Save ---------------------------------------------------------------------------------------------------
 
 func to_dict() -> Dictionary:
+	role_xp[role] = xp
 	return {"name": display_name, "pos": global_position, "dim": dimension, "health": health, "xp": xp,
 		"inventory": inventory.to_dict(), "respawn": respawn_point, "respawn_dim": respawn_dimension, "yaw": yaw,
-		"life": CharacterLife.of(self).to_dict()}
+		"life": CharacterLife.of(self).to_dict(),
+		"role": role, "role_xp": role_xp.duplicate(), "knowledge": knowledge.duplicate(), "kits_given": kits_given.duplicate()}
 
 
 func load_from(d: Dictionary) -> void:
@@ -1294,9 +1411,17 @@ func load_from(d: Dictionary) -> void:
 		return
 	dimension = int(d.get("dim", 0))
 	global_position = d.get("pos", Vector3.ZERO)
-	xp = int(d.get("xp", 0))
+	# Older saves have one XP pool: it becomes the pool of the role they were played as.
+	var saved_role := String(d.get("role", Roles.DEFAULT))
+	role_xp = (d.get("role_xp") as Dictionary).duplicate() if d.get("role_xp") is Dictionary else {}
+	if not role_xp.has(saved_role):
+		role_xp[saved_role] = int(d.get("xp", 0))
+	knowledge = (d.get("knowledge") as Dictionary).duplicate() if d.get("knowledge") is Dictionary else {}
+	kits_given = (d.get("kits_given") as Dictionary).duplicate() if d.get("kits_given") is Dictionary else {saved_role: true}
+	role = saved_role if Roles.is_role(saved_role) else Roles.DEFAULT
+	xp = int(role_xp.get(role, 0))
 	rank = ItemDB.rank_for_xp(xp)
-	max_health = BASE_HEALTH + HEALTH_PER_RANK * rank
+	max_health = _max_health_for(rank)
 	health = clampf(float(d.get("health", max_health)), 1.0, max_health)
 	inventory.from_dict(d.get("inventory", {}))
 	respawn_point = d.get("respawn", Vector3.ZERO)

@@ -159,6 +159,7 @@ func test_new_items_have_models_and_recipes() -> void:
 		if not inf.has("model_script"):
 			continue
 		var root := Node3D.new()
+		# Each item names its own builder (activity items, arcana items...), as HeldItems does.
 		var builder: Script = load(String(inf["model_script"]))
 		check(builder != null and bool(builder.call("build", root, id)), id + " has a bespoke model (not the cube fallback)")
 		check(root.get_child_count() > 0, id + " model has parts")

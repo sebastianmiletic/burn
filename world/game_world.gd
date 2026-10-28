@@ -125,6 +125,10 @@ func setup(info: Dictionary) -> void:
 	add_child(MapShare.new())   # party map markers (same node path on every peer)
 	# Pets, wild tameables and fishing lines (world/village_life/): same node path on every peer.
 	add_child(VillageLife.new())
+	# Roles, drawn-glyph spells, achievements, PvP arena (same node path on every peer).
+	var spell_net := SpellNet.new()
+	spell_net.name = "SpellNet"
+	add_child(spell_net)
 
 	var save: Dictionary = info.get("save", {})
 	_load_world_state(save)
@@ -140,6 +144,8 @@ func setup(info: Dictionary) -> void:
 	quests.completed_quest.connect(_on_quest_completed)
 	_add_entity(local_player)
 	local_player.load_from(save.get("player", {}))
+	# The role picked on the menu (PlayerProfile), or the one a PvP category forces.
+	local_player.set_role(PvpArena.forced_role(PlayerProfile.role()))
 	if not worlds.has(local_player.dimension) or (local_player.dimension == 2 and not ryft_unlocked):
 		local_player.dimension = 0
 		local_player.global_position = default_spawn(0)
@@ -164,6 +170,8 @@ func setup(info: Dictionary) -> void:
 	if pdata.is_empty():
 		local_player.give_starting_kit()
 		quests.accept("kindling")
+	else:
+		local_player.give_role_kit_once()
 	quests.start_guide()
 	if quests.is_completed("throne") and not quests.is_completed("ryft"):
 		quests.accept("ryft")
@@ -468,7 +476,7 @@ func nearest_player(pos: Vector3, dim: int, max_dist: float) -> Player:
 	var best: Player = null
 	var best_d := max_dist * max_dist
 	for p in players_in(dim):
-		if p.dead:
+		if p.dead or p.inventory.buff_active("invisible"):   # the Veil glyph (PlayerArcana)
 			continue
 		var d := p.global_position.distance_squared_to(pos)
 		if d < best_d:

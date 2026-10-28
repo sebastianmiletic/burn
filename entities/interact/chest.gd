@@ -74,7 +74,10 @@ func fill_loot(peer: int) -> Array:
 	w.opened_chests[chest_key] = true
 	opened = true
 	var i := 0
-	for entry: Array in LOOT.get(tier, LOOT[1]):
+	# Plus books (spells, potions, crafting), arrows and mana potions (ArcanaItems).
+	for entry: Array in LOOT.get(tier, LOOT[1]) + ArcanaItems.CHEST_LOOT.get(tier, []):
+		if i >= SLOTS:
+			break
 		if randf() < float(entry[1]):
 			slots[i] = {"id": String(entry[0]), "count": randi_range(int(entry[2]), int(entry[3]))}
 			i += 3 if i < 18 else 1
