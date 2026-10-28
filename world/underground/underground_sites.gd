@@ -19,9 +19,8 @@ const EVERBLOOM_FLOOR := -60.0
 const EVERBLOOM_RADII := Vector3(60, 30, 60)
 const CITY_FLOOR := -56.0
 const CITY_RADII := Vector3(74, 34, 74)
-## Hearthold needs UndergroundCity (layout, blueprints) and the ug_stonekin entity, neither
-## written yet: the city is not planned until they exist.
-const ENABLE_CITY := false
+## Hearthold (UndergroundCity). The Stonekin are ordinary villager NPCs until they get their own entity.
+const ENABLE_CITY := true
 
 
 static func plan(ctx: UndergroundPlan.Ctx) -> void:
@@ -163,8 +162,7 @@ static func _hearthold(ctx: UndergroundPlan.Ctx, cell: Vector2i) -> void:
 	# Level streets: three overlapping rounded rooms; their corners leave carved bays in the walls.
 	for k in 3:
 		ctx.net.set_scheme(ctx.net.add_room(f, 50.0, 50.0, 9.0, k * PI / 6.0), CaveBiomes.Kind.CITY)
-	var city: Variant = load("res://world/underground/underground_city.gd")
-	var layout: Dictionary = city.layout(gen.world_seed)
+	var layout := UndergroundCity.layout(gen.world_seed)
 	var gates: Array = layout["gates"]
 	# The rune-marked cleft from the surface ends at the first gate; the deep road at the second.
 	var g0: Dictionary = gates[0]
@@ -180,10 +178,10 @@ static func _hearthold(ctx: UndergroundPlan.Ctx, cell: Vector2i) -> void:
 	loc.dimension = 0
 	var fc := Vector3i(roundi(f.x), roundi(f.y), roundi(f.z))
 	loc.blueprints.append(_blueprint_disc(fc, 64, [Blocks.STONE, Blocks.STONE, Blocks.GRANITE, Blocks.GRANITE]))
-	loc.blueprints.append_array(city.blueprints(layout, fc))
+	loc.blueprints.append_array(UndergroundCity.blueprints(layout, fc))
 	for i in (layout["npcs"] as Array).size():
 		var npc: Dictionary = layout["npcs"][i]
-		loc.add_spawn("entity", f + (npc["pos"] as Vector3) + Vector3(0, 0.05, 0), {"kind": "ug_stonekin",
+		loc.add_spawn("entity", f + (npc["pos"] as Vector3) + Vector3(0, 0.05, 0), {"kind": "npc",
 				"data": {"role": npc["role"], "village": String(CITY_ID), "seed": gen.world_seed * 31 + i * 7919, "yaw": float(npc.get("yaw", 0.0))}})
 	loc.add_spawn("shrine", f + Vector3(0, 0.05, 13.5))
 	loc.set_meta(&"city", {"layout": layout, "mouth": mouth, "floor": f.y})

@@ -100,3 +100,28 @@ func test_everbloom_dies_to_any_wound_and_collapse_stays_inside() -> void:
 		check(Vector2(p.x - c.x, p.z - c.z).length() <= 45.0 + 0.01 and p.y > -60.0 and p.y < -57.0, "rubble lands on the cavern floor")
 	a.free()
 	b.free()
+
+
+func test_hearthold_city() -> void:
+	var city := UndergroundCity.layout(99)
+	check_eq(city, UndergroundCity.layout(99), "the city layout is deterministic")
+	check((city["houses"] as Array).size() >= 12, "the city has many houses")
+	check_eq((city["gates"] as Array).size(), 2, "two gates")
+	var bps := UndergroundCity.blueprints(city, Vector3i(0, -56, 0))
+	check(bps.size() == (city["houses"] as Array).size() + 2, "a blueprint per house, the Heartcrystal and the forge")
+	var g := WorldGen.new(WorldGen.Dimension.OVERWORLD, 1234, 5)
+	g.prepare()
+	var loc: Location = null
+	for l in g.locations:
+		if l.id == UndergroundSites.CITY_ID:
+			loc = l
+	check(loc != null, "a revision 5 world has Hearthold")
+	if loc == null:
+		return
+	check(loc.center.y < -40.0, "Hearthold is deep underground")
+	check(loc.spawns_of("entity").size() >= 6, "Hearthold has people")
+	check_eq(g.cave_name_at(loc.center + Vector3(0, 6, 0)), "Hearthold", "the city is named")
+	var p := Vector3i(roundi(loc.center.x), roundi(loc.center.y) + 4, roundi(loc.center.z))
+	var chunk := g.generate(Chunk.key_of(p))[0] as PackedByteArray
+	var l := p - Chunk.key_of(p) * Chunk.SIZE
+	check_eq(int(chunk[Chunk.index(l.x, l.y, l.z)]), Blocks.AMETHYST, "the Heartcrystal stands in the middle")
