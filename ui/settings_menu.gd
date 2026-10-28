@@ -446,14 +446,14 @@ func _fill_graphics(p: VBoxContainer) -> void:
 
 	_heading(p, "Resolution and anti-aliasing")
 	_option_values(p, "graphics", "upscaler", "Upscaler", UiContext.settings_const("UPSCALER_NAMES"), [0, 1, 2, 3, 4, 5],
-			"How the 3D image is scaled up to the window. Automatic: MetalFX spatial on Mac, FSR 1 elsewhere (cheap). Temporal upscalers (FSR 2, MetalFX temporal) look cleaner but cost 2-15 ms more per frame on this class of GPU.")
+			"How the 3D image is scaled up to the window when 3D resolution is below 100%. Automatic: AMD FSR 1 with sharpening (well under 1 ms). MetalFX spatial has no sharpening and looks softer. Temporal upscalers (FSR 2, MetalFX temporal) also anti-alias but cost 2-15 ms more per frame on this class of GPU.")
 	var scale_names: Array = ["Follow preset", "50%", "62%", "75%", "85%", "100%"]
 	_option_values(p, "graphics", "render_scale", "3D resolution", scale_names, RENDER_SCALES,
-			"Resolution the 3D scene renders at before upscaling. GPU cost grows with the pixel count: 100% costs about twice 70%. The UI is always native.")
-	_check(p, "graphics", "adaptive_resolution", "Adaptive resolution", "With 3D resolution on Follow preset, lowers the 3D resolution when the GPU cannot hold 60 FPS. No cost; does not help when the CPU is the limit.")
-	_slider(p, "graphics", "sharpness", "Sharpness", 0.0, 1.0, 0.05, "%d%%", 100.0, "Sharpening applied by the FSR / MetalFX upscaler. Free; no effect at native resolution.")
-	_gfx_option(p, "antialiasing", "Anti-aliasing", ["Off", "FXAA", "TAA", "MSAA 2x", "MSAA 4x"],
-			"Smooths jagged edges. FXAA: almost free, slightly soft. TAA: about 1 ms, the steadiest grass and foliage, can ghost. MSAA: geometry edges only, 2-6 ms. Ignored when a temporal upscaler is on.")
+			"Resolution the 3D scene renders at, as a share of your screen's native pixels (100% = native, also on Retina / HiDPI screens). Follow preset: High aims at about 2.2 million pixels (native on 1080p, ~64% on a MacBook), Ultra at about 4 million. GPU cost grows with the pixel count: 100% costs about twice 70%. The UI is always native.")
+	_check(p, "graphics", "adaptive_resolution", "Adaptive resolution", "With 3D resolution on Follow preset, lowers the 3D resolution when the GPU cannot hold 60 FPS, never below 75% of the preset's on High (60% on Low). No cost; does not help when the CPU is the limit.")
+	_slider(p, "graphics", "sharpness", "Sharpness", 0.0, 1.0, 0.05, "%d%%", 100.0, "Sharpening (AMD RCAS) after upscaling, and after TAA at native resolution with the Automatic upscaler. Free. MetalFX has no sharpening.")
+	_gfx_option(p, "antialiasing", "Anti-aliasing", ["Off", "FXAA", "TAA", "MSAA 2x", "MSAA 4x", "SMAA"],
+			"Smooths jagged edges. FXAA: almost free, soft. SMAA: about 0.5 ms, sharper than FXAA (Medium). TAA: about 1 ms, the steadiest grass and foliage, slightly soft (sharpened back), can ghost behind fast particles (High, Ultra). MSAA: geometry edges only, 2-6 ms. Ignored when a temporal upscaler is on.")
 
 	_heading(p, "Lighting")
 	_gfx_option(p, "shadows", "Shadows", ["Off", "Low", "Medium", "High", "Ultra"],
@@ -486,7 +486,7 @@ func _fill_graphics(p: VBoxContainer) -> void:
 	_slider(p, "graphics", "fov", "Field of view", 55, 100, 1, "%d°", 1.0, "How wide the camera sees. Wider shows more of the world at once: slightly more to draw.")
 	_slider(p, "graphics", "motion_blur", "Motion blur", 0.0, 1.0, 0.05, "%d%%", 100.0, "Blurs the image while the camera turns. Off by default. About 0.5-1 ms when on.")
 	_check(p, "graphics", "depth_of_field", "Depth of field", "Softens the far distance like a camera lens. About 1-2 ms.")
-	_check(p, "graphics", "altitude_blur", "Mountain distance blur", "Softens distant scenery as altitude increases. About 1 ms when it applies. Turn off for a clearer view.")
+	_check(p, "graphics", "altitude_blur", "Mountain distance blur", "Softens distant scenery as altitude increases (a gentle depth-of-field look). Off by default for a clear view. About 1 ms when it applies.")
 
 	_heading(p, "Image")
 	_slider(p, "graphics", "brightness", "Brightness", 0.5, 1.5, 0.01, "%d%%", 100.0, "Overall brightness of the image. Use Calibrate to set it for your display. Free.")

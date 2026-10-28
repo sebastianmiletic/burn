@@ -51,9 +51,13 @@ void fragment() {
 	vec4 tex = texture(albedo_tex, UV);
 	// Keep coverage stable in the mips (averaged alpha shrinks leaves at a distance).
 	float mip = max(textureQueryLod(albedo_tex, UV).x, 0.0);
-	if (tex.a * (1.0 + mip * 0.22) < alpha_cut) {
-		discard;
-	}
+	// Alpha scissor with alpha-to-coverage edges: identical to a discard
+	// without MSAA, smooth leaf outlines when the player picks MSAA
+	// (docs/ANTI_ALIASING.md). Stays in the opaque pass.
+	ALPHA = tex.a * (1.0 + mip * 0.22);
+	ALPHA_SCISSOR_THRESHOLD = alpha_cut;
+	ALPHA_ANTIALIASING_EDGE = 0.25;
+	ALPHA_TEXTURE_COORDINATE = UV * vec2(textureSize(albedo_tex, 0));
 	vec3 col = tex.rgb * v_tint;
 	col *= mix(0.8, 1.0, COLOR.a);
 	col = fl_wet_albedo(col, 0.35);
