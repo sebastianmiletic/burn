@@ -110,8 +110,9 @@ func test_no_tree_stands_in_water() -> void:
 
 
 func test_sea_lairs_are_planned_with_reachable_decks() -> void:
+	# Revision 4 (revision 5 moves the Kraken to Atlantis; test_adventures covers it).
 	for seed_value: int in [4321, 77]:
-		var g := gen(WorldGen.LATEST_REVISION, seed_value)
+		var g := gen(4, seed_value)
 		var found := {}
 		for loc in g.locations:
 			for s in loc.spawns_of("boss"):

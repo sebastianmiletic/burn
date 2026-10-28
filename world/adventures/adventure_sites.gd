@@ -272,6 +272,10 @@ static func _atlantis(planner: LocationPlanner, rng: RandomNumberGenerator) -> A
 	throne.half_height = 26.0
 	throne.major = true
 	throne.set_meta(&"map_kind", "atlantis")
+	# The Kraken's arena (SeaArenas.kraken): wrecks it dragged down, laid round the moon
+	# pool on the dome's solid floor (the planks sit at floor level: no collision cells).
+	throne.props.append({"type": "arena", "material": "arena", "arena": "kraken_lair", "center": c3, "radius": 60.0, "seed": rng.randi(),
+			"pool": pool, "deck": 18.0, "sectors": SeaLairs._sectors(rng, 6, 0.32), "masts": [], "rocks": [], "coast": Vector3(g.x, 0, g.y)})
 	throne.add_spawn("boss", c3, {"kind": "kraken"})
 	return [atl, throne]
 
@@ -428,7 +432,7 @@ static func _scumport(planner: LocationPlanner, rng: RandomNumberGenerator) -> A
 	SitePlan.ruin(cove)
 	for i in 4:
 		var a := TAU * i / 4.0 + 0.4
-		cove.add_spawn("enemy", Vector3(east.x + cos(a) * 7.0, cy + 1, east.y + sin(a) * 7.0), {"kind": "adv_cutthroat"})
+		cove.add_spawn("enemy", Vector3(east.x + cos(a) * 7.0, cy + 1, east.y + sin(a) * 7.0), {"kind": "archer"})  # TODO: a human cutthroat enemy kind
 	cove.add_spawn("chest", Vector3(east.x + 0.5, cy + 1, east.y + 0.5), {"tier": 2})
 	return [loc, cove]
 
@@ -447,7 +451,7 @@ static func _stormbreak(planner: LocationPlanner, rng: RandomNumberGenerator) ->
 	Structures.tower(loc, rng)
 	loc.add_spawn("enemy", loc.center + Vector3(9, 1, 4), {"kind": "drowned"})
 	loc.add_spawn("enemy", loc.center + Vector3(-7, 1, 8), {"kind": "drowned"})
-	loc.add_spawn("enemy", loc.center + Vector3(5, 1, -9), {"kind": "adv_cutthroat"})
+	loc.add_spawn("enemy", loc.center + Vector3(5, 1, -9), {"kind": "archer"})  # TODO: a human cutthroat enemy kind
 	loc.props.append({"type": "builder", "builder": Callable(AdventureArch, "stormbreak"), "at": loc.center, "seed": rng.randi()})
 	loc.set_meta(&"adv", {"cache": loc.center + Vector3(2.5, 1.0, 2.5), "storm": true})
 	return loc

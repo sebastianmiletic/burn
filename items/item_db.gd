@@ -117,6 +117,7 @@ const BASE := {
 	"emberwood": {"name": "Emberwood", "category": "material", "glyph": "=", "color": Color(0.7, 0.28, 0.12), "stack": 99, "value": 6, "rarity": 3, "desc": "Heat-hardened timber. Requires a steel axe or better."},
 	"ryftwood": {"name": "Ryftwood", "category": "material", "glyph": "=", "color": Color(0.55, 0.4, 0.8), "stack": 99, "value": 9, "rarity": 4, "desc": "Timber from the floating isles. Requires a mithril axe or better."},
 	"sword_gatebreaker": {"name": "Gatebreaker", "category": "weapon", "kind": "sword", "glyph": "/", "color": Color(0.8, 0.42, 0.22), "damage": 62.0, "speed": 0.85, "reach": 3.3, "burn": 8.0, "stack": 1, "value": 0, "rarity": 4, "tier": "infernal", "heavy": true, "desc": "Hades' one-time reward. Powerful, heavy and bound: merchants will not buy it."},
+	"sword_emberheart": {"name": "Emberheart", "category": "weapon", "kind": "sword", "glyph": "/", "color": Color(1.0, 0.36, 0.12), "damage": 72.0, "speed": 1.1, "reach": 3.3, "burn": 12.0, "stack": 1, "value": 0, "rarity": 4, "tier": "infernal", "desc": "Drawn from the altar of Mount Pyrrhos as the mountain woke. Overwhelming, and bound: merchants will not buy it."},
 	# Legacy and unique gear ---------------------------------------------------
 	"sword_rusty": {"name": "Rusty Sword", "category": "weapon", "kind": "sword", "glyph": "/", "color": Color(0.62, 0.45, 0.35),
 		"damage": 9.0, "speed": 1.0, "reach": 2.6, "stack": 1, "value": 5, "rarity": 0, "tier": "stone",
