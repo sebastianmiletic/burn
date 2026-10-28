@@ -46,6 +46,11 @@ const RESIST := {
 	"shark": {"hit": 0.1, "fire": 0.5},
 	"sea_serpent": {"hit": 0.15, "fire": 0.5},
 	"drowned": {"hit": 0.0, "fire": 0.2},
+	# Dark Ocean wanderers (not the bosses).
+	"abyssal_kraken": {"hit": 0.15, "fire": 0.7},
+	"deep_leviathan": {"hit": 0.15, "fire": 0.7},
+	"anglerfish": {"hit": 0.05, "fire": 0.5},
+	"abyssal_eel": {"hit": 0.0, "fire": 0.5},
 	"player": {"hit": 0.0, "fire": 0.0},
 }
 

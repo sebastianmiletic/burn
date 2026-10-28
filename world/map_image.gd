@@ -250,7 +250,10 @@ static func _regions(gen: WorldGen, img: Image, heights: PackedFloat32Array, sea
 			name = gen.region_name(pos.x, pos.y)
 		if name == "":
 			continue
-		found.append([name, pos, area, is_sea, WorldGen.Biome.OCEAN if is_sea else k / 16])
+		var sym := WorldGen.Biome.OCEAN if is_sea else k / 16
+		if is_sea and k - 4096 == WorldGen.Sea.DARK:
+			sym = MapIcons.DARK_OCEAN  # revision 5: its own legend mark
+		found.append([name, pos, area, is_sea, sym])
 	# One label per name unless the areas lie far apart; biggest first.
 	found.sort_custom(func(a: Array, b: Array) -> bool: return a[2] > b[2])
 	var out: Array = []

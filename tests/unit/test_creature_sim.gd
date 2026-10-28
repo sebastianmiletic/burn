@@ -8,7 +8,8 @@ extends TestCase
 const MODEL_KINDS := ["leviathan", "kraken", "charybdis", "sea_serpent", "broodmother", "giant_spider", "spiderling", "scorpion",
 	"wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "deer", "stag", "rabbit", "goat", "boar", "bog_lurker",
 	"cave_bat", "bird_flock", "crow_flock", "gull_flock", "fish_school", "bat_swarm", "rock_golem", "fire_elemental",
-	"cave_crawler", "shark", "drowned", "bog_hag", "skeleton", "archer", "ghoul", "troll"]
+	"cave_crawler", "shark", "drowned", "bog_hag", "skeleton", "archer", "ghoul", "troll",
+	"abyssal_kraken", "deep_leviathan", "anglerfish", "abyssal_eel"]
 const BEASTS := ["wolf", "dire_wolf", "frost_wolf", "hellhound", "bear", "giant_spider", "spiderling", "cave_bat",
 	"cave_crawler", "rock_golem", "scorpion", "fire_elemental", "bog_lurker", "shark", "sea_serpent", "drowned"]
 

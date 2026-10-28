@@ -83,10 +83,14 @@ static func create_mob(kind: String, seed_value: int) -> CreatureModel:
 			return DragonModel.new()
 		"cerberus":
 			return CerberusModel.new()
-		"leviathan", "sea_serpent":
+		"leviathan", "sea_serpent", "deep_leviathan", "abyssal_eel":
 			return LeviathanModel.new(kind)
 		"kraken":
 			return KrakenModel.new()
+		"abyssal_kraken":
+			return KrakenModel.new(0.34)  # the Dark Ocean's roaming kraken, a third of the boss
+		"anglerfish":
+			return _anglerfish(seed_value)
 		"charybdis":
 			return CharybdisModel.new()
 		"broodmother":
@@ -110,6 +114,18 @@ static func create_mob(kind: String, seed_value: int) -> CreatureModel:
 	if kind.begins_with("villager") or kind in ["elder", "chief", "blacksmith", "merchant"]:
 		return villager(kind.trim_prefix("villager_"), kind.hash())
 	return HumanoidModel.new({})
+
+
+## The Dark Ocean's angler: the shark body dimmed nearly black, with a glowing lure
+## dangling on a stalk in front of its jaws.
+static func _anglerfish(seed_value: int) -> CreatureModel:
+	var m := CrawlerModel.new("shark", seed_value)
+	var stalk := ModelKit.part(m, ModelKit.cylinder(0.02, 0.03, 0.7, 5), ModelKit.mat(Color(0.05, 0.05, 0.07), AsciiMaterialId.SOLID, 0.6),
+			Vector3(0, 0.55, -0.55), Vector3(-55, 0, 0))
+	stalk.name = "LureStalk"
+	var lure := ModelKit.part(m, ModelKit.sphere(0.09, 8), ModelKit.glow(Color(0.55, 1.0, 0.85), 6.0, 0.8), Vector3(0, 0.62, -0.98))
+	lure.name = "Lure"
+	return m
 
 
 ## Humanoid monsters: sculpted bodies on the humanoid rig and animator

@@ -20,6 +20,12 @@ var surfaced := false
 var engaged := false
 var water_y := 13.0
 var arena_center := Vector3.INF
+## Size relative to the boss. Below 1 the model is a roaming mob (the Dark Ocean's
+## abyssal kraken): it swims at the entity's own depth with its arms trailing below,
+## and Enemy animation codes map onto its moves (attack = sweep, lunge = bite).
+var k := 1.0
+var roaming := false
+const MOB_ACTIONS := {"attack": "sweep", "lunge": "bite", "slam": "sweep", "throw": "bite"}
 
 const ARMS := 8
 const ARM_LEN := 19.0
@@ -46,7 +52,9 @@ var _lash_dir := Vector3.FORWARD
 var _lash_len := 30.0
 
 
-func _init() -> void:
+func _init(size_k := 1.0) -> void:
+	k = size_k
+	roaming = k < 1.0
 	dissolve_delay = 3.5
 	dissolve_time = 3.0
 	durations["slam"] = 1.8
@@ -99,11 +107,18 @@ func _on_telegraph(style: String, shape: String, pos: Vector3, dir: Vector3, siz
 
 
 func _ember_extents() -> Vector3:
-	return Vector3(4.0, 5.0, 4.0)
+	return Vector3(4.0, 5.0, 4.0) * k
 
 
 func _lod_size() -> float:
-	return 30.0
+	return 30.0 * k
+
+
+func play(action: String, duration := -1.0) -> void:
+	if roaming and MOB_ACTIONS.has(action):
+		action = MOB_ACTIONS[action]
+		duration = maxf(duration, float(durations.get(action, 0.6)) * 0.7)
+	super.play(action, duration)
 
 
 func set_boss_state(is_engaged: bool, phase: int, dead: bool) -> void:
@@ -173,6 +188,7 @@ func _build() -> void:
 	for i in ARMS + 2:
 		var club := i >= ARMS
 		var chain := SerpentChain.new().setup(club_mesh if club else arm_mesh, arm_skin, ARM_BONES + (4 if club else 0), CLUB_LEN if club else ARM_LEN, 60.0)
+		chain.bone_scale = k
 		chain.name = "Arm%d" % i
 		add_child(chain)
 		arms.append(chain)
@@ -192,8 +208,8 @@ func _build() -> void:
 
 func _arm_anchor(i: int, base: Vector3, yaw_b: Basis) -> Vector3:
 	var a := TAU * (float(i) + 0.5) / ARMS if i < ARMS else (-0.35 if i == ARMS else 0.35)
-	var r := 2.2 if i < ARMS else 1.4
-	return base + yaw_b * Vector3(sin(a) * r, -1.8, -cos(a) * r)
+	var r := (2.2 if i < ARMS else 1.4) * k
+	return base + yaw_b * Vector3(sin(a) * r, -1.8 * k, -cos(a) * r)
 
 
 func _arm_dir(i: int, yaw_b: Basis) -> Vector3:
@@ -220,6 +236,8 @@ func _animate(delta: float) -> void:
 	if mantle == null:
 		return
 	var base := global_position
+	if roaming:
+		water_y = base.y + 9.5 * k  # the mantle swims at the entity's own depth
 	var yb := Basis(Vector3.UP, global_rotation.y)
 	var p := action_progress()
 	var w := action_weight(0.12, 0.25)
@@ -257,10 +275,12 @@ func _animate(delta: float) -> void:
 				shake = 0.05 * sin(PI * p)
 			"grab", "whip":
 				lean -= 0.12 * w
-	var mpos := Vector3(base.x, water_y + rise + bob, base.z) + yb * Vector3(0, 0, -fwd_shift)
+	if roaming:
+		lean += 1.1  # swims mantle first, arms streaming behind
+	var mpos := Vector3(base.x, water_y + (rise + bob) * k, base.z) + yb * Vector3(0, 0, -fwd_shift * k)
 	if shake > 0.0:
-		mpos += Vector3(sin(_time * 29.0), 0, cos(_time * 25.0)) * shake * 3.0
-	mantle.global_transform = Transform3D(yb * Basis(Vector3.RIGHT, lean), mpos)
+		mpos += Vector3(sin(_time * 29.0), 0, cos(_time * 25.0)) * shake * 3.0 * k
+	mantle.global_transform = Transform3D((yb * Basis(Vector3.RIGHT, lean)).scaled(Vector3.ONE * k), mpos)
 	var gape := 0.0
 	if p >= 0.0 and not _dead:
 		match _action:
@@ -287,14 +307,14 @@ func _animate(delta: float) -> void:
 func _pose_arm(i: int, crown: Vector3, yb: Basis, p: float, w: float, delta: float, sink: float) -> void:
 	var chain := arms[i]
 	var n := chain.bones
-	var anchor := _arm_anchor(i, crown, yb) + Vector3(0, 1.8, 0)
+	var anchor := _arm_anchor(i, crown, yb) + Vector3(0, 1.8 * k, 0)
 	var dir := _arm_dir(i, yb)
 	var club := i >= ARMS
 	var sweeping := _action == "sweep" and p >= 0.0 and not club
 	if sweeping:
 		# Every arm swings round across the decks: wind up, then whip past (impact ~80 %).
 		dir = dir.rotated(Vector3.UP, keys(p, [[0, 0], [0.45, -0.7], [0.8, 0.9], [1, 0.3]]) * w)
-	var length := chain.length
+	var length := chain.length * k
 	var ph := float(i) * 1.7
 	var whirl := 0.0
 	if _action == "summon" and p >= 0.0:
@@ -306,8 +326,11 @@ func _pose_arm(i: int, crown: Vector3, yb: Basis, p: float, w: float, delta: flo
 	for j in n:
 		var t := float(j) / (n - 1)
 		var out := dir * length * t * lerpf(0.82, 0.55, raise)
-		var curl := sin(_time * 0.8 + ph + t * 5.0) * (1.0 + 2.5 * t)
-		var up := lerpf(water_y - 0.6 - anchor.y + sin(_time * 1.1 + ph + t * 6.0) * 0.6 * t, 9.0 * sin(PI * t * 0.9), raise)
+		var curl := sin(_time * 0.8 + ph + t * 5.0) * (1.0 + 2.5 * t) * k
+		var rest_up := water_y - 0.6 - anchor.y + sin(_time * 1.1 + ph + t * 6.0) * 0.6 * t
+		if roaming:
+			rest_up = (-1.0 - 5.0 * t + sin(_time * 1.1 + ph + t * 6.0) * 1.2 * t) * k  # trailing below and behind
+		var up := lerpf(rest_up, 9.0 * k * sin(PI * t * 0.9), raise)
 		var q := anchor + out + side * curl * (0.5 + 0.5 * raise) + Vector3.UP * up
 		if t < 0.1:
 			q = anchor + dir * length * t * 0.5

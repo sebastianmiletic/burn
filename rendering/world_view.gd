@@ -270,6 +270,10 @@ func _update_depth_fx(delta: float) -> void:
 	if _under > 0.0:
 		var absorb := Vector3(0.42, 0.11, 0.08)
 		_depth_fx.extinction = absorb * 0.6 + Vector3(0.03, 0.03, 0.03)
+		# The Dark Ocean (OceanMood): visibility closes in and the murk goes black.
+		_depth_fx.extinction += Vector3(0.12, 0.16, 0.18) * OceanMood.dark
+		if _sky != null:
+			_depth_fx.water_light *= 1.0 - 0.85 * OceanMood.dark
 
 
 ## Terrain or a building between the camera and the sun (no shafts through a mountain).

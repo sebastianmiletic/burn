@@ -67,6 +67,26 @@ const STATS := {
 		"prefer": 10.0, "windup": 0.8, "cooldown": 2.6, "xp": 90, "radius": 1.2, "height": 2.0, "attack": THROW,
 		"projectile": "bile", "projectile_speed": 14.0, "ai": "swim", "fly": true, "sound": "roar",
 		"loot": [["raw_fish", 0.8, 1, 3], ["leviathan_scale", 0.2, 1, 1], ["pearl", 0.2, 1, 1]]},
+	# The Dark Ocean (revision 5, WildSpawner.DARK_WATER): abyssal swimmers. The kraken and the
+	# leviathan here are ordinary (rare, very strong) wanderers on the boss models, not the
+	# bosses: no arena, health bar, ledger or quest credit. "min_depth": metres of water they
+	# need to spawn; "idle_depth": how far under the surface they cruise when not hunting.
+	"abyssal_kraken": {"name": "Abyssal Kraken", "health": 900.0, "damage": 34.0, "speed": 2.2, "chase": 5.4, "aggro": 30.0, "range": 6.5,
+		"lunge": 6.0, "windup": 0.9, "cooldown": 2.6, "xp": 420, "radius": 2.6, "height": 4.0, "attack": ATTACK,
+		"stagger_fraction": 0.4, "ai": "swim", "fly": true, "sound": "roar", "min_depth": 14, "idle_depth": 9.0, "despawn": 160.0, "roam": 3.5,
+		"loot": [["kraken_ink", 1.0, 3, 6], ["pearl", 0.9, 2, 5], ["sapphire", 0.6, 1, 3], ["potion_greater", 0.5, 1, 2], ["potion_tidebreath", 0.4, 1, 1]]},
+	"deep_leviathan": {"name": "Wandering Leviathan", "health": 1100.0, "damage": 38.0, "speed": 3.2, "chase": 7.0, "aggro": 36.0, "range": 7.0,
+		"lunge": 9.0, "windup": 0.8, "cooldown": 2.4, "xp": 480, "radius": 2.4, "height": 3.0, "attack": ATTACK,
+		"stagger_fraction": 0.4, "ai": "swim", "fly": true, "sound": "roar", "min_depth": 14, "idle_depth": 10.0, "despawn": 160.0, "roam": 4.0,
+		"loot": [["leviathan_scale", 1.0, 3, 6], ["pearl", 0.8, 2, 4], ["sapphire", 0.5, 1, 2], ["raw_fish", 1.0, 3, 6], ["potion_greater", 0.4, 1, 2]]},
+	"anglerfish": {"name": "Abyssal Angler", "health": 85.0, "damage": 20.0, "speed": 1.8, "chase": 6.8, "aggro": 13.0, "range": 2.0,
+		"lunge": 6.0, "windup": 0.3, "cooldown": 1.4, "xp": 60, "radius": 0.9, "height": 1.0, "attack": ATTACK, "ai": "swim", "fly": true,
+		"sound": "splash", "min_depth": 6, "idle_depth": 6.0, "roam": 1.5,
+		"loot": [["raw_fish", 0.9, 1, 3], ["fish_abyssal_angler", 0.06, 1, 1], ["pearl", 0.2, 1, 1]]},
+	"abyssal_eel": {"name": "Abyssal Eel", "health": 60.0, "damage": 14.0, "speed": 3.4, "chase": 8.0, "aggro": 20.0, "range": 2.0,
+		"lunge": 7.0, "windup": 0.25, "cooldown": 1.1, "xp": 40, "radius": 0.6, "height": 0.7, "attack": ATTACK, "ai": "swim", "fly": true,
+		"sound": "splash", "min_depth": 4, "idle_depth": 4.0,
+		"loot": [["raw_fish", 0.8, 1, 2], ["kraken_ink", 0.12, 1, 1]]},
 	"drowned": {"name": "Drowned Thrall", "health": 50.0, "damage": 10.0, "speed": 2.4, "chase": 4.0, "aggro": 18.0, "range": 2.0,
 		"windup": 0.45, "cooldown": 1.3, "xp": 22, "radius": 0.45, "height": 1.85, "attack": ATTACK, "sound": "growl",
 		"loot": [["bone", 0.4, 1, 2], ["pearl", 0.05, 1, 1], ["potion_health", 0.08, 1, 1]]},

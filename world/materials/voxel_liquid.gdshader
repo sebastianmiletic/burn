@@ -580,6 +580,7 @@ void fragment() {
 			vec3 tr = refract(incident, -nd, 1.0 / 1.33);
 			float cosi = clamp(dot(view_dir_world, nd), 0.0, 1.0);
 			vec3 water_light = scatter_color * (sky_zenith_color * 0.6 + sun_radiance * 0.15) * v_sky;
+			water_light *= 1.0 - 0.85 * dark_ocean_amount;
 			if (dot(tr, tr) < 0.01) {
 				emission = water_light * 0.5;
 			} else {

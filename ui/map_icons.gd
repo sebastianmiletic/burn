@@ -62,6 +62,9 @@ const SEA := Color(0.62, 0.84, 0.92)
 const EARTH := Color(0.8, 0.64, 0.48)
 const FIRE := Color(1.0, 0.52, 0.3)
 const GREEN := Color(0.64, 0.86, 0.5)
+## Biome-symbol id of the Dark Ocean (revision 5; 100 + WorldGen.Sea.DARK, as LocationTracker
+## counts ocean biomes), so map labels and the legend can tell it from the other seas.
+const DARK_OCEAN := 100 + WorldGen.Sea.DARK
 
 static var _shapes := {}
 static var _kinds := {}            # key -> {"icon", "label", "color", "prefix"}
@@ -143,7 +146,8 @@ static func _ensure() -> void:
 		b.TARTARUS: [&"b_spikes", Color(0.46, 0.36, 0.36)], b.RYFT: [&"crystal", Color(0.6, 0.52, 0.85)],
 		b.REDWOOD: [&"b_pine", Color(0.4, 0.36, 0.22)], b.CANYON: [&"b_mesa", Color(0.78, 0.45, 0.3)],
 		b.ALPINE: [&"b_peak", Color(0.55, 0.66, 0.5)], b.TUNDRA: [&"b_snow", Color(0.8, 0.84, 0.86)],
-		b.VOLCANIC: [&"volcano", Color(0.42, 0.3, 0.28)], b.FJORD: [&"b_fjord", Color(0.45, 0.6, 0.58)]}
+		b.VOLCANIC: [&"volcano", Color(0.42, 0.3, 0.28)], b.FJORD: [&"b_fjord", Color(0.45, 0.6, 0.58)],
+		DARK_OCEAN: [&"eye", Color(0.16, 0.14, 0.3)]}
 
 
 ## Every symbol name the built-in drawer knows plus registered ones (galleries).

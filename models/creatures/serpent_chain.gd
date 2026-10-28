@@ -41,6 +41,9 @@ var rest_rate := 1.5
 var stiffness := 0.35
 var head_up := Vector3.UP
 
+## Uniform scale of every bone (the mesh's girth): a smaller copy of a long body whose
+## joints the owner places closer together (KrakenModel's roaming kraken).
+var bone_scale := 1.0
 ## Margin (m) added around the joints for the culling box (body radius + attachments).
 var aabb_margin := 8.0
 
@@ -141,10 +144,12 @@ func apply() -> void:
 	for i in bones:
 		skeleton.set_bone_pose_position(i, display[i])
 		skeleton.set_bone_pose_rotation(i, frames[i].get_rotation_quaternion())
+		if bone_scale != 1.0:
+			skeleton.set_bone_pose_scale(i, Vector3.ONE * bone_scale)
 		var nodes: Variant = _attached.get(i)
 		if nodes != null:
 			for n: Node3D in nodes:
-				n.global_transform = Transform3D(frames[i], display[i])
+				n.global_transform = Transform3D(frames[i] if bone_scale == 1.0 else frames[i].scaled(Vector3.ONE * bone_scale), display[i])
 
 
 func _update_frames() -> void:

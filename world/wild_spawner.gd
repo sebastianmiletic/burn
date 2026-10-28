@@ -48,6 +48,16 @@ const SURFACE_NIGHT := {
 	WorldGen.Biome.FJORD: [["drowned", 0.8, 1, 2], ["skeleton", 0.5, 1, 2], ["frost_wolf", 0.6, 2, 3], ["troll", 0.3, 1, 1]],
 }
 const WATER := [["shark", 1.0, 1, 2], ["sea_serpent", 0.2, 1, 1]]
+## Revision 5: the Dark Ocean (WorldGen.Sea.DARK) - angler packs, eel shoals, sharks, and rarely a
+## roaming kraken or leviathan (ordinary mobs on the boss models; at most GIANT_CAP near a swimmer).
+const DARK_WATER := [["anglerfish", 1.0, 1, 2], ["abyssal_eel", 0.8, 2, 3], ["shark", 0.5, 2, 3], ["sea_serpent", 0.25, 1, 1],
+		["abyssal_kraken", 0.05, 1, 1], ["deep_leviathan", 0.05, 1, 1]]
+## Kinds that only ever spawn in the Dark Ocean.
+const DARK_ONLY := ["anglerfish", "abyssal_eel", "abyssal_kraken", "deep_leviathan"]
+const GIANTS := ["abyssal_kraken", "deep_leviathan"]
+const GIANT_CAP := 1
+const GIANT_RADIUS := 220.0
+const DARK_CAP := 4
 const CAVE_SHALLOW := [["skeleton", 0.8, 1, 1], ["ghoul", 0.6, 1, 1], ["giant_spider", 0.9, 1, 2], ["cave_bat", 0.8, 2, 4]]
 const CAVE_MID := [["giant_spider", 1.0, 1, 3], ["cave_crawler", 0.7, 1, 1], ["cave_bat", 0.6, 2, 4], ["ghoul", 0.4, 1, 1], ["skeleton", 0.4, 1, 1]]
 const CAVE_DEEP := [["cave_crawler", 1.0, 1, 2], ["rock_golem", 0.7, 1, 1], ["fire_elemental", 0.4, 1, 1], ["ghoul", 0.3, 1, 1], ["imp", 0.3, 1, 1]]
@@ -113,7 +123,8 @@ func _despawn_far(w: GameWorld) -> void:
 		if ent.dimension == 0 and w.gen_for(0).revision >= 2 and CaveBiomes.sanctuary(ent.global_position, w.gen_for(0).world_seed, w.gen_for(0).revision):
 			w.despawn_entity(ent)
 			continue
-		if w.nearest_player(ent.global_position, ent.dimension, DESPAWN_DISTANCE) == null:
+		var far := float(Enemy.stats_for(ent.kind).get("despawn", DESPAWN_DISTANCE)) if ent is Enemy else DESPAWN_DISTANCE
+		if w.nearest_player(ent.global_position, ent.dimension, far) == null:
 			w.despawn_entity(ent)
 
 
@@ -155,7 +166,11 @@ func _populate(w: GameWorld, p: Player) -> void:
 		return
 	var biome := vw.gen.biome_at(int(pos.x), int(pos.z))
 	var in_sea := biome == WorldGen.Biome.OCEAN or _water_depth(vw, Vector3i(pos.floor())) > 1
-	if in_sea and _rng.randf() < 0.6:
+	var dark := in_sea and is_dark_ocean(vw.gen, pos)
+	if dark:
+		if _rng.randf() < 0.75:
+			_spawn_hostiles(w, p, DARK_WATER, DARK_CAP, "water")
+	elif in_sea and _rng.randf() < 0.6:
 		_spawn_hostiles(w, p, WATER, 3, "water")
 	var table: Array = (SURFACE_NIGHT if night else SURFACE_DAY).get(biome, [])
 	if vw.gen.revision >= 5:
@@ -166,7 +181,27 @@ func _populate(w: GameWorld, p: Player) -> void:
 			table = land_table
 	_spawn_hostiles(w, p, table, 5 if night else 2, "surface")
 	var animals: Array = ANIMALS.get(biome, [])
+	if dark:
+		animals = [["fish_school", 0.4]]  # no gulls this far out; few fish
 	_spawn_animals(w, p, animals, 3 if night else 6, "surface")
+
+
+## Revision 5: is `pos` out on the Dark Ocean (the abyssal spawn table)?
+static func is_dark_ocean(gen: Variant, pos: Vector3) -> bool:
+	return gen is WorldGen and (gen as WorldGen).revision >= 5 and (gen as WorldGen).ocean_kind_at(pos.x, pos.z) == WorldGen.Sea.DARK
+
+
+## The hostile table for open water at `pos` (the Dark Ocean's or the ordinary sea's).
+static func water_table(gen: Variant, pos: Vector3) -> Array:
+	return DARK_WATER if is_dark_ocean(gen, pos) else WATER
+
+
+## Swimmers spawn in water (Beast "swim" ai) and need this much of it (metres).
+static func swim_depth(kind: String) -> int:
+	var st := Enemy.stats_for(kind)
+	if String(st.get("ai", "")) != "swim":
+		return -1
+	return int(st.get("min_depth", 4 if kind == "sea_serpent" else 2))
 
 
 func _pick(table: Array) -> Array:
@@ -191,13 +226,19 @@ func _spawn_hostiles(w: GameWorld, p: Player, table: Array, cap: int, where: Str
 		return
 	var kind: String = pick[0]
 	var spot_mode := where
-	if kind in ["shark", "sea_serpent"]:
+	var min_depth := swim_depth(kind)
+	if min_depth >= 0:
 		spot_mode = "water"
 	elif where == "water":
 		return
-	var pos := _find_spot(w.world_for(p.dimension), p.global_position, spot_mode, 22.0, 36.0, 4 if kind == "sea_serpent" else 2)
+	var giant := kind in GIANTS
+	if giant and _count_giants(w, p) >= GIANT_CAP:
+		return
+	var pos := _find_spot(w.world_for(p.dimension), p.global_position, spot_mode, 34.0 if giant else 22.0, 54.0 if giant else 36.0, maxi(min_depth, 2))
 	if pos == Vector3.INF or _in_location(w, pos, p.dimension) or (p.dimension == 0 and w.gen_for(0).revision >= 2 and CaveBiomes.sanctuary(pos, w.gen_for(0).world_seed, w.gen_for(0).revision)):
 		return
+	if kind in DARK_ONLY and (p.dimension != 0 or not is_dark_ocean(w.gen_for(0), pos)):
+		return  # abyssal things never come in over the shelf
 	if p.dimension == 0 and SurfaceBiomes.is_peaceful(w.gen_for(0), pos):
 		return  # revision 5: never inside the oasis or Moony Meadows
 	var n := _rng.randi_range(int(pick[2]), int(pick[3]))
@@ -241,6 +282,15 @@ func _spawn_animals(w: GameWorld, p: Player, table: Array, cap: int, where: Stri
 		if e != null:
 			e.set_meta("wild", true)
 			e.set_meta("wild_role", "animal")
+
+
+## Roaming krakens and leviathans already near this player (wild or not).
+func _count_giants(w: GameWorld, p: Player) -> int:
+	var n := 0
+	for e in w.entities_near(p.global_position, GIANT_RADIUS, p.dimension):
+		if e.kind in GIANTS and not e.dead:
+			n += 1
+	return n
 
 
 func _in_location(w: GameWorld, pos: Vector3, dim: int) -> bool:
