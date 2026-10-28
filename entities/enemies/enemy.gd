@@ -84,6 +84,15 @@ func _w() -> Variant:
 	return sim_world if sim_world != null else world()
 
 
+## Revision 5 overworld lands (SurfaceBiomes), or null (older worlds, simulations).
+func _surface_lands() -> SurfaceBiomes:
+	var w = _w()
+	if w == null or not w.has_method("gen_for"):
+		return null
+	var g: WorldGen = w.gen_for(0)
+	return g.land if g != null else null
+
+
 static func create(enemy_kind: String) -> Enemy:
 	var e := Enemy.new()
 	e.kind = enemy_kind
@@ -455,6 +464,10 @@ func _face(target: Vector3, delta: float, rate: float) -> void:
 
 
 func _steer(target: Vector3, speed: float, delta: float) -> void:
+	if dimension == 0:
+		var land := _surface_lands()
+		if land != null:
+			target = land.keep_out(global_position, target)  # revision 5: the oasis is a safe zone
 	var to := target - global_position
 	to.y = 0.0
 	var desired := Vector3.ZERO

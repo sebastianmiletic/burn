@@ -138,8 +138,13 @@ static func build(neighbours: Array, densities: Array, surface: PackedInt32Array
 				# Pad index -> chunk-local: sample i sits at voxel i-1, centre +0.5.
 				var local := Vector3(cx - 0.5, cy - 0.5, cz - 0.5) + p
 				var code := best
-				if best == Blocks.GRASS:
-					var bi := biomes[clampi(cx - 1, 0, 15) + clampi(cz - 1, 0, 15) * 16]
+				var bi := biomes[clampi(cx - 1, 0, 15) + clampi(cz - 1, 0, 15) * 16]
+				if bi >= SurfaceBiomes.LAND_CODE and dim == 0:
+					# Revision 5 land column (WorldGen.surface_biome_at): dune sand, oasis and moon grass.
+					var lc := SurfaceBiomes.material_code(best, bi)
+					if lc >= 0:
+						code = lc
+				elif best == Blocks.GRASS:
 					if bi == WorldGen.Biome.FOREST:
 						code = CODE_FOREST_FLOOR
 					elif bi == WorldGen.Biome.PEAKS:
@@ -289,6 +294,10 @@ static func _block_of_code(code: int) -> int:
 			return Blocks.GRASS
 		CODE_HELL_ASH:
 			return Blocks.ASH
+		SurfaceBiomes.CODE_MOON_GRASS:
+			return code  # Flora grows the head-high moon grass on it
+	if code >= SurfaceBiomes.CODE_DUNE_SAND and code <= SurfaceBiomes.CODE_GRAVE_SOIL:
+		return SurfaceBiomes.block_of_code(code)
 	return code
 
 
