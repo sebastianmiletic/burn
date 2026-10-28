@@ -8,7 +8,9 @@ extends Node3D
 ##
 ## Animation is procedural from the player's state: idle breathing, walk and
 ## sprint bob, mouse-look lag, landing dip, sword combos, pickaxe strikes,
-## axe chops, casting, drinking, interacting and dodging.
+## axe chops, casting, drinking, interacting and dodging. In water the item
+## is stowed and the arms swim: breaststroke, front crawl when sprinting,
+## sculling (treading water) at rest.
 
 
 
@@ -30,6 +32,10 @@ var _bob := 0.0
 var _land := 0.0
 var _equip := 1.0
 var _style_key := ""
+var _swim := 0.0         ## 0..1 blend into the swimming arms
+var _swim_phase := 0.0
+var _crawl := 0.0        ## 0 breaststroke .. 1 front crawl
+var _curl := [95.0, 95.0]   ## finger curl per hand (degrees): wrapped grip .. flat
 
 
 func _ready() -> void:
@@ -204,6 +210,22 @@ func _process(delta: float) -> void:
 			var dip := sin(k * PI)
 			r = Transform3D(r.basis, r.origin + Vector3(0, -0.14 * dip, 0.05))
 			l = Transform3D(l.basis, l.origin + Vector3(0, -0.14 * dip, 0.05))
+	# Swimming: the item is stowed, both arms stroke (or scull at rest).
+	_swim = move_toward(_swim, 1.0 if player.swimming else 0.0, delta * 3.0)
+	if _item != null:
+		_item.visible = _swim < 0.5
+	var curl_target := 95.0
+	if _swim > 0.0:
+		var sw := _swim_pose(delta)
+		var w := smoothstep(0.0, 1.0, _swim)
+		r = _blend(r, sw[1], w)
+		l = _blend(l if show_left else Transform3D(l.basis, Vector3(-0.3, -0.72, 0.05)), sw[0], w)
+		show_left = true
+		curl_target = lerpf(95.0, 18.0, w)
+		bob *= 1.0 - w
+		_land *= 1.0 - w
+	_curl[0] = curl_target
+	_curl[1] = curl_target
 	var shift := Vector3(-_sway.x * 0.3, _sway.y * 0.25, 0) + bob + breathe + Vector3(0, -_land, 0)
 	shift += Vector3(0, -0.35 * (1.0 - _equip), 0.05 * (1.0 - _equip))
 	r.origin += shift
@@ -212,6 +234,81 @@ func _process(delta: float) -> void:
 	_pose_arm(1, r)
 	# An idle left arm hangs out of view.
 	_pose_arm(0, l if show_left else Transform3D(l.basis, Vector3(-0.3, -0.72, 0.05)))
+
+
+static func _blend(a: Transform3D, b: Transform3D, w: float) -> Transform3D:
+	return Transform3D(Basis(a.basis.get_rotation_quaternion().slerp(b.basis.get_rotation_quaternion(), w)), a.origin.lerp(b.origin, w))
+
+
+## A grip frame whose hand points its fingers along `fingers` with the thumb
+## towards `thumb` (camera space): the inverse of _pose_arm's hand mapping.
+static func _hand(side: int, pos: Vector3, fingers: Vector3, thumb: Vector3) -> Transform3D:
+	var sg := -1.0 if side == 0 else 1.0
+	var f_local := Vector3(-sg * 0.75, -0.2, -0.65).normalized()
+	return Transform3D(_frame(fingers, thumb) * _frame(f_local, Vector3.UP).inverse(), pos)
+
+
+## Piecewise smooth path through keys [[t, value], ...] (t ascending, 0..1).
+static func _path(k: float, keys: Array) -> Variant:
+	for i in keys.size() - 1:
+		var a: Array = keys[i]
+		var b: Array = keys[i + 1]
+		if k <= b[0]:
+			var u := smoothstep(0.0, 1.0, (k - float(a[0])) / maxf(float(b[0]) - float(a[0]), 1e-4))
+			return lerp(a[1], b[1], u)
+	return keys[keys.size() - 1][1]
+
+
+## [left grip, right grip] while swimming. Breaststroke: hands together
+## forward, sweep out and back, scoop in under the chin, shoot forward again,
+## glide. Front crawl (sprinting): alternating arms reach in from above,
+## catch and pull down out of view. Treading water: hands scull low in front.
+func _swim_pose(delta: float) -> Array:
+	var v := player.body.velocity
+	var mv := clampf(Vector2(v.x, v.z).length() / Player.SWIM_SPEED, 0.0, 1.5)
+	var moving := smoothstep(0.15, 0.6, mv)
+	_crawl = move_toward(_crawl, 1.0 if mv > 1.15 else 0.0, delta * 2.0)
+	_swim_phase = fmod(_swim_phase + delta * lerpf(0.55, 0.85 + 0.25 * _crawl, moving), 1.0)
+	var out: Array = [Transform3D.IDENTITY, Transform3D.IDENTITY]
+	for side in 2:
+		var sg := -1.0 if side == 0 else 1.0
+		var ph := _swim_phase
+		# Breaststroke.
+		var bp: Vector3 = _path(ph, [
+			[0.0, Vector3(sg * 0.07, -0.16, -0.5)],
+			[0.32, Vector3(sg * 0.36, -0.2, -0.36)],
+			[0.5, Vector3(sg * 0.1, -0.3, -0.2)],
+			[0.78, Vector3(sg * 0.06, -0.15, -0.52)],
+			[1.0, Vector3(sg * 0.07, -0.16, -0.5)]])
+		var b_th: Vector3 = _path(ph, [
+			[0.0, Vector3(-sg, 0.0, 0.0)],
+			[0.25, Vector3(-sg * 0.35, -0.9, 0.0)],
+			[0.5, Vector3(0.0, 0.2, -1.0)],
+			[0.72, Vector3(-sg, 0.1, 0.0)],
+			[1.0, Vector3(-sg, 0.0, 0.0)]])
+		var b_f: Vector3 = _path(ph, [
+			[0.0, Vector3(sg * 0.15, 0.05, -1.0)],
+			[0.3, Vector3(sg * 0.6, -0.2, -0.8)],
+			[0.5, Vector3(-sg * 0.7, 0.3, -0.6)],
+			[0.75, Vector3(sg * 0.05, 0.0, -1.0)],
+			[1.0, Vector3(sg * 0.15, 0.05, -1.0)]])
+		var breast := _hand(side, bp, b_f, b_th)
+		# Front crawl: each arm half a cycle apart.
+		var cp_ph := fmod(ph + (0.5 if side == 0 else 0.0), 1.0)
+		var cp: Vector3 = _path(cp_ph, [
+			[0.0, Vector3(sg * 0.12, 0.1, -0.5)],
+			[0.3, Vector3(sg * 0.14, -0.3, -0.4)],
+			[0.55, Vector3(sg * 0.22, -0.68, -0.05)],
+			[0.8, Vector3(sg * 0.32, -0.3, 0.1)],
+			[1.0, Vector3(sg * 0.12, 0.1, -0.5)]])
+		var crawl := _hand(side, cp, Vector3(sg * 0.05, -0.35 - 0.6 * smoothstep(0.0, 0.6, cp_ph), -1.0), Vector3(-sg, 0.1, 0.2))
+		# Treading water: small sculling figure-eights low in front.
+		var tp := _swim_phase * TAU * 1.6 + side * PI
+		var tread := _hand(side, Vector3(sg * (0.24 + 0.07 * sin(tp)), -0.42 + 0.03 * sin(tp * 2.0), -0.32),
+				Vector3(sg * 0.35, -0.15, -1.0), Vector3(-sg, 0.25 * sin(tp), 0.0))
+		var swim := _blend(breast, crawl, _crawl)
+		out[side] = _blend(tread, swim, moving)
+	return out
 
 
 ## Two-bone IK for one arm: the shoulder is fixed just behind and below the
@@ -250,7 +347,7 @@ func _pose_arm(side: int, grip: Transform3D) -> void:
 	var bh := _frame(want_fing, want_thumb) * _frame(rest_fing, rest_thumb).inverse()
 	# Fingers curl towards the palm (the palm faces the body's midline at rest).
 	var palm_n := Vector3(-sg, 0, 0)
-	var curl := Basis(rest_fing.cross(palm_n).normalized(), deg_to_rad(-95.0))
+	var curl := Basis(rest_fing.cross(palm_n).normalized(), deg_to_rad(-float(_curl[side])))
 
 	_set_pose(CharRig.CLAV_L + o, bu, shoulder + bu * (_rest[CharRig.CLAV_L + o] - _rest[CharRig.UARM_L + o]))
 	_set_pose(CharRig.UARM_L + o, bu, shoulder)
