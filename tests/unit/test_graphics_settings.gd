@@ -83,3 +83,31 @@ func test_settings_menu_builds_graphics_tab() -> void:
 	check(menu._gfx_preset != null, "preset selector exists")
 	check(menu._gfx_page.get_child_count() > 30, "every graphics option has a row")
 	menu.free()
+
+
+func test_render_scale_is_native_fraction_and_sharp() -> void:
+	# High renders a 1080p screen at native and a Retina MacBook near 0.75,
+	# never the old half-resolution (0.5 of physical pixels) that looked blurry.
+	check_near(GraphicsQuality.preset_scale(Settings.Quality.HIGH, Vector2i(1920, 1080)), 1.0, 0.001, "High: 1080p native")
+	var retina := Vector2i(2940, 1846)
+	var high := GraphicsQuality.preset_scale(Settings.Quality.HIGH, retina)
+	check(high >= 0.6 and high <= 0.8, "High on Retina renders 60-80%% of native (got %.2f)" % high)
+	check(high * GraphicsQuality.ADAPT_FLOOR[Settings.Quality.HIGH] >= 0.45, "adaptive resolution keeps High near half native at worst")
+	for q in 3:
+		check(GraphicsQuality.preset_scale(q + 1, retina) >= GraphicsQuality.preset_scale(q, retina), "each preset at least as sharp as the one below")
+	check(GraphicsQuality.preset_scale(Settings.Quality.LOW, Vector2i(3840, 2160)) >= 0.4, "Low floor on 4K")
+	check(GraphicsQuality.preset_scale(Settings.Quality.ULTRA, Vector2i(1280, 720)) <= 1.0, "never supersamples")
+
+
+func test_presets_pick_sensible_antialiasing() -> void:
+	var snap := _snapshot()
+	var aa: Array = Settings.GFX_PRESETS["antialiasing"]
+	check_eq(int(aa[Settings.Quality.LOW]), 1, "Low: FXAA")
+	check_eq(int(aa[Settings.Quality.MEDIUM]), 5, "Medium: SMAA")
+	check_eq(int(aa[Settings.Quality.HIGH]), 2, "High: TAA")
+	check_eq(int(aa[Settings.Quality.ULTRA]), 2, "Ultra: TAA")
+	check(not bool(Settings.DEFAULTS["graphics"]["altitude_blur"]), "mountain blur is off by default")
+	check(float(Settings.DEFAULTS["graphics"]["sharpness"]) >= 0.7, "upscaler sharpening on by default")
+	Settings.set_value("graphics", "render_scale", 0.85)
+	check_near(Settings.render_scale(Vector2i(2940, 1846)), 0.85, 0.001, "a forced 3D resolution is a fraction of native")
+	_restore(snap)

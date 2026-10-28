@@ -28,7 +28,7 @@ const WINDOW_KEYS := ["window_mode", "monitor", "resolution", "hdr"]
 ## per preset, Low .. Ultra (see GraphicsQuality for what each level means).
 const GFX_PRESETS := {
 	"shadows": [1, 2, 3, 4],          # 0 off, 1 low .. 4 ultra
-	"antialiasing": [1, 1, 2, 2],     # 0 off, 1 FXAA, 2 TAA, 3 MSAA 2x, 4 MSAA 4x
+	"antialiasing": [1, 5, 2, 2],     # 0 off, 1 FXAA, 2 TAA, 3 MSAA 2x, 4 MSAA 4x, 5 SMAA (docs/ANTI_ALIASING.md)
 	"ssao": [0, 1, 2, 3],             # 0 off, 1 low, 2 medium, 3 high
 	"ssil": [0, 0, 0, 1],             # 0 off, 1 on
 	"ssr": [0, 0, 1, 2],              # 0 off, 1 low, 2 high
@@ -40,6 +40,9 @@ const GFX_PRESETS := {
 	"mesh_detail": [0, 1, 2, 3],      # level-of-detail distances
 	"effects": [0, 1, 2, 3],          # particle counts (weather, ambient)
 }
+## Graphics-settings revision: 1 = the sharpness pass (render scale in native
+## pixels, mountain blur off, stronger sharpening; docs/ANTI_ALIASING.md).
+const AA_REV := 1
 const UPSCALER_NAMES := ["Automatic", "Bilinear", "AMD FSR 1", "AMD FSR 2 (temporal)", "MetalFX spatial", "MetalFX temporal"]
 
 const DEFAULTS := {
@@ -55,8 +58,8 @@ const DEFAULTS := {
 	"graphics": {
 		"quality": Quality.HIGH,
 		"adaptive_resolution": true,
-		"altitude_blur": true,
-		"render_scale": -1.0,  # -1: follow the quality preset
+		"altitude_blur": false,
+		"render_scale": -1.0,  # -1: follow the quality preset; else a fraction of native (physical) pixels
 		"brightness": 0.85,
 		"fov": 80.0,
 		"fog": 1.0,
@@ -76,7 +79,8 @@ const DEFAULTS := {
 		"mesh_detail": -1,
 		"effects": -1,
 		"upscaler": 0,
-		"sharpness": 0.5,
+		"sharpness": 0.8,
+		"aa_rev": AA_REV,      # settings older than this get the sharper defaults once
 		"motion_blur": 0.0,
 		"depth_of_field": false,
 		"chromatic_aberration": 0.0,
@@ -169,6 +173,12 @@ func _ready() -> void:
 			_data["display"]["vsync"] = Vsync.ON if _data["display"]["vsync"] else Vsync.OFF
 		if not cfg.has_section_key("audio", "ui"):
 			_data["audio"]["ui"] = _data["audio"]["sfx"]
+		# Before the sharpness pass every file stored the old blurry defaults
+		# (mountain blur on, light sharpening): move those to the new ones once.
+		if int(cfg.get_value("graphics", "aa_rev", 0)) < 1:
+			_data["graphics"]["altitude_blur"] = false
+			_data["graphics"]["sharpness"] = maxf(float(_data["graphics"]["sharpness"]), DEFAULTS["graphics"]["sharpness"])
+		_data["graphics"]["aa_rev"] = AA_REV
 	if String(_data["gameplay"]["player_name"]) == "":
 		_data["gameplay"]["player_name"] = _default_name()
 	Keybinds.apply(_data["controls"])
@@ -356,12 +366,15 @@ func apply_quality_preset(q: int) -> void:
 	changed.emit("graphics", "quality")
 
 
-## Fraction of the logical window resolution the 3D view renders at.
-func render_scale() -> float:
+## Fraction of the window's native (physical) resolution the 3D view renders
+## at before adaptive resolution (1.0 = native, also on a HiDPI screen).
+func render_scale(physical := Vector2i.ZERO) -> float:
 	var forced: float = get_value("graphics", "render_scale")
 	if forced > 0.0:
-		return forced
-	return [0.65, 0.8, 1.0, 1.25][int(get_value("graphics", "quality"))]
+		return minf(forced, 1.0)
+	if physical == Vector2i.ZERO:
+		physical = DisplayServer.window_get_size() if DisplayServer.get_name() != "headless" else Vector2i(1920, 1080)
+	return GraphicsQuality.preset_scale(int(get_value("graphics", "quality")), physical)
 
 
 ## Applies the display options. `key` limits the work to what changed (the

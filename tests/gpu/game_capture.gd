@@ -82,6 +82,12 @@ func _run() -> void:
 			_set_graphics("quality", int(a.trim_prefix("--quality=")))
 		elif a.begins_with("--scale="):
 			_set_graphics("render_scale", float(a.trim_prefix("--scale=")))
+		elif a.begins_with("--gfx="):
+			# Any graphics option for this run, e.g. --gfx=antialiasing:2,upscaler:5,adaptive_resolution:false
+			for pair in a.trim_prefix("--gfx=").split(","):
+				var kv := pair.split(":")
+				if kv.size() == 2:
+					_set_graphics(kv[0], str_to_var(kv[1]))
 	report.append("quality %s, preset scale %.2f (actual/adaptive render resolution recorded per stop)" % [Settings.QUALITY_NAMES[int(Settings.get_value("graphics", "quality"))],
 			Settings.render_scale()])
 	if "--no-bosses" in OS.get_cmdline_user_args():
@@ -287,7 +293,9 @@ func _run() -> void:
 		for i in 30:
 			await get_tree().process_frame
 			gpu += RenderingServer.viewport_get_measured_render_time_gpu(vp_rid) / 30.0
-		report.append("output %s, 3D viewport %s, adaptive %s, at %s, underground %s depth %.0f" % [str(DisplayServer.window_get_size()), "%s (%s)" % [str(w.view.internal_size()), str(w.view.viewport.scaling_3d_mode)], str(Settings.get_value("graphics", "adaptive_resolution")),
+		var vpw := w.view.viewport
+		report.append("output %s, 3D viewport %s, adaptive %s (x%.2f), taa %s msaa %d ssaa %d sharp %.2f mip %.2f, at %s, underground %s depth %.0f" % [str(DisplayServer.window_get_size()), "%s (%s)" % [str(w.view.internal_size()), str(vpw.scaling_3d_mode)], str(Settings.get_value("graphics", "adaptive_resolution")),
+				w.view.adaptive_state().x, str(vpw.use_taa), vpw.msaa_3d, vpw.screen_space_aa, vpw.fsr_sharpness, vpw.texture_mipmap_bias,
 				str(p.global_position.round()), str(w.tracker.underground), w.tracker.depth])
 		report.append("%-8s %-28s load %5d ms  avg %.2f ms (%.0f fps) worst %.2f ms  3d gpu %.2f ms  process %.2f ms  draws %d  prims %d" % [stop, loc.name, Time.get_ticks_msec() - t0, stats.x, 1000.0 / stats.x, stats.y, gpu,
 				Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,

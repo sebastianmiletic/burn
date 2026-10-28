@@ -1,22 +1,21 @@
 class_name WorldView
 extends Node
 ## The game's 3D view. The world is rendered straight to the window through
-## `source_camera` (made current here) at full quality: an edge-aware upscaler
-## (MetalFX spatial on Metal, AMD FSR on Vulkan / D3D12) with FXAA brings the
-## 3D render resolution up to the window resolution.
-## Adaptive resolution trades render resolution for frame rate only when the
-## GPU is the bottleneck. A thin overlay adds the screen effects gameplay asks
+## `source_camera` (made current here). The 3D resolution is a fraction of the
+## window's native pixels (GraphicsQuality.preset_scale); below native an
+## upscaler (AMD FSR 1 with its RCAS sharpening by default, or a temporal one)
+## brings it up to the window. Anti-aliasing per preset: FXAA / SMAA / TAA
+## (docs/ANTI_ALIASING.md). Adaptive resolution trades render resolution for
+## frame rate only when the GPU is the bottleneck, and never below the
+## preset's floor (GraphicsQuality.ADAPT_FLOOR). A thin overlay adds the screen effects gameplay asks
 ## for: `tint` (damage, underworld), `flash` (lightning, big hits), vignette
 ## and film grain from the settings.
 
 ## The horizon (DistantLand) reaches the far side of the island.
 const HORIZON_FAR := 4200.0
-## Render-resolution presets per quality, as a fraction of the logical
-## (UI-point) window size; on a 2x display High renders at half the physical
-## resolution per axis and the upscaler (MetalFX spatial / FSR) fills in the rest.
-const PRESET_SCALE := [0.65, 0.8, 1.0, 1.25]
-const ADAPT_MIN := 0.55
 const ADAPT_WINDOW := 0.5
+## Render scale for the "sharpen at native" path (FSR 1 RCAS after TAA).
+const NATIVE_SHARPEN_SCALE := 0.99
 const ADAPT_PROBE := 4.0
 
 const MUL_SHADER := """
@@ -312,29 +311,42 @@ func _resize() -> void:
 		return
 	var window := DisplayServer.window_get_size() if DisplayServer.get_name() != "headless" else Vector2i(1280, 720)
 	_window = window
-	var screen := maxf(1.0, DisplayServer.screen_get_scale(DisplayServer.window_get_current_screen())) if DisplayServer.get_name() != "headless" else 1.0
-	var forced := float(Settings.get_value("graphics", "render_scale"))
-	var preset: float = forced if forced > 0.0 else PRESET_SCALE[clampi(int(Settings.get_value("graphics", "quality")), 0, 3)]
 	# Fraction of the physical window the 3D scene is rendered at.
-	var scale := clampf(preset * _adaptive_scale / screen, 0.25, 1.0)
+	var scale := clampf(Settings.render_scale(window) * _adaptive_scale, 0.25, 1.0)
 	var upscaler := _upscaler()
 	var temporal := upscaler == Viewport.SCALING_3D_MODE_FSR2 or upscaler == Viewport.SCALING_3D_MODE_METALFX_TEMPORAL
-	if scale >= 0.999 and not temporal:
-		upscaler = Viewport.SCALING_3D_MODE_BILINEAR   # native: nothing to upscale
-	viewport.scaling_3d_mode = upscaler
-	viewport.scaling_3d_scale = scale
-	# Anti-aliasing: a temporal upscaler already resolves edges over time.
 	var aa := Settings.gfx("antialiasing")
 	var fp := GraphicsQuality.forward_plus()
 	if aa == 2 and not fp:
 		aa = 1   # no TAA in the compatibility renderer
+	var sharpness := clampf(float(Settings.get_value("graphics", "sharpness")), 0.0, 1.0)
+	if scale >= 0.999 and not temporal:
+		upscaler = Viewport.SCALING_3D_MODE_BILINEAR   # native: nothing to upscale
+		if aa == 2 and sharpness > 0.01 and fp and _upscaler_is_auto():
+			# TAA softens a native image and Godot has no stand-alone sharpen
+			# pass: FSR 1 at 99% is a near-identity resample whose RCAS pass
+			# restores the detail (docs/ANTI_ALIASING.md, "sharpen at native").
+			upscaler = Viewport.SCALING_3D_MODE_FSR
+			scale = NATIVE_SHARPEN_SCALE
+	viewport.scaling_3d_mode = upscaler
+	viewport.scaling_3d_scale = scale
+	# Anti-aliasing: a temporal upscaler already resolves edges over time.
 	viewport.use_taa = aa == 2 and not temporal
-	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA if aa == 1 and not temporal else Viewport.SCREEN_SPACE_AA_DISABLED
-	viewport.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_DISABLED, Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X][clampi(aa, 0, 4)] if not temporal else Viewport.MSAA_DISABLED
-	# Sharpness 0..1 -> FSR / MetalFX sharpening (0 = sharpest .. 2 = none).
-	viewport.fsr_sharpness = (1.0 - clampf(float(Settings.get_value("graphics", "sharpness")), 0.0, 1.0)) * 2.0
+	var ssaa := Viewport.SCREEN_SPACE_AA_DISABLED
+	if not temporal:
+		if aa == 1:
+			ssaa = Viewport.SCREEN_SPACE_AA_FXAA
+		elif aa == 5:
+			ssaa = Viewport.SCREEN_SPACE_AA_SMAA if fp else Viewport.SCREEN_SPACE_AA_FXAA
+	viewport.screen_space_aa = ssaa
+	viewport.msaa_3d = [Viewport.MSAA_DISABLED, Viewport.MSAA_DISABLED, Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_DISABLED][clampi(aa, 0, 5)] if not temporal else Viewport.MSAA_DISABLED
+	# Sharpness 0..1 -> FSR 1 / FSR 2 RCAS sharpening in stops (0 = sharpest .. 2 = none).
+	# MetalFX has no sharpening control, which is why Automatic picks FSR 1.
+	viewport.fsr_sharpness = (1.0 - sharpness) * 2.0
+	# Texture filtering: Godot already biases mips by log2(scale) below native;
+	# this is on top. TAA jitters the samples, so it can take a sharper mip.
 	var tq := clampi(Settings.gfx("texture_quality"), 0, 3)
-	viewport.texture_mipmap_bias = [0.75, 0.25, 0.0, -0.25][tq]
+	viewport.texture_mipmap_bias = [0.5, 0.0, -0.25, -0.5][tq] + (-0.25 if (aa == 2 or temporal) and tq >= 2 else 0.0)
 	viewport.anisotropic_filtering_level = [Viewport.ANISOTROPY_2X, Viewport.ANISOTROPY_4X, Viewport.ANISOTROPY_8X, Viewport.ANISOTROPY_16X][tq]
 	viewport.mesh_lod_threshold = [4.0, 2.0, 1.0, 0.5][clampi(Settings.gfx("mesh_detail"), 0, 3)]
 
@@ -371,13 +383,20 @@ static func _upscaler() -> Viewport.Scaling3DMode:
 			return Viewport.SCALING_3D_MODE_METALFX_SPATIAL if metal else Viewport.SCALING_3D_MODE_FSR
 		5:
 			return Viewport.SCALING_3D_MODE_METALFX_TEMPORAL if metal else Viewport.SCALING_3D_MODE_FSR2
-	# Spatial upscalers: measured on the M4 at 2940x1652 output, MetalFX
-	# temporal cost ~15 ms a frame more than MetalFX spatial / FSR 1 for the
-	# same render resolution, which no amount of saved pixels pays back.
-	# (--upscaler=metalfx_temporal / fsr2 still selects the temporal ones.)
-	if RenderingServer.get_current_rendering_driver_name() == "metal":
-		return Viewport.SCALING_3D_MODE_METALFX_SPATIAL
+	# Automatic: FSR 1 everywhere, Metal included. Its RCAS pass is the only
+	# upscaler sharpening Godot exposes (MetalFX spatial has none and looked
+	# soft next to it); it costs well under a millisecond. Temporal upscalers
+	# were measured on the M4 at 2940x1652 output at ~15 ms a frame more than
+	# the spatial ones for the same render resolution, so they stay opt-in.
 	return Viewport.SCALING_3D_MODE_FSR
+
+
+## True when the player left the upscaler on Automatic (and no command-line override).
+static func _upscaler_is_auto() -> bool:
+	for arg in OS.get_cmdline_user_args():
+		if arg.begins_with("--upscaler=") or arg == "--no-upscaler":
+			return false
+	return int(Settings.get_value("graphics", "upscaler")) == 0
 
 
 ## Adaptive resolution. It only trades pixels when pixels are the problem.
@@ -423,12 +442,13 @@ func _update_adaptive_resolution(delta: float) -> void:
 			_cpu_hold = 20.0
 		_verify_avg = 0.0
 	elif avg > budget * 1.07:
-		if _cpu_hold <= 0.0 and _adaptive_scale > ADAPT_MIN + 0.001:
+		var floor_scale: float = GraphicsQuality.ADAPT_FLOOR[clampi(int(Settings.get_value("graphics", "quality")), 0, 3)]
+		if _cpu_hold <= 0.0 and _adaptive_scale > floor_scale + 0.001:
 			# Pixel cost scales with the square of the scale.
 			var want := _adaptive_scale * sqrt(budget / avg) * 0.97
 			_verify_scale = _adaptive_scale
 			_verify_avg = avg
-			_adaptive_scale = clampf(minf(want, _adaptive_scale - 0.04), ADAPT_MIN, 1.0)
+			_adaptive_scale = clampf(minf(want, _adaptive_scale - 0.04), floor_scale, 1.0)
 			if _probe_timer < _probe_wait * 1.5:
 				_probe_wait = minf(_probe_wait * 2.0, 40.0)   # a probe just failed: wait longer
 			_ceiling = maxf(old - 0.03, _adaptive_scale)

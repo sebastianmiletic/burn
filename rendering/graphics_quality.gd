@@ -15,6 +15,18 @@ extends RefCounted
 ## Screen-space effects, SDFGI and volumetric fog exist only in Forward+;
 ## the compatibility renderer (OpenGL) keeps distance/height fog and shadows.
 
+## 3D render resolution per preset (Low .. Ultra), always as a fraction of the
+## window's PHYSICAL pixels (1.0 = native, also on a Retina / HiDPI screen).
+## A preset asks for a pixel budget (megapixels) and a floor: a 1080p screen
+## renders High at native, a 2940x1846 MacBook screen at ~0.64 (the old
+## preset rendered it at 0.5 and looked blurry), 4K at 0.6.
+## See docs/ANTI_ALIASING.md for the measurements behind these numbers.
+const RENDER_BUDGET_MP := [0.8, 1.3, 2.2, 4.0]
+const RENDER_MIN_SCALE := [0.4, 0.5, 0.6, 0.75]
+## Adaptive resolution never drops below this fraction of the preset's scale
+## (High: 0.75, so a 0.64 preset bottoms out near 0.48 of native).
+const ADAPT_FLOOR := [0.6, 0.65, 0.75, 0.8]
+
 const SHADOW_ATLAS := [1024, 2048, 4096, 4096, 8192]
 const SHADOW_DISTANCE := [0.0, 40.0, 60.0, 90.0, 150.0]
 const SHADOW_CASTERS := [0.0, 32.0, 48.0, 72.0, 112.0]
@@ -100,6 +112,14 @@ static func apply_environment(env: Environment) -> void:
 	RenderingServer.environment_set_sdfgi_ray_count(RenderingServer.ENV_SDFGI_RAY_COUNT_64 if gi >= 2 else RenderingServer.ENV_SDFGI_RAY_COUNT_32)
 	RenderingServer.environment_set_sdfgi_frames_to_converge(RenderingServer.ENV_SDFGI_CONVERGE_IN_30_FRAMES)
 	RenderingServer.environment_set_sdfgi_frames_to_update_light(RenderingServer.ENV_SDFGI_UPDATE_LIGHT_IN_4_FRAMES if gi >= 2 else RenderingServer.ENV_SDFGI_UPDATE_LIGHT_IN_8_FRAMES)
+
+
+## The preset's 3D render scale (fraction of native, physical pixels) for a
+## window of `physical` pixels.
+static func preset_scale(q: int, physical: Vector2i) -> float:
+	q = clampi(q, 0, 3)
+	var mp := maxf(1.0, float(physical.x) * float(physical.y)) / 1.0e6
+	return clampf(sqrt(RENDER_BUDGET_MP[q] / mp), RENDER_MIN_SCALE[q], 1.0)
 
 
 ## Sun/moon shadow setup for this quality.
