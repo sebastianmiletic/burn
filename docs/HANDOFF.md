@@ -29,8 +29,8 @@ in-game). Look at `--capture-game` tours and `tests/gpu/ui_gallery.tscn -- --onl
 
 | Branch / item | What is left |
 |---|---|
-| `wip/r3-bosses` `088daed` | per-boss and per-biome music (`audio/music_kit.gd`, `music_library.gd`, location-tracker music states): untested |
-| `wip/r3-map` (rest) | verify visually: minimap must show every island's outline grey, no names/biome lines/boss/structure icons until explored; Hades portal on map + creative teleport to it |
+| `wip/r3-bosses` `088daed` | DONE on `worktree-agent-aa2051baf2e9b80f3` (`d8df35e`): per-boss/per-biome music, `audio_synth` suite passes; still needs a listening pass in-game (crossfades, 6 s biome hold, boss prefetch) |
+| `wip/r3-map` (rest) | verify visually: minimap must show every island's outline grey, no names/biome lines/boss/structure icons until explored; Hades portal on map + creative teleport to it done (`3b0fe55`, `test_map_ui`); look at the portal icon in the map gallery |
 | `wip/r3-building` `53ba1d2` | build pieces (walls/floors/roofs/doors/windows) in wood/stone/reinforced stone, container UI for barrels/chests (not finished), mine/pick up chests, working wells, ores as small veins |
 | `wip/r3-surface-biomes` `6847f8b` | desert + cyan oasis (no hostile spawns), Moony Meadows tall reactive grass + trapdoors to labyrinth, Dragons' Graveyard (ghosts, dragon fang/blood/femur), ravines/valleys/cliffs, biome blending, moving sand/quicksand |
 | `wip/r3-underground` `e84f5b7` | cave variety (moss, dripstone, colours, shapes), Everbloom cave (harvest leaves/fruit/sap; damaging the tree kills it and collapses the cave), Trollhunters-style underground city |
