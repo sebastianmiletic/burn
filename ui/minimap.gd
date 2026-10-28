@@ -1,15 +1,26 @@
 class_name Minimap
 extends Control
 ## Top-left circular minimap. The terrain is the shared map renderer
-## (ui/shaders/map_common.gdshaderinc: hillshade, water, roads, buildings,
-## fog of war) rotated so "up" is where you are looking. Discovered places
-## and bosses show as vector symbols (MapIcons), the tracked objective as a
-## gold marker that sticks to the rim when it is out of range.
-## While on foot it also uncovers the fog of war (MapFog) around the player.
+## (ui/shaders/map_common.gdshaderinc: relief, inked coasts, water, biome
+## borders, fog of war) rotated so "up" is where you are looking. Explored
+## places and bosses show as vector symbols (MapIcons), your own and the
+## party's map markers as pins (MapMarkers), the tracked objective as a gold
+## marker that sticks to the rim when it is out of range.
+## While on foot it also uncovers the fog of war (MapFog) around the player
+## and around party members in sight.
+##
+## Per frame it only moves shader uniforms and redraws a few vector marks:
+## the map layers are cached GPU textures (MapLayers), the fog uploads only
+## when it changes, and the lists of places, enemies and quest points are
+## gathered a few times a second in world space (projected when drawn).
 
 const SHADER := preload("res://ui/shaders/minimap.gdshader")
 const RADIUS_METRES := 110.0
 const FOG_SAVE_SECONDS := 12.0
+const PLACES_EVERY := 0.6
+const ENEMIES_EVERY := 0.15
+const QUESTS_EVERY := 0.25
+const PARTY_REVEAL_EVERY := 0.5
 
 var dimension := 0
 var zoom := 1.0
@@ -20,13 +31,19 @@ var _overlay: Control
 var _mat := ShaderMaterial.new()
 var _layers: MapLayers
 var _fog: MapFog
+var _marks: MapMarkers
 var _fog_save := FOG_SAVE_SECONDS
 var _angle := 0.0
+var _drawn_angle := INF
 var _player_pos := Vector3.ZERO
-var _places: Array = []    # [Vector2 unit offset, place Dictionary]
-var _quests: Array = []    # [Vector2 unit offset, point Dictionary] (QuestMarkers.points)
-var _enemies: Array = []   # [Vector2 unit offset, is_boss]
-var _mates: Array = []     # [Vector2 unit offset, colour, yaw, downed]
+var _places: Array = []    # [Vector3 world position, place Dictionary]
+var _quests: Array = []    # point Dictionaries (QuestMarkers.points)
+var _enemies: Array = []   # [Vector3 world position, is_boss]
+var _mates: Array = []     # [Vector3 world position, colour, yaw, downed]
+var _t_places := 0.0
+var _t_enemies := 0.0
+var _t_quests := 0.0
+var _t_party := 0.0
 var _time := 0.0
 var _cave_poll := 0.0
 var _cave_tex: ImageTexture
@@ -65,6 +82,7 @@ func _layout() -> void:
 	_overlay.size = size
 	_readout.position = Vector2(0, size.y + 2)
 	_readout.size = Vector2(size.x, 16)
+	_drawn_angle = INF
 
 
 ## Smoothly change the visible range (1 = default; < 1 closer).
@@ -92,6 +110,7 @@ func _process(delta: float) -> void:
 		_mat.set_shader_parameter(&"has_map", _layers != null)
 		if _layers != null:
 			_layers.apply(_mat)
+		_t_places = 0.0
 	_player_pos = (player as Node3D).global_position
 	var yaw_v: Variant = player.get("yaw")
 	var yaw: float = UiContext.call_on(world, "camera_yaw", [], yaw_v if yaw_v != null else 0.0)
@@ -99,11 +118,16 @@ func _process(delta: float) -> void:
 	if _layers == null:
 		_overlay.queue_redraw()
 		return
-	# Fog of war: uncover around the player, upload changes, save now and then.
+	# Fog of war: uncover around you (and the party), upload changes, save now and then.
 	if _fog == null:
 		_fog = MapFog.of(world)
+		_marks = MapMarkers.of(world)
 	if _fog != null:
 		_fog.reveal(dimension, _player_pos)
+		_t_party -= delta
+		if _t_party <= 0.0:
+			_t_party = PARTY_REVEAL_EVERY
+			_reveal_party(world, player)
 		_mat.set_shader_parameter(&"fog_tex", _fog.texture(dimension))
 		_mat.set_shader_parameter(&"has_fog", true)
 		_fog_save -= delta
@@ -134,9 +158,13 @@ func _process(delta: float) -> void:
 				_cave_tex.update(image)
 			_mat.set_shader_parameter(&"cave_tex", _cave_tex)
 		_mat.set_shader_parameter(&"cave_offset", Vector2(_player_pos.x - _cave_center.x, _player_pos.z - _cave_center.z) / 192.0)
-	_readout.text = "%s  ·  %d m  ·  Y %d" % ["CAVE" if _cave else "SURFACE", int(RADIUS_METRES * zoom), int(_player_pos.y)]
-	_collect_markers(world, player)
-	queue_redraw()
+	var text := "%s  ·  %d m  ·  Y %d" % ["CAVE" if _cave else "SURFACE", int(RADIUS_METRES * zoom), int(_player_pos.y)]
+	if _readout.text != text:
+		_readout.text = text
+	_collect_markers(world, player, delta)
+	if absf(angle_difference(_drawn_angle, _angle)) > 0.002:
+		_drawn_angle = _angle
+		queue_redraw()
 	_overlay.queue_redraw()
 
 
@@ -146,38 +174,49 @@ func _to_circle(p: Vector3) -> Vector2:
 	return d.rotated(_angle)
 
 
-func _collect_markers(world: Node, player: Object) -> void:
-	_places.clear()
-	_quests.clear()
-	_enemies.clear()
-	_mates.clear()
-	# Quest objectives, hand-ins and activities (QuestLog.markers()); untracked
-	# quests stay off the minimap (the world map shows them).
-	for pt: Dictionary in QuestMarkers.points(world):
-		if int(pt.get("dim", 0)) != dimension or not pt.get("tracked", true):
-			continue
-		_quests.append([_to_circle(pt["pos"]), pt])
+## Places show once explored: discovered, or the fog around them lifted.
+static func place_known(world: Object, fog: MapFog, dim: int, loc: Object) -> bool:
 	var discovered: Variant = world.get("discovered")
-	var locs: Variant = UiContext.call_on(world, "locations", [dimension], [])
-	if locs is Array:
-		for loc: Object in locs:
-			if loc == null:
-				continue
-			if discovered is Dictionary and not (discovered as Dictionary).has(loc.get("id")):
-				continue
-			var c := _to_circle(loc.get("center"))
-			if c.length() > 1.25 and loc.get("major") != true and MapIcons.boss_of(loc) == "":
-				continue
-			_places.append([c, MapIcons.place_of(world, loc)])
-	var enemies: Variant = UiContext.call_on(world, "entities_near", [_player_pos, RADIUS_METRES * zoom, dimension, 1], [])
-	if enemies is Array:
-		for e: Object in enemies:
-			if e == null or e.get("dead") == true:
-				continue
-			if absf((e as Node3D).global_position.y - _player_pos.y) > 24.0:
-				continue  # Do not show surface enemies as if they occupied a cave.
-			var is_boss: bool = (e.has_method("is_boss") and e.call("is_boss")) or (e.has_meta("boss") and e.get_meta("boss") == true)
-			_enemies.append([_to_circle((e as Node3D).global_position), is_boss])
+	if discovered is Dictionary and (discovered as Dictionary).has(loc.get("id")):
+		return true
+	return fog != null and fog.seen(dim, loc.get("center")) > 0.5
+
+
+func _collect_markers(world: Node, player: Object, delta: float) -> void:
+	_t_quests -= delta
+	if _t_quests <= 0.0:
+		_t_quests = QUESTS_EVERY
+		_quests.clear()
+		# Quest objectives, hand-ins and activities (QuestLog.markers()); untracked
+		# quests stay off the minimap (the world map shows them).
+		for pt: Dictionary in QuestMarkers.points(world):
+			if int(pt.get("dim", 0)) == dimension and pt.get("tracked", true):
+				_quests.append(pt)
+		_quests.sort_custom(func(x: Dictionary, y: Dictionary) -> bool: return float(x.get("priority", 1.0)) < float(y.get("priority", 1.0)))
+	_t_places -= delta
+	if _t_places <= 0.0:
+		_t_places = PLACES_EVERY
+		_places.clear()
+		var locs: Variant = UiContext.call_on(world, "locations", [dimension], [])
+		if locs is Array:
+			for loc: Object in locs:
+				if loc != null and place_known(world, _fog, dimension, loc):
+					_places.append([loc.get("center"), MapIcons.place_of(world, loc)])
+	_t_enemies -= delta
+	if _t_enemies <= 0.0:
+		_t_enemies = ENEMIES_EVERY
+		_enemies.clear()
+		var enemies: Variant = UiContext.call_on(world, "entities_near", [_player_pos, RADIUS_METRES * zoom, dimension, 1], [])
+		if enemies is Array:
+			for e: Object in enemies:
+				if e == null or e.get("dead") == true:
+					continue
+				var at := (e as Node3D).global_position
+				if absf(at.y - _player_pos.y) > 24.0:
+					continue  # Do not show surface enemies as if they occupied a cave.
+				var is_boss: bool = (e.has_method("is_boss") and e.call("is_boss")) or (e.has_meta("boss") and e.get_meta("boss") == true)
+				_enemies.append([at, is_boss])
+	_mates.clear()
 	var players: Variant = UiContext.call_on(world, "players_in", [dimension], [])
 	if players is Array:
 		var net := UiContext.net()
@@ -190,25 +229,38 @@ func _collect_markers(world: Node, player: Object) -> void:
 				col = UiContext.call_on(net, "player_color", [int(peer)], col)
 			var pyaw: Variant = p.get("yaw")
 			var downed: bool = p.get("downed") == true or p.get("dead") == true
-			_mates.append([_to_circle((p as Node3D).global_position), col, float(pyaw) if pyaw != null else 0.0, downed])
+			_mates.append([(p as Node3D).global_position, col, float(pyaw) if pyaw != null else 0.0, downed])
+
+
+## Party members uncover the land around them on your map too.
+func _reveal_party(world: Node, player: Object) -> void:
+	var players: Variant = UiContext.call_on(world, "players_in", [dimension], [])
+	if not (players is Array):
+		return
+	for p: Object in players:
+		if p == null or p == player or not (p is Node3D):
+			continue
+		var peer: Variant = p.get("peer_id")
+		_fog.reveal(dimension, (p as Node3D).global_position, MapFog.REVEAL_RADIUS, false, int(peer) if peer != null else p.get_instance_id())
 
 
 func _draw() -> void:
 	var c := size * 0.5
 	var r := _radius()
-	# Bezel: soft shadow, dark ring, fine gold hairlines and ticks.
-	draw_circle(c, r + 9.0, Color(0, 0, 0, 0.35), true, -1.0, true)
-	draw_circle(c, r + 7.0, Color(0.035, 0.028, 0.026, 0.96), true, -1.0, true)
-	draw_arc(c, r + 0.8, 0, TAU, 128, Color(0.78, 0.6, 0.36, 0.9), 1.4, true)
-	draw_arc(c, r + 6.6, 0, TAU, 128, Color(0.5, 0.38, 0.24, 0.8), 1.0, true)
+	# Bezel: soft shadow, dark ring, fine gold hairlines and a turning scale.
+	draw_circle(c, r + 10.0, Color(0, 0, 0, 0.3), true, -1.0, true)
+	draw_circle(c, r + 8.0, Color(0.035, 0.028, 0.026, 0.97), true, -1.0, true)
+	draw_arc(c, r + 0.8, 0, TAU, 128, Color(0.78, 0.6, 0.36, 0.95), 1.5, true)
+	draw_arc(c, r + 7.4, 0, TAU, 128, Color(0.5, 0.38, 0.24, 0.85), 1.0, true)
+	draw_arc(c, r + 8.6, 0, TAU, 128, Color(0.22, 0.16, 0.1, 0.9), 1.0, true)
 	for i in 72:
 		var a := TAU * i / 72.0 + _angle
 		var major := i % 18 == 0
 		var mid := i % 6 == 0
 		var dir := Vector2(sin(a), -cos(a))
 		var l0 := r + 2.2
-		var l1 := r + (5.6 if major else (4.2 if mid else 3.2))
-		draw_line(c + dir * l0, c + dir * l1, Color(0.8, 0.62, 0.38, 0.85 if (major or mid) else 0.4), 1.0, true)
+		var l1 := r + (6.0 if major else (4.4 if mid else 3.2))
+		draw_line(c + dir * l0, c + dir * l1, Color(0.8, 0.62, 0.38, 0.9 if (major or mid) else 0.4), 1.0, true)
 
 
 func _draw_overlay() -> void:
@@ -217,19 +269,27 @@ func _draw_overlay() -> void:
 	var ci := _overlay
 	# Places (bosses and major places stay on the rim when out of range).
 	for entry: Array in _places:
-		var off: Vector2 = entry[0]
 		var place: Dictionary = entry[1]
+		var off := _to_circle(entry[0])
 		var important: bool = place.get("major", false) or String(place.get("boss", "")) != ""
-		var at_rim := off.length() > 0.86
-		if at_rim:
-			if not important:
+		if off.length() > 0.86:
+			if not important or off.length() > 6.0:
 				continue
 			off = off.normalized() * 0.86
-		var big := String(place.get("boss", "")) != ""
-		MapIcons.draw_place(ci, place, c + off * r, 8.5 if big else 6.5, at_rim)
+			MapIcons.draw_place(ci, place, c + off * r, 8.5 if String(place.get("boss", "")) != "" else 6.5, true)
+			continue
+		MapIcons.draw_place(ci, place, c + off * r, 8.5 if String(place.get("boss", "")) != "" else 6.5)
+	# Player map markers (yours and the party's); on the rim when out of range.
+	if _marks != null:
+		for m: Dictionary in _marks.visible(dimension):
+			var off := _to_circle(m["pos"])
+			var rim := off.length() > 0.8
+			if rim:
+				off = off.normalized() * 0.8
+			MapIcons.draw_marker(ci, MapMarkers.icon(m), MapMarkers.colour(m), c + off * r + Vector2(0, 5.0), 5.5, 0.6 if rim else 1.0)
 	# Enemies.
 	for e: Array in _enemies:
-		var off: Vector2 = e[0]
+		var off := _to_circle(e[0])
 		if off.length() > 0.95:
 			continue
 		var pos := c + off * r
@@ -242,7 +302,7 @@ func _draw_overlay() -> void:
 			ci.draw_circle(pos, 2.3, Color(0.95, 0.27, 0.2), true, -1.0, true)
 	# Companions: chevrons in their colour; a pulsing cross when they are down.
 	for m: Array in _mates:
-		var off: Vector2 = m[0]
+		var off := _to_circle(m[0])
 		var at_rim := off.length() > 0.9
 		if at_rim:
 			off = off.normalized() * 0.9
@@ -257,32 +317,37 @@ func _draw_overlay() -> void:
 			_chevron(ci, pos, _angle - float(m[2]), 6.0, m[1], 0.6 if at_rim else 1.0)
 	# Objectives and activities on top: they matter most. Search areas first.
 	var m_per_unit := RADIUS_METRES * zoom
-	for e: Array in _quests:
-		var pt: Dictionary = e[1]
+	var offs: Array = []
+	for pt: Dictionary in _quests:
+		var off := _to_circle(pt["pos"])
+		offs.append(off)
 		var rad := float(pt.get("radius", 0.0))
 		var area_px := rad / m_per_unit * r
 		# Only areas that fit inside the glass (no clipping on canvas items).
-		if rad > 0.0 and (e[0] as Vector2).length() * r + area_px <= r - 2.0:
-			MapIcons.draw_area(ci, pt, c + (e[0] as Vector2) * r, area_px)
-	var order := _quests.duplicate()
-	order.sort_custom(func(x: Array, y: Array) -> bool: return float(x[1].get("priority", 1.0)) < float(y[1].get("priority", 1.0)))
-	for e: Array in order:
-		var off: Vector2 = e[0]
+		if rad > 0.0 and off.length() * r + area_px <= r - 2.0:
+			MapIcons.draw_area(ci, pt, c + off * r, area_px)
+	for i in _quests.size():
+		var pt: Dictionary = _quests[i]
+		var off: Vector2 = offs[i]
 		var at_rim := off.length() > 0.84
 		if at_rim:
 			off = off.normalized() * 0.84
-		var quest_kind := String(e[1].get("kind", "")) in ["main", "side", "turn_in"]
-		MapIcons.draw_point(ci, e[1], c + off * r, 7.5 if quest_kind else 7.0, _time, at_rim)
+		var quest_kind := String(pt.get("kind", "")) in ["main", "side", "turn_in"]
+		MapIcons.draw_point(ci, pt, c + off * r, 7.5 if quest_kind else 7.0, _time, at_rim)
 	# Cardinal letters ride the bezel.
 	var font := UiTheme.title_font(700)
 	for card: Array in [["N", 0.0], ["E", PI * 0.5], ["S", PI], ["W", PI * 1.5]]:
 		var a: float = card[1] + _angle
-		var pos := c + Vector2(sin(a), -cos(a)) * (r + 3.5)
+		var pos := c + Vector2(sin(a), -cos(a)) * (r + 4.0)
 		var north: bool = card[0] == "N"
 		var fs := 13 if north else 10
-		ci.draw_circle(pos, 8.5 if north else 7.0, Color(0.035, 0.028, 0.026), true, -1.0, true)
+		ci.draw_circle(pos, 9.0 if north else 7.0, Color(0.035, 0.028, 0.026), true, -1.0, true)
 		if north:
-			ci.draw_arc(pos, 8.5, 0, TAU, 24, Color(0.86, 0.3, 0.2), 1.2, true)
+			ci.draw_arc(pos, 9.0, 0, TAU, 24, Color(0.86, 0.3, 0.2), 1.3, true)
+			var tip := pos + Vector2(sin(a), -cos(a)) * 13.5
+			var side := Vector2(cos(a), sin(a)) * 3.2
+			var base := pos + Vector2(sin(a), -cos(a)) * 8.6
+			ci.draw_colored_polygon(PackedVector2Array([tip, base + side, base - side]), Color(0.86, 0.3, 0.2))
 		var tsz := font.get_string_size(card[0], HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 		ci.draw_string(font, pos + Vector2(-tsz.x * 0.5, fs * 0.36), card[0], HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
 				Color(1, 0.82, 0.55) if north else UiTheme.TEXT_DIM)

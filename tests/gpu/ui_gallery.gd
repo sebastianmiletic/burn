@@ -269,34 +269,42 @@ func _shot(shot_name: String) -> void:
 	printerr("[gallery] ", shot_name)
 
 
-## Every map symbol at several sizes, on map-like grounds.
+## Every map symbol (MapIcons.glyphs()) at a large and two map sizes, the
+## boss badges, and the player marker pins, on dark and map-like grounds.
 class IconSheet:
 	extends Control
 
-	const GLYPHS := [&"skull", &"serpent", &"dragon", &"spider", &"crown", &"flame", &"hound", &"witch", &"crystal",
-		&"village", &"shrine", &"cave", &"mine", &"portal", &"tower", &"keep", &"gate", &"ruin", &"anchor", &"quest"]
+	const BOSSES := [&"skull", &"serpent", &"kraken", &"whirlpool", &"dragon", &"spider", &"crown", &"flame",
+		&"hound", &"witch", &"crystal", &"void_eye"]
 
 	func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.08, 0.075, 0.07))
-		draw_rect(Rect2(0, size.y * 0.5, size.x, size.y * 0.5), Color(0.5, 0.48, 0.32))
-		for i in GLYPHS.size():
-			var g: StringName = GLYPHS[i]
+		draw_rect(Rect2(0, size.y * 0.62, size.x, size.y * 0.38), Color(0.5, 0.48, 0.32))
+		var all := MapIcons.glyphs()
+		var cols := 14
+		var step := Vector2((size.x - 60.0) / cols, 92.0)
+		for i in all.size():
+			var g: StringName = all[i]
+			var at := Vector2(50 + (i % cols) * step.x, 46 + (i / cols) * step.y)
+			var col := MapIcons.STONE
+			match g:
+				&"village": col = MapIcons.VILLAGE
+				&"shrine": col = MapIcons.SHRINE
+				&"portal": col = MapIcons.PORTAL
+				&"quest": col = MapIcons.QUEST
+				&"wreck", &"sunken", &"well", &"fishing", &"anchor", &"b_waves": col = MapIcons.SEA
+			MapIcons.draw_glyph(self, g, at, 24.0, col, Color(0, 0, 0, 0.85))
+			MapIcons.draw_glyph(self, g, at + Vector2(-step.x * 0.28, 38), 8.0, col, Color(0, 0, 0, 0.85))
+			MapIcons.draw_glyph(self, g, at + Vector2(step.x * 0.12, 38), 11.0, col, Color(0, 0, 0, 0.85))
+			draw_string(UiTheme.MONO, at + Vector2(-step.x * 0.45, 58), String(g), HORIZONTAL_ALIGNMENT_LEFT, -1, 10, UiTheme.TEXT_DIM)
+		var y := size.y * 0.62 + 50.0
+		for i in BOSSES.size():
+			var x := 60.0 + i * 100.0
+			MapIcons.draw_badge(self, BOSSES[i], Vector2(x, y), 26.0, false)
+			MapIcons.draw_badge(self, BOSSES[i], Vector2(x - 20, y + 62), 13.0, false)
+			MapIcons.draw_badge(self, BOSSES[i], Vector2(x + 18, y + 62), 8.5, i % 3 == 0)
+		for i in MapIcons.MARKER_ICONS.size():
 			var x := 60.0 + i * 90.0
-			var boss := i < 9
-			for row in 2:
-				var y0 := 40.0 + row * size.y * 0.5
-				if boss:
-					MapIcons.draw_badge(self, g, Vector2(x, y0 + 30), 26.0, false)
-					MapIcons.draw_badge(self, g, Vector2(x, y0 + 100), 13.0, false)
-					MapIcons.draw_badge(self, g, Vector2(x, y0 + 140), 8.5, false)
-					MapIcons.draw_badge(self, g, Vector2(x, y0 + 190), 13.0, true)
-				else:
-					var col := MapIcons.STONE
-					match g:
-						&"village": col = MapIcons.VILLAGE
-						&"shrine": col = MapIcons.SHRINE
-						&"portal": col = MapIcons.PORTAL
-						&"quest": col = MapIcons.QUEST
-					MapIcons.draw_glyph(self, g, Vector2(x, y0 + 30), 26.0, col, Color(0, 0, 0, 0.85))
-					MapIcons.draw_glyph(self, g, Vector2(x, y0 + 100), 10.0, col, Color(0, 0, 0, 0.85))
-					MapIcons.draw_glyph(self, g, Vector2(x, y0 + 140), 6.5, col, Color(0, 0, 0, 0.85))
+			var c: Color = MapIcons.MARKER_COLOURS[i % MapIcons.MARKER_COLOURS.size()]
+			MapIcons.draw_marker(self, MapIcons.MARKER_ICONS[i], c, Vector2(x, y + 150), 13.0)
+			MapIcons.draw_marker(self, MapIcons.MARKER_ICONS[i], c, Vector2(x + 34, y + 150), 6.0)

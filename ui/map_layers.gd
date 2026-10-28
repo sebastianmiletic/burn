@@ -6,6 +6,9 @@ extends RefCounted
 var color: ImageTexture
 var height: ImageTexture
 var detail: ImageTexture
+var edges: ImageTexture
+## Named areas: [name, Vector2 world position, area m², is_sea, biome] (MapImage._regions).
+var regions: Array = []
 var metres_per_pixel := 4.0
 var world_size := 2048.0
 var sea_level := 12.0
@@ -50,6 +53,12 @@ func _build(img: Image, fallback_mpp: float) -> void:
 	var d: Variant = img.get_meta("detail") if img.has_meta("detail") else null
 	if d is Image:
 		detail = ImageTexture.create_from_image(d)
+	var e: Variant = img.get_meta("biome_edge") if img.has_meta("biome_edge") else null
+	if e is Image:
+		edges = ImageTexture.create_from_image(e)
+	var r: Variant = img.get_meta("regions") if img.has_meta("regions") else null
+	if r is Array:
+		regions = r
 
 
 ## World position -> map uv.
@@ -67,6 +76,9 @@ func apply(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter(&"has_detail", detail != null)
 	if detail != null:
 		mat.set_shader_parameter(&"detail_tex", detail)
+	mat.set_shader_parameter(&"has_edges", edges != null)
+	if edges != null:
+		mat.set_shader_parameter(&"edge_tex", edges)
 	mat.set_shader_parameter(&"world_size", world_size)
 	mat.set_shader_parameter(&"sea_level", sea_level)
 	mat.set_shader_parameter(&"liquid", liquid)

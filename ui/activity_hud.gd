@@ -19,6 +19,7 @@ var director: ActivityDirector
 
 var _root: Control
 var _compass: Control
+var _pins: Array = []   # player map markers (MapMarkers) in this dimension
 var _marker: Control
 var _heat: Control
 var _banner_title: Label
@@ -111,6 +112,8 @@ func _process(delta: float) -> void:
 			if int(m.get("dim", 0)) == w.local_dimension:
 				_markers.append(m)
 		_focus = _pick_focus(_markers, w.local_player.global_position)
+		var marks := MapMarkers.of(w)
+		_pins = marks.visible(w.local_dimension) if marks != null else []
 	# Layout: the strip sits under the boss bar while a boss fight is on.
 	var vp := _root.size
 	var top := 10.0
@@ -258,6 +261,14 @@ func _draw_compass() -> void:
 			var h := 8.0 if step % 3 == 0 else 5.0
 			_compass.draw_line(Vector2(x, STRIP_H - h), Vector2(x, STRIP_H - 1), Color(UiTheme.TEXT_DIM, fade * 0.9), 1.0)
 	_compass.draw_line(Vector2(mid, 0), Vector2(mid, 6), UiTheme.ACCENT, 2.0)
+	# Player map markers: small pins, under the quest markers.
+	for m: Dictionary in _pins:
+		var rel := _bearing(m["pos"])
+		if absf(rel) > SPAN * 0.5:
+			continue
+		var x := mid + rel / (SPAN * 0.5) * mid
+		var fade := 1.0 - pow(absf(rel) / (SPAN * 0.5), 3.0)
+		MapIcons.draw_marker(_compass, MapMarkers.icon(m), MapMarkers.colour(m), Vector2(x, STRIP_H - 3.0), 6.0, fade * (1.0 if m.get("mine", false) else 0.75))
 	# Markers.
 	for m: Dictionary in _markers:
 		var rel := _bearing(m["pos"])

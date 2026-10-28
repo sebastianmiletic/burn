@@ -792,14 +792,16 @@ func _pose(dt: float) -> void:
 var _swim_w := 0.0
 
 
-## Swimming: the body tips forward into a breaststroke with a flutter kick
-## as it moves; still, it hangs upright treading water with sculling hands.
+## Swimming: the body lies flat into a breaststroke with a flutter kick as it
+## moves (a front crawl, arms windmilling in turn, when fast); still, it hangs
+## upright treading water with sculling hands and a slow bicycle kick.
 func _pose_swim(t: PackedVector3Array) -> void:
 	var w := _swim_w
 	var mvn := clampf(_speed * _s / 2.6, 0.0, 1.0)
 	var cyc := _time * lerpf(2.4, 3.6, mvn)
 	var stroke := sin(cyc)
-	var lie := lerpf(-0.18, -1.2, mvn)
+	var crawl := smoothstep(2.9, 3.8, _speed * _s)
+	var lie := lerpf(-0.18, -1.45, mvn)
 	_hips_q_override = true
 	_hips_q = Quaternion.IDENTITY.slerp(Quaternion.from_euler(Vector3(lie, 0, 0)), w)
 	_hips_tgt = _hips_tgt.lerp(_rest[R.HIPS] + Vector3(0, -0.05 - 0.25 * mvn, 0.0), w)
@@ -816,9 +818,15 @@ func _pose_swim(t: PackedVector3Array) -> void:
 		t[R.SHIN_L + lo] = t[R.SHIN_L + lo].lerp(shin, w)
 		# Arms: reach forward and sweep out (moving), or scull at the sides (treading).
 		var reach := Vector3(1.9 + 0.5 * stroke, sg * 0.1, sg * (-0.25 - 0.7 * maxf(0.0, -stroke)))
+		# Front crawl: the arm circles over (shoulder pitch through a full turn).
+		var arm_ph := cyc * 0.5 + side * PI
+		var wind := Vector3(1.55 + 1.45 * sin(arm_ph), sg * 0.15 * cos(arm_ph), sg * (-0.2 - 0.35 * maxf(0.0, cos(arm_ph))))
+		reach = reach.lerp(wind, crawl)
 		var scull := Vector3(0.55 + 0.15 * stroke, sg * 0.3 * stroke, sg * -0.85)
 		t[R.UARM_L + o] = t[R.UARM_L + o].lerp(scull.lerp(reach, mvn), w)
-		t[R.FARM_L + o] = t[R.FARM_L + o].lerp(Vector3(0.35 + 0.6 * maxf(0.0, -stroke) * mvn, 0, 0), w)
+		var elbow := 0.35 + 0.6 * maxf(0.0, -stroke) * mvn
+		elbow = lerpf(elbow, 0.25 + 0.9 * maxf(0.0, -sin(cyc * 0.5 + side * PI)), crawl)
+		t[R.FARM_L + o] = t[R.FARM_L + o].lerp(Vector3(elbow, 0, 0), w)
 	# Keep the face up out of the water.
 	t[R.NECK] = t[R.NECK].lerp(Vector3(lie * 0.35, 0, 0), w)
 	t[R.HEAD] = t[R.HEAD].lerp(Vector3(lie * 0.45, 0, 0), w)
