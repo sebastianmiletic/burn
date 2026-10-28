@@ -159,3 +159,21 @@ func test_party_reveal_is_tracked_per_explorer() -> void:
 	check(fog.seen(0, Vector3(700, 0, 700)) > 0.95, "a companion's path is uncovered")
 	check(fog.seen(0, Vector3(800, 0, 300)) > 0.95, "each explorer is throttled on its own")
 	w.free()
+
+
+## The Gates of Hades show as a portal on the map, and creative inspection can
+## teleport there, landing in front of the portal rather than inside the rock.
+func test_hades_portal_on_map_and_creative_teleport() -> void:
+	var gate := Location.new(&"gates_of_hades", "Gates of Hades", Location.Kind.GATE, Vector3(100, -80, 200))
+	gate.add_spawn("portal", Vector3(100, -90, 180), {"to": 1})
+	var place := MapIcons.place_of(null, gate)
+	check_eq(place["icon"], &"portal", "the Gates of Hades draw as a portal")
+	check_eq(place["color"], MapIcons.PORTAL)
+	check_eq(place["sub"], "Portal to Hades")
+	check(GameWorld.creative_destination(gate), "the Gates of Hades are a creative teleport destination")
+	check(GameWorld.creative_target(gate).is_equal_approx(Vector3(100, -89.9, 189)), "creative teleport lands before the portal")
+	var village := Location.new(&"emberfall", "Emberfall", Location.Kind.VILLAGE, Vector3(5, 10, 5))
+	village.add_spawn("portal", Vector3(40, 10, 40), {"to": 2})
+	check_eq(GameWorld.creative_target(village), Vector3(5, 13, 5), "villages still land at their centre")
+	var ruin := Location.new(&"ruin_3", "Old Ruin", Location.Kind.RUIN, Vector3.ZERO)
+	check(not GameWorld.creative_destination(ruin), "plain ruins are not listed")

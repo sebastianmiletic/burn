@@ -130,7 +130,7 @@ static func _ensure() -> void:
 			["drowned_", &"sunken", "Sunken ruins", SEA], ["drowned_spire", &"lighthouse", "Sea tower", SEA],
 			["tower_", &"tower", "Watchtower", STONE], ["ruin_", &"ruin", "Ruins", STONE],
 			["silent_crypt", &"dungeon", "Crypt", STONE], ["crypt_", &"dungeon", "Crypt", STONE],
-			["cinder_crater", &"volcano", "Crater", FIRE]]:
+			["cinder_crater", &"volcano", "Crater", FIRE], ["gates_of_hades", &"portal", "Portal to Hades", PORTAL]]:
 		_add_kind(spec[0], spec[1], spec[2], spec[3], true)
 	for kind: String in BOSS_ICONS:
 		_bosses[kind] = [BOSS_ICONS[kind], BOSS_NAMES.get(kind, kind.capitalize())]
