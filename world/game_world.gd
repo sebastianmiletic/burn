@@ -118,6 +118,7 @@ func setup(info: Dictionary) -> void:
 	add_child(tracker)
 	# Activities (treasure, bounties, world events, the Proving Ring): same node path on every peer.
 	add_child(ActivityDirector.new())
+	add_child(MapShare.new())   # party map markers (same node path on every peer)
 
 	var save: Dictionary = info.get("save", {})
 	_load_world_state(save)

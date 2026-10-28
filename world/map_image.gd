@@ -14,6 +14,7 @@ extends RefCounted
 ##   "world_size"        world extent in metres
 ##   "sea_level"         liquid surface height
 ##   "liquid"            0 water, 1 lava, 2 void (the Ryft)
+##   "biome_edge"        Image L8: land biome borders; "regions": named areas (see _regions)
 ## ui/shaders/map_common.gdshaderinc renders all of this; MapLayers uploads it.
 
 ## Legacy palette (distant terrain colouring reads this; keep it stable).
@@ -145,7 +146,123 @@ static func build(gen: WorldGen) -> Image:
 	var dmpp := maxf(DETAIL_MPP, ceilf(float(gen.size) / DETAIL_MAX))
 	img.set_meta("detail", _detail(gen, dmpp))
 	img.set_meta("detail_mpp", dmpp)
+	_regions(gen, img, heights, sea)
 	return img
+
+
+## Biome borders and region names for the map (no effect on the world):
+##   "biome_edge"  Image L8 on the colour grid: 255 on both sides of a border between land biomes
+##   "regions"     Array of [name, Vector2 world position, float area m², bool sea, int biome], one per named area
+static func _regions(gen: WorldGen, img: Image, heights: PackedFloat32Array, sea: float) -> void:
+	var n := img.get_width()
+	if gen._biome.size() != n * n or heights.size() != n * n:
+		return
+	var biome := gen._biome
+	var edge := PackedByteArray()
+	edge.resize(n * n)
+	var ocean := WorldGen.Biome.OCEAN
+	for z in n - 1:
+		var row := z * n
+		for x in n - 1:
+			var i := row + x
+			var b := biome[i]
+			if b == ocean or heights[i] < sea:
+				continue
+			var r := i + 1
+			if biome[r] != b and biome[r] != ocean and heights[r] >= sea:
+				edge[i] = 255
+				edge[r] = 255
+			var d := i + n
+			if biome[d] != b and biome[d] != ocean and heights[d] >= sea:
+				edge[i] = 255
+				edge[d] = 255
+	img.set_meta("biome_edge", Image.create_from_data(n, n, false, Image.FORMAT_L8, edge))
+	# Named areas on a coarse grid: connected cells of one region, labelled at their most inland cell.
+	var step := maxi(1, int(round(32.0 / (float(gen.size) / n))))
+	var g := n / step
+	var mpp := float(gen.size) / n
+	var keys := PackedInt32Array()
+	keys.resize(g * g)
+	for gz in g:
+		for gx in g:
+			var i := gx * step + gz * step * n
+			var wx := (gx * step + step * 0.5) * mpp
+			var wz := (gz * step + step * 0.5) * mpp
+			var b := int(biome[i])
+			var k := b * 16
+			if heights[i] < sea:
+				k = -1 if gen.dimension != 0 else 4096 + (int(gen._ocean[i]) if gen._ocean.size() == n * n else 0)
+			elif b == WorldGen.Biome.FOREST and gen.dimension == 0:
+				k += 1 + gen.forest_region(int(wx), int(wz))
+			keys[gx + gz * g] = k
+	# Chamfer distance (cells) to the nearest cell of another region.
+	var dist := PackedFloat32Array()
+	dist.resize(g * g)
+	for i in g * g:
+		dist[i] = 1e6
+	for gz in g:
+		for gx in g:
+			var i := gx + gz * g
+			var k := keys[i]
+			if gx == 0 or gz == 0 or gx == g - 1 or gz == g - 1 or keys[i - 1] != k or keys[i + 1] != k or keys[i - g] != k or keys[i + g] != k:
+				dist[i] = 0.0
+	for gz in range(1, g):
+		for gx in range(1, g):
+			var i := gx + gz * g
+			dist[i] = minf(dist[i], minf(dist[i - 1] + 1.0, dist[i - g] + 1.0))
+	for gz in range(g - 2, -1, -1):
+		for gx in range(g - 2, -1, -1):
+			var i := gx + gz * g
+			dist[i] = minf(dist[i], minf(dist[i + 1] + 1.0, dist[i + g] + 1.0))
+	var seen := PackedByteArray()
+	seen.resize(g * g)
+	var found: Array = []   # [name, pos, area, sea, biome]
+	for start in g * g:
+		if seen[start] != 0 or keys[start] == -1:
+			continue
+		var k := keys[start]
+		var stack := PackedInt32Array([start])
+		seen[start] = 1
+		var count := 0
+		var best := start
+		while not stack.is_empty():
+			var i := stack[stack.size() - 1]
+			stack.resize(stack.size() - 1)
+			count += 1
+			if dist[i] > dist[best]:
+				best = i
+			var gx := i % g
+			var gz := i / g
+			for nb: int in [i - 1 if gx > 0 else -1, i + 1 if gx < g - 1 else -1, i - g if gz > 0 else -1, i + g if gz < g - 1 else -1]:
+				if nb >= 0 and seen[nb] == 0 and keys[nb] == k:
+					seen[nb] = 1
+					stack.append(nb)
+		var area := count * pow(step * mpp, 2.0)
+		if count < 14 or dist[best] < 1.5:
+			continue
+		var pos := Vector2((best % g) * step + step * 0.5, (best / g) * step + step * 0.5) * mpp
+		var is_sea := k >= 4096
+		var name := ""
+		if is_sea:
+			var sk := k - 4096
+			name = WorldGen.SEA_NAMES[sk] if sk > 0 and sk < WorldGen.SEA_NAMES.size() else "The Grey Sea"
+		elif gen.has_method("region_name"):
+			name = gen.region_name(pos.x, pos.y)
+		if name == "":
+			continue
+		found.append([name, pos, area, is_sea, WorldGen.Biome.OCEAN if is_sea else k / 16])
+	# One label per name unless the areas lie far apart; biggest first.
+	found.sort_custom(func(a: Array, b: Array) -> bool: return a[2] > b[2])
+	var out: Array = []
+	for f: Array in found:
+		var keep := true
+		for o: Array in out:
+			if o[0] == f[0] and (o[1] as Vector2).distance_to(f[1]) < 900.0:
+				keep = false
+				break
+		if keep:
+			out.append(f)
+	img.set_meta("regions", out)
 
 
 ## Roads (from the world's road columns) and building roofs at a finer scale.

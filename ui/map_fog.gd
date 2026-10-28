@@ -9,7 +9,12 @@ extends RefCounted
 ## read back by `of()` from session.save["map_fog"]; party guests keep theirs
 ## in their character file), and between saves in its own small file
 ## (`SaveSystem.fog_path()`, keyed by seed) written every few seconds
-## while it changes. On load the newer of the two wins.
+## while it changes. On load the newer of the two wins. The player's own map
+## markers (MapMarkers) are saved inside the same dictionary.
+##
+## Co-op: each peer keeps its own fog, but it also uncovers the land around
+## party members it can see (the minimap calls reveal() for them), so what
+## the party explores together shows on everyone's map.
 
 const CELL := 8.0
 const REVEAL_RADIUS := 120.0       ## fully seen within ~80 %, feathered to here
@@ -21,7 +26,7 @@ var _unsaved := false
 var _world: WeakRef
 var _slot: Variant = null   # run id or old slot number (SaveSystem); null: no save
 var _seed := 0
-var _last_reveal := {}     # dim -> Vector2
+var _last_reveal := {}     # Vector2i(dim, who) -> Vector2
 
 
 ## The fog of `world`, created (and loaded) on first use.
@@ -59,12 +64,14 @@ func _layer(dim: int) -> Dictionary:
 	return l
 
 
-## Mark the area around `pos` as seen. Cheap when the player has not moved.
-func reveal(dim: int, pos: Vector3, radius := REVEAL_RADIUS, force := false) -> void:
+## Mark the area around `pos` as seen. Cheap when the explorer has not moved;
+## `who` keeps that check apart per explorer (0 = you, else a party member).
+func reveal(dim: int, pos: Vector3, radius := REVEAL_RADIUS, force := false, who := 0) -> void:
 	var at := Vector2(pos.x, pos.z)
-	if not force and _last_reveal.has(dim) and (_last_reveal[dim] as Vector2).distance_to(at) < 6.0:
+	var key := Vector2i(dim, who)
+	if not force and _last_reveal.has(key) and (_last_reveal[key] as Vector2).distance_to(at) < 6.0:
 		return
-	_last_reveal[dim] = at
+	_last_reveal[key] = at
 	var l := _layer(dim)
 	var img: Image = l["img"]
 	var n: int = l["n"]
@@ -112,6 +119,11 @@ func has_unsaved() -> bool:
 	return _unsaved
 
 
+## Something else saved with the fog changed (map markers).
+func mark_unsaved() -> void:
+	_unsaved = true
+
+
 # --- Persistence ---------------------------------------------------------------------
 
 func to_dict() -> Dictionary:
@@ -119,10 +131,18 @@ func to_dict() -> Dictionary:
 	for dim: int in _layers:
 		var img: Image = _layers[dim]["img"]
 		dims[dim] = {"n": int(_layers[dim]["n"]), "data": img.get_data().compress(FileAccess.COMPRESSION_ZSTD)}
-	return {"version": VERSION, "cell": CELL, "dims": dims, "saved_at": Time.get_unix_time_from_system()}
+	var out := {"version": VERSION, "cell": CELL, "dims": dims, "saved_at": Time.get_unix_time_from_system()}
+	var w: Object = _world.get_ref() if _world != null else null
+	if w != null and w.has_meta(MapMarkers.META):
+		out["markers"] = (w.get_meta(MapMarkers.META) as MapMarkers).to_array()
+	return out
 
 
 func from_dict(d: Dictionary) -> bool:
+	var w: Object = _world.get_ref() if _world != null else null
+	var marks := MapMarkers.of(w) if d.has("markers") else null
+	if marks != null:
+		marks.from_array(d["markers"])
 	if d.is_empty() or float(d.get("cell", 0.0)) != CELL:
 		return false
 	var dims: Dictionary = d.get("dims", {})
