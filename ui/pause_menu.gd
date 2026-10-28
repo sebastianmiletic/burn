@@ -29,7 +29,7 @@ func _build() -> void:
 	if w != null:
 		for dim: int in w.gens:
 			for loc: Location in w.locations(dim):
-				if not loc.spawns_of("boss").is_empty() or loc.kind == Location.Kind.VILLAGE:
+				if GameWorld.creative_destination(loc):
 					_destinations.add_item(loc.name)
 					_destinations.set_item_metadata(_destinations.item_count - 1, loc.id)
 	_teleport = _entry("Teleport to selected location", _teleport_selected)

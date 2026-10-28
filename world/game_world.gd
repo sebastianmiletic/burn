@@ -821,7 +821,24 @@ func fell_tree_fx(root: Vector3i, trunk: int, dim: int, dir: Vector3) -> void:
 
 # --- Dimensions --------------------------------------------------------------------------
 
-## Local player moves to another dimension (portal).
+## Places creative inspection can teleport to: boss lairs, villages and
+## portals (the Gates of Hades lie deep under the Cinder Crater).
+static func creative_destination(loc: Location) -> bool:
+	return loc != null and (not loc.spawns_of("boss").is_empty() or loc.kind == Location.Kind.VILLAGE
+			or not loc.spawns_of("portal").is_empty())
+
+
+## Where a creative teleport to `loc` lands: before its boss, in front of its
+## portal (as when coming back from Hades), else above its centre.
+static func creative_target(loc: Location) -> Vector3:
+	for s in loc.spawns_of("boss"):
+		return (s["pos"] as Vector3) + Vector3(0, 2, 8)
+	if loc.kind != Location.Kind.VILLAGE:
+		for s in loc.spawns_of("portal"):
+			return (s["pos"] as Vector3) + Vector3(0, 0.1, 9)
+	return loc.center + Vector3(0, 3, 0)
+
+
 ## Solo inspection only: no progression unlocks or quest travel events.
 func creative_teleport(location_id: StringName) -> bool:
 	if Net.is_online() or local_player == null or not local_player.creative:
@@ -829,10 +846,7 @@ func creative_teleport(location_id: StringName) -> bool:
 	var loc := location_by_id(location_id)
 	if loc == null:
 		return false
-	var target := loc.center + Vector3(0, 3, 0)
-	for s in loc.spawns_of("boss"):
-		target = (s["pos"] as Vector3) + Vector3(0, 2, 8)
-		break
+	var target := creative_target(loc)
 	local_player.dimension = loc.dimension
 	_activate_dimension(loc.dimension)
 	local_player.global_position = target
@@ -842,6 +856,7 @@ func creative_teleport(location_id: StringName) -> bool:
 	return true
 
 
+## Local player moves to another dimension (portal).
 func travel(to_dim: int) -> void:
 	if not worlds.has(to_dim) or (to_dim == 2 and not ryft_unlocked):
 		return
