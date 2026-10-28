@@ -2,7 +2,45 @@
 
 Written for whoever continues this project (human or another AI). It covers what the game is, what state it is in, what was being worked on, what is left, how to test, and the gotchas that cost time.
 
-## 000. PAUSED round 3 (18 Oct 2026) — resume here
+## 0000. Round 3 partial merge (28 Oct 2026) — resume here
+
+Merged into `main` from the paused round-3 branches (only work that compiled and passed tests):
+
+- **Bosses** (`wip/r3-bosses` up to `7a70b51`, NOT its WIP music commit `088daed`): every boss circles,
+  repositions, flinches and has phase/death animations and larger movesets; Ashvane flies and casts from the sky;
+  Ryft bosses fly their arenas (11 moves); humanoid bosses have choreographed movesets; Cerberus/Broodmother/sea
+  bosses widened; **Leviathan lower jaw now drops down when it opens**. Fix added here: the Broodmother's brood burst
+  is queued when phase 2 starts mid-attack (`621c5c7`; the unit test caught it never hatching).
+- **Water** (`30d01da`): Gerstner ocean with SSR, glitter, SSS, caustics, shore foam; rain/snow depth haze blurs the
+  distance; underwater fog and god rays.
+- **Swimming pose** (WIP `ddfde42`): first-person swim strokes in `viewmodel.gd`, horizontal body in `humanoid_model.gd`.
+- **Map** (`6cf636c` + WIP `0b9004a`): no roads between places in revision-5 worlds (village paths stay); extensible
+  icon registry per boss/place kind/biome, player markers (`ui/map_markers.gd`), share codes (`ui/map_share.gd`),
+  grey island outlines in `map_image.gd`. Fix added here: `test_map_ui` left a lambda in a static registry, which
+  aborted Godot at exit (`d2a5671`).
+
+Verification on the merged result: import clean; playtest PASSED (0 failures, log clean) on both halves; targeted
+`creature_sim` and `map_ui` suites pass; **full unit suite 210 tests, 0 failures**; flow test PASSED; all logs pass
+`tools/check_log.py` (logs in `build/r3/`). Network/MP scripts were not re-run (no network code changed).
+**Not verified:** no GPU/visual pass on any of it (water at dusk, swim pose, map/minimap look, boss animations
+in-game). Look at `--capture-game` tours and `tests/gpu/ui_gallery.tscn -- --only=map` before calling them done.
+
+**Still to do** (branches remain on origin with their WIP commits; merge one at a time, gate terrain on revision >= 5):
+
+| Branch / item | What is left |
+|---|---|
+| `wip/r3-bosses` `088daed` | per-boss and per-biome music (`audio/music_kit.gd`, `music_library.gd`, location-tracker music states): untested |
+| `wip/r3-map` (rest) | verify visually: minimap must show every island's outline grey, no names/biome lines/boss/structure icons until explored; Hades portal on map + creative teleport to it |
+| `wip/r3-building` `53ba1d2` | build pieces (walls/floors/roofs/doors/windows) in wood/stone/reinforced stone, container UI for barrels/chests (not finished), mine/pick up chests, working wells, ores as small veins |
+| `wip/r3-surface-biomes` `6847f8b` | desert + cyan oasis (no hostile spawns), Moony Meadows tall reactive grass + trapdoors to labyrinth, Dragons' Graveyard (ghosts, dragon fang/blood/femur), ravines/valleys/cliffs, biome blending, moving sand/quicksand |
+| `wip/r3-underground` `e84f5b7` | cave variety (moss, dripstone, colours, shapes), Everbloom cave (harvest leaves/fruit/sap; damaging the tree kills it and collapses the cave), Trollhunters-style underground city |
+| `wip/r3-volcano-atlantis` `0f50373` | volcano with lava rivers/falls, fire-people village, sword in the stone + eruption escape, Atlantis with the Kraken (deep, hard to reach), Scumport-style port and off-island adventures, more islands/island villages, celestial prison; delete its `tools/_*_tmp.gd` probes |
+| `wip/r3-roles-spells` `f7be110` | Warrior/Archer/Mage lobby even solo, slow per-role ranks (double jump, dash...), drawn-glyph spells (incl. invisibility, flight), spell/potion/crafting books with exact steps and failure outcomes, hard brewing, achievements on the menu, skins, PvP servers by category |
+| `wip/r3-villagers-pets-fishing` `12b744f` | only the hit villager retaliates, profession trades (trade UI mid-rewrite), taming (birds/foxes/cats with fish, dogs with meat), phoenix and other ultra-rare pets, full fishing + rod tiers + coastal fishing shacks, villager daily work, farms |
+| `wip/r3-water-art-films` (rest) | randomised wave sizes/timing check, hyperreal swords and arms, two new loading films (dragon in clouds; Atlantis without the kraken) |
+| Not started | phasing through 3D models/props (collision audit), better Hades/all portal visuals, larger mapped ocean, rideable sea creatures (user: later) |
+
+## 000. PAUSED round 3 (18 Oct 2026) — historical
 
 v0.5.1 is published (prerelease, all platforms, CI green). A third round of features was started by nine
 parallel agents and PAUSED by the user mid-way. Each area's unfinished work is saved as a branch
