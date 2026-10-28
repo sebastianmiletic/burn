@@ -15,6 +15,10 @@ var _timer := 0.0
 var _known_biomes := {}
 var _biome_time := 0.0
 var _last_biome := -1
+## Seconds in a new biome before its music takes over.
+const MUSIC_HOLD := 6.0
+var _music_candidate := ""
+var _music_since := 0.0
 
 
 func gw() -> GameWorld:
@@ -96,6 +100,80 @@ func _process(delta: float) -> void:
 	_update_ambience(w, loc)
 
 
+## Calm music for where the player is. A new biome's track only takes over
+## after the player has stayed in it for MUSIC_HOLD seconds (no flip-flopping
+## along a border); dimension, cave and day/night changes switch at once.
+func _update_music(w: GameWorld, biome: int, is_underground: bool, force := false) -> void:
+	var music := music_for(w, biome, is_underground)
+	if music != _music_candidate:
+		_music_candidate = music
+		_music_since = Time.get_ticks_msec() / 1000.0
+	var now_playing := Audio.current_music()
+	var biome_switch := _is_land_or_sea(music) and _is_land_or_sea(now_playing)
+	if force or not biome_switch or Time.get_ticks_msec() / 1000.0 - _music_since >= MUSIC_HOLD:
+		Audio.set_music(music)
+
+
+static func _is_land_or_sea(state: String) -> bool:
+	return state == "explore" or (state.begins_with("biome") and not state in ["biome_ogygia", "biome_ryft"])
+
+
+## The calm track for a biome (WorldGen.Biome), cave, dimension or night.
+static func music_for(w: GameWorld, biome: int, is_underground: bool) -> String:
+	var dim := w.local_dimension
+	if dim == 1:
+		match biome:
+			WorldGen.Biome.ASPHODEL:
+				return "biome_asphodel"
+			WorldGen.Biome.TARTARUS:
+				return "biome_tartarus"
+		return "hell"
+	if dim == 2:
+		return "cave" if is_underground else "biome_ryft"
+	if dim == Ogygia.DIM:
+		return "biome_ogygia"
+	if is_underground:
+		return "cave"
+	if w.sky != null and w.sky.darkness() > 0.6:
+		return "night"
+	match biome:
+		WorldGen.Biome.OCEAN:
+			var pos := w.local_player.global_position if w.local_player != null else Vector3.ZERO
+			var g := w.gen_for(dim)
+			var sea := g.sea_at(pos.x, pos.z) if g != null else WorldGen.Sea.NONE
+			if sea in [WorldGen.Sea.ABYSS, WorldGen.Sea.VENTS, WorldGen.Sea.MAELSTROM]:
+				return "biome_deep"
+			if sea == WorldGen.Sea.FROZEN:
+				return "biome_tundra"
+			return "biome_sea"
+		WorldGen.Biome.FOREST, WorldGen.Biome.REDWOOD:
+			return "biome_forest"
+		WorldGen.Biome.PEAKS, WorldGen.Biome.ALPINE:
+			return "biome_peaks"
+		WorldGen.Biome.TUNDRA:
+			return "biome_tundra"
+		WorldGen.Biome.MARSH:
+			return "biome_marsh"
+		WorldGen.Biome.WASTES, WorldGen.Biome.CANYON, WorldGen.Biome.VOLCANIC:
+			return "biome_wastes"
+		WorldGen.Biome.FJORD:
+			return "biome_fjord"
+		WorldGen.Biome.RYFT:
+			return "biome_ryft"
+	return "explore"
+
+
+## Re-pick the calm music now (after a boss fight ends).
+func refresh_music() -> void:
+	var w := gw()
+	if w == null or w.local_player == null:
+		return
+	var p := w.local_player
+	var g := w.gen_for(p.dimension)
+	var biome := g.biome_at(int(p.global_position.x), int(p.global_position.z)) if g != null else -1
+	_update_music(w, biome, underground, true)
+
+
 func _nearest_unknown_structure(w: GameWorld, pos: Vector3, dim: int) -> Location:
 	for l in w.locations(dim):
 		if w.discovered.has(l.id) or l.kind == Location.Kind.SHRINE:
@@ -143,12 +221,8 @@ func _update_ambience(w: GameWorld, loc: Location) -> void:
 	if Audio.has_method("set_muffle"):
 		var lp := w.local_player
 		Audio.call("set_muffle", maxf(0.5 if underground else 0.0, lp.audio_muffle if lp != null else 0.0))
+	if loc != null and Audio.has_method("prefetch_music"):
+		for s in loc.spawns_of("boss"):
+			Audio.call("prefetch_music", "boss_" + String(s.get("kind", "")))
 	if w.active_boss() == null:
-		var music := "explore"
-		if dim == 1:
-			music = "hell"
-		elif underground:
-			music = "cave"
-		elif w.sky.darkness() > 0.6:
-			music = "night"
-		Audio.set_music(music)
+		_update_music(w, biome, underground)

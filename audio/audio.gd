@@ -17,7 +17,13 @@ extends Node
 ## Underground (set_muffle) the SFX bus gets a large, wet cave reverb and the
 ## ambience is low-passed; the "underwater" bed also muffles everything.
 
-const MUSIC_FADE := 3.0
+## Crossfade seconds: between calm (biome) tracks, into a fight, out of one.
+const MUSIC_FADE := 5.0
+const MUSIC_FADE_FIGHT := 1.5
+const MUSIC_FADE_AFTER_FIGHT := 3.5
+## Music players: the current track, one fading out and one free, so quick
+## successive changes never cut a track that is still audible.
+const MUSIC_SLOTS := 3
 const AMBIENCE_FADE := 2.0
 const POOL_2D := 24
 const POOL_3D := 40
@@ -60,11 +66,13 @@ var _voices := {}           # sound -> Array of players currently playing it
 var _last_variant := {}     # sound -> index of the variant played last
 
 var _music_players: Array[AudioStreamPlayer] = []
-var _music_gain := PackedFloat32Array([0.0, 0.0])
-var _music_target := PackedFloat32Array([0.0, 0.0])
+var _music_gain := PackedFloat32Array([0.0, 0.0, 0.0])
+var _music_target := PackedFloat32Array([0.0, 0.0, 0.0])
 var _music_slot := 0
 var _music_state := "silence"
-var _music_slot_state := ["", ""]
+var _music_slot_state := ["", "", ""]
+var _music_fade := MUSIC_FADE
+var _music_waiting := false
 
 var _ambience_players := {} # bed -> AudioStreamPlayer
 var _ambience_gain := {}
@@ -101,7 +109,7 @@ func _ready() -> void:
 		p.bus = &"SFX"
 		add_child(p)
 		_pool_2d.append(p)
-	for i in 2:
+	for i in MUSIC_SLOTS:
 		var m := AudioStreamPlayer.new()
 		m.bus = &"Music"
 		m.volume_db = -80.0
@@ -182,8 +190,7 @@ func _exit_tree() -> void:
 ## Silences everything immediately (quitting, returning to a black screen).
 ## Call a frame before quitting so the audio thread can release playbacks.
 func stop_all() -> void:
-	_music_target[0] = 0.0
-	_music_target[1] = 0.0
+	_music_target.fill(0.0)
 	_music_state = "silence"
 	for bed: String in _ambience_target:
 		_ambience_target[bed] = 0.0
@@ -252,19 +259,42 @@ func play_ui(sound: String) -> void:
 	_track(sound, p2)
 
 
-## "menu", "explore", "night", "cave", "boss", "hell", "victory", "silence".
+## "menu", "explore", "night", "cave", "boss", "hell", "victory", a biome
+## ("biome_forest"...), a boss fight ("boss_dragon"...; see Boss.music_state())
+## or "silence". Unknown boss/biome names fall back (MusicLibrary.resolve).
+## The track keeps playing until the new one has rendered, then crossfades:
+## quickly into a fight, a little slower out of one, slowly between biomes.
 func set_music(state: String) -> void:
+	if state != "silence":
+		state = MusicLibrary.resolve(state)
+		if state == "":
+			state = "silence"
 	if state == _music_state:
 		return
+	var was_fight := MusicLibrary.is_fight(_music_state)
 	_music_state = state
-	if state == "silence" or not state in MusicLibrary.STATES:
-		_music_target[0] = 0.0
-		_music_target[1] = 0.0
+	if MusicLibrary.is_fight(state):
+		_music_fade = MUSIC_FADE_FIGHT
+	elif was_fight:
+		_music_fade = MUSIC_FADE_AFTER_FIGHT
+	else:
+		_music_fade = MUSIC_FADE
+	if state == "silence":
+		_music_target.fill(0.0)
+		_music_waiting = false
 		return
 	_ensure_music(state)
 	if state == "menu":
 		_ensure_music("explore")  # the likely next request
 	_start_music_if_ready()
+
+
+## Render (or load) a track ahead of need, e.g. a boss's fight music when its
+## arena comes near, so the fight starts with its own music at once.
+func prefetch_music(state: String) -> void:
+	state = MusicLibrary.resolve(state)
+	if state != "":
+		_ensure_music(state)
 
 
 func current_music() -> String:
@@ -342,7 +372,7 @@ func stats() -> Dictionary:
 func _make_cache_dir() -> String:
 	var h := CACHE_VERSION + ":" + str(Synth.SR)
 	for f: String in ["synth.gd", "sample_bank.gd", "sfx_kit.gd", "sfx_library.gd", "sfx_nature.gd",
-			"sfx_creatures.gd", "ambience_library.gd", "music_library.gd"]:
+			"sfx_creatures.gd", "ambience_library.gd", "music_library.gd", "music_kit.gd"]:
 		var path := "res://audio/" + f
 		if FileAccess.file_exists(path):
 			h += ":" + str(FileAccess.get_file_as_string(path).hash())
@@ -519,8 +549,10 @@ func _process(delta: float) -> void:
 		_collect_finished()
 
 	# Music crossfade.
-	for i in 2:
-		var g := move_toward(_music_gain[i], _music_target[i], delta / MUSIC_FADE)
+	if _music_waiting:
+		_start_music_if_ready()
+	for i in MUSIC_SLOTS:
+		var g := move_toward(_music_gain[i], _music_target[i], delta / _music_fade)
 		_music_gain[i] = g
 		var player := _music_players[i]
 		player.volume_db = linear_to_db(maxf(g, 0.0001))
@@ -629,18 +661,37 @@ func _play_around(sound: String, d_min: float, d_max: float, h_min: float, h_max
 
 
 func _start_music_if_ready() -> void:
+	_music_waiting = false
 	var state := _music_state
 	if state == "silence" or not _music_streams.has(state):
 		return
-	if _music_slot_state[_music_slot] == state and _music_target[_music_slot] > 0.0:
+	if _music_slot_state[_music_slot] == state and _music_target[_music_slot] > 0.0 and _music_players[_music_slot].playing:
 		return
-	var next := 1 - _music_slot
-	var player := _music_players[next]
-	player.stream = _music_streams[state]
-	player.play()
-	_music_slot_state[next] = state
+	# Coming back to a track that is still fading out: fade it back in.
+	var next := -1
+	for i in MUSIC_SLOTS:
+		if _music_slot_state[i] == state and _music_players[i].playing and _music_gain[i] > 0.0:
+			next = i
+			break
+	if next == -1:
+		# A silent player; never restart one that can still be heard.
+		for i in MUSIC_SLOTS:
+			if i != _music_slot and (not _music_players[i].playing or _music_gain[i] <= 0.001):
+				next = i
+				break
+		if next == -1:
+			# Every player is busy fading: let them all fade, start when one is free.
+			_music_target.fill(0.0)
+			_music_waiting = true
+			return
+		var player := _music_players[next]
+		player.stream = _music_streams[state]
+		player.volume_db = -80.0
+		_music_gain[next] = 0.0
+		player.play()
+		_music_slot_state[next] = state
+	_music_target.fill(0.0)
 	_music_target[next] = 1.0
-	_music_target[_music_slot] = 0.0
 	_music_slot = next
 
 

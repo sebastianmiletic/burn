@@ -23,6 +23,8 @@ const CONTRACT_SOUNDS := ["ui_hover", "ui_click", "ui_back", "ui_open", "ui_clos
 	# Extra surface
 	"step_dirt"]
 
+const MusicKit := preload("res://audio/music_kit.gd")
+
 const CONTRACT_AMBIENCE := ["wind", "rain", "fire", "cave", "lava", "village", "birds", "insects", "crickets", "leaves",
 	"ocean", "waterfall", "stream", "underwater", "furnace"]
 
@@ -131,16 +133,91 @@ func test_ambience_loops_seamless() -> void:
 	print("      ambience beds rendered in %.0f ms" % ((Time.get_ticks_usec() - t) / 1000.0))
 
 
+## Every state (incl. one per boss and per biome) builds a sane, seamless loop
+## in bounded time; the tracks are all different, and the fights are more
+## driving (louder onsets, more rhythm) than the calm biome music.
 func test_music_loops_seamless() -> void:
+	var feats := {}
+	var worst := 0.0
 	for state: String in MusicLibrary.STATES:
 		var t := Time.get_ticks_usec()
 		var b := MusicLibrary.build(state)
 		var ms := (Time.get_ticks_usec() - t) / 1000.0
+		worst = maxf(worst, ms)
 		var expected := MusicLibrary.length_of(state)
 		_check_buffer(b, "music " + state, expected - 0.01, expected + 0.01)
 		_check_seamless(b, "music " + state)
 		_save([b], "music_" + state)
-		print("      music %-8s %.0f ms" % [state, ms])
+		feats[state] = _music_features(b)
+		var f: Array = feats[state]
+		print("      music %-20s %5.0f ms  %4.1f s  zcr %.3f  low %.2f  pulse %.3f" % [state, ms, expected, f[0], f[1], f[2]])
+	# A guard against runaway renders, not a benchmark: tracks render once and are
+	# cached on disk, and a busy machine (parallel test runs) takes several times longer.
+	check(worst < 120000.0, "music renders in bounded time (worst %.0f ms)" % worst)
+	var names: Array = feats.keys()
+	for i in names.size():
+		for j in range(i + 1, names.size()):
+			var a: Array = feats[names[i]]
+			var c: Array = feats[names[j]]
+			var d := absf(a[0] - c[0]) * 20.0 + absf(a[1] - c[1]) + absf(a[2] - c[2]) * 4.0 + absf(a[3] - c[3]) * 50.0
+			check(d > 0.002, "music %s and %s differ (%.4f)" % [names[i], names[j], d])
+	var fight := 0.0
+	var calm := 0.0
+	for s: String in MusicLibrary.BOSS_STATES:
+		fight += float(feats[s][2]) / MusicLibrary.BOSS_STATES.size()
+	for s: String in MusicLibrary.BIOME_STATES:
+		calm += float(feats[s][2]) / MusicLibrary.BIOME_STATES.size()
+	check(fight > calm * 1.3, "boss music drives harder than biome music (pulse %.3f vs %.3f)" % [fight, calm])
+
+
+## [zero-crossing rate (brightness), low-band share, pulse (mean positive
+## change of a 20 ms loudness envelope relative to its mean), first-second mean].
+func _music_features(b: PackedFloat32Array) -> Array:
+	var zc := 0
+	for i in range(1, b.size()):
+		if (b[i] >= 0.0) != (b[i - 1] >= 0.0):
+			zc += 1
+	var low := Synth.lp(Synth.lp(b.duplicate(), 180.0), 180.0)
+	var low_share := Synth.rms(low) / maxf(Synth.rms(b), 1e-6)
+	var win := Synth.samples(0.02)
+	var envs := PackedFloat32Array()
+	var i := 0
+	while i + win <= b.size():
+		var acc := 0.0
+		for k in range(i, i + win, 4):
+			acc += absf(b[k])
+		envs.append(acc / (win / 4.0))
+		i += win
+	var mean := 0.0
+	for e in envs:
+		mean += e / envs.size()
+	var rise := 0.0
+	for k in range(1, envs.size()):
+		rise += maxf(0.0, envs[k] - envs[k - 1])
+	var first := 0.0
+	for k in mini(50, envs.size()):
+		first += envs[k] / 50.0
+	return [float(zc) / b.size(), low_share, rise / envs.size() / maxf(mean, 1e-6), first]
+
+
+## Every boss has its own fight music; unknown names fall back, never silence.
+func test_music_states_and_fallbacks() -> void:
+	for kind: String in ["warden", "mountain_king", "dragon", "cerberus", "hades", "broodmother", "bog_hag",
+			"leviathan", "kraken", "charybdis", "ryft_sentinel", "void_sovereign"]:
+		check("boss_" + kind in MusicLibrary.STATES, "boss %s has fight music" % kind)
+	for s: String in MusicLibrary.BASE_STATES:
+		check_eq(MusicLibrary.resolve(s), s, "old state %s still plays" % s)
+	check_eq(MusicLibrary.resolve("boss_no_such_boss"), "boss", "unknown boss -> generic fight")
+	check_eq(MusicLibrary.resolve("biome_no_such_biome"), "explore", "unknown biome -> plains")
+	check_eq(MusicLibrary.resolve("nonsense"), "", "unknown state -> silence")
+	check(MusicLibrary.is_fight("boss_dragon") and not MusicLibrary.is_fight("biome_sea"), "fights are told apart")
+	var audio: Node = load("res://audio/audio.gd").new()
+	audio.call("set_music", "nonsense")
+	check_eq(audio.call("current_music"), "silence", "unknown music request is silence, not an error")
+	audio.free()
+	check_eq(MusicKit.midi_of("C4"), 60, "note names: C4")
+	check_eq(MusicKit.midi_of("Bb2"), 46, "note names: Bb2")
+	check_eq(MusicKit.midi_of("F#5"), 78, "note names: F#5")
 
 
 func test_audio_autoload_api() -> void:
