@@ -28,7 +28,7 @@ func _process(delta: float) -> void:
 			var gen := w.gen_for(0)
 			if gen.revision < 2 or p.dead or p.global_position.y >= -8:
 				continue
-			var r := CaveBiomes.region(p.global_position, gen.world_seed)
+			var r := CaveBiomes.region(p.global_position, gen.world_seed, 5 if gen.revision >= 5 else 3)
 			if int(r["kind"]) != CaveBiomes.Kind.GEYSER or fmod(now + int(r["seed"]) % 8, 10.0) < 7.0:
 				continue
 			for vent in _vents(r):
@@ -38,13 +38,13 @@ func _process(delta: float) -> void:
 	var pos := w.local_player.global_position
 	var gen := w.gen_for(w.local_dimension)
 	var cave := w.local_dimension == 0 and gen.revision >= 2 and pos.y < -8
-	var r := CaveBiomes.region(pos, gen.world_seed)
+	var r := CaveBiomes.region(pos, gen.world_seed, 5 if gen.revision >= 5 else 3)
 	var key := "%d:%s:%s" % [w.local_dimension, str(r["key"]) if cave else str(Vector2i(pos.x / 48, pos.z / 48)), str(cave)]
 	if key != _key:
 		_key = key
 		_rebuild(w, pos, cave, r)
 	if cave:
-		var kind := CaveBiomes.kind_at(pos, gen.world_seed)
+		var kind := CaveBiomes.kind_at(pos, gen.world_seed, 5 if gen.revision >= 5 else 3)
 		var label := "%s:%d" % [str(r["key"]), kind]
 		if label != _warned:
 			_warned = label

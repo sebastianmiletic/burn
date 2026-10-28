@@ -3,10 +3,10 @@ extends RefCounted
 ## A named place in the world: its footprint, the blocks it stamps into the
 ## terrain, and what it spawns (NPCs, enemies, bosses, chests, shrines, portals).
 
-enum Kind { VILLAGE, CASTLE, HALL, GATE, CRYPT, SHRINE, TOWER, RUIN, HELL_SPAWN, TARTARUS, THRONE, MINE }
+enum Kind { VILLAGE, CASTLE, HALL, GATE, CRYPT, SHRINE, TOWER, RUIN, HELL_SPAWN, TARTARUS, THRONE, MINE, EVERBLOOM, UNDERCITY }
 
 const KIND_LABELS := ["Village", "Castle", "Hall", "Gate", "Crypt", "Shrine", "Watchtower", "Ruins",
-		"Portal", "Fortress", "Palace", "Mine"]
+		"Portal", "Fortress", "Palace", "Mine", "Everbloom Cavern", "Underground City"]
 
 var id: StringName
 var name := ""

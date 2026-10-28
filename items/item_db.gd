@@ -213,6 +213,12 @@ const BASE := {
 		"desc": "From the deep near the lava. Only mithril bites it."},
 	"ember_crystal": {"name": "Ember Crystal", "category": "material", "glyph": "*", "color": Color(1.0, 0.5, 0.2), "stack": 99, "value": 30, "rarity": 2,
 		"desc": "Warm to the touch. Found deep below. Can be set into gear."},
+	"everbloom_leaf": {"name": "Everbloom Leaf", "category": "material", "glyph": "*", "color": Color(0.45, 1.0, 0.7), "stack": 99, "value": 12, "rarity": 2,
+		"desc": "A glowing leaf from the tree under the hill. Brewers prize it."},
+	"everbloom_fruit": {"name": "Everbloom Fruit", "category": "material", "glyph": "*", "color": Color(1.0, 0.75, 0.9), "stack": 99, "value": 25, "rarity": 2,
+		"desc": "Sweet and faintly luminous. Ripens slowly in the dark."},
+	"everbloom_sap": {"name": "Everbloom Sap", "category": "material", "glyph": "*", "color": Color(0.7, 1.0, 0.85), "stack": 99, "value": 40, "rarity": 3,
+		"desc": "Tapped from the living tree. The heart of a strong potion."},
 	"frost_shard": {"name": "Frost Shard", "category": "material", "glyph": "*", "color": Color(0.6, 0.9, 1.0), "stack": 99, "value": 20, "rarity": 2,
 		"desc": "Never melts. Can be set into gear."},
 	"hellstone": {"name": "Hellstone", "category": "material", "glyph": "*", "color": Color(0.9, 0.2, 0.1), "stack": 99, "value": 60, "rarity": 3,
@@ -365,6 +371,8 @@ const BASE_RECIPES := {
 	# Campfire
 	"cooked_meat_campfire": {"result": "cooked_meat", "inputs": {"raw_meat": 1}, "time": 2.5, "station": "campfire", "group": "food"},
 	"cooked_fish_campfire": {"result": "cooked_fish", "inputs": {"raw_fish": 1}, "time": 2.0, "station": "campfire", "group": "food"},
+	"potion_greater_everbloom": {"result": "potion_greater", "inputs": {"glass_vial": 1, "everbloom_sap": 1, "everbloom_leaf": 2}, "time": 2.0, "station": "alchemy", "group": "potions"},
+	"potion_health_everbloom": {"result": "potion_health", "inputs": {"glass_vial": 1, "everbloom_fruit": 1}, "time": 1.5, "station": "alchemy", "group": "potions"},
 	"potion_health_marsh": {"result": "potion_health", "inputs": {"glass_vial": 1, "swamp_herb": 2}, "time": 1.5, "station": "alchemy", "group": "potions"},
 	# Workbench
 	"furnace": {"inputs": {"stone": 12, "coal": 2}, "station": "workbench", "group": "stations"},
