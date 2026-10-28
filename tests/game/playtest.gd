@@ -349,7 +349,8 @@ func _ogygia(p: Player) -> void:
 	Input.action_press("move_forward")
 	await _wait(1.5)
 	Input.action_release("move_forward")
-	_check(p.head_under and p.global_position.y < sea.y - 12.0, "swimming follows the look direction under water (y %.1f)" % p.global_position.y)
+	# Measured at the body's centre: the lying box's bottom sits 0.55 m above a standing body's feet.
+	_check(p.head_under and p.center().y < sea.y - 12.0 + Player.STAND_HALF_HEIGHT, "swimming follows the look direction under water (centre y %.1f)" % p.center().y)
 	# Hold your breath too long: the dark closes in and the sea keeps you.
 	var causes: Array = []
 	var on_died := func(c: String) -> void: causes.append(c)

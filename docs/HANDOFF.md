@@ -74,6 +74,11 @@ Merged into `main` from the paused round-3 branches (only work that compiled and
 - **Water** (`30d01da`): Gerstner ocean with SSR, glitter, SSS, caustics, shore foam; rain/snow depth haze blurs the
   distance; underwater fog and god rays.
 - **Swimming pose** (WIP `ddfde42`): first-person swim strokes in `viewmodel.gd`, horizontal body in `humanoid_model.gd`.
+  **Swimming hit box (later fix):** while swimming `Player.lie` goes to 1 and the VoxelBody box shrinks round its
+  centre to 0.7 m tall (still 0.64 m square: boxes are axis-aligned), eye 0.6 m up and 0.3 m towards the head,
+  hit radius 0.7 m, model hips at the box centre (`swim_hips_height`). Out of deep water (or over ground ≤ 1.1 m
+  deep) it stands up only where the taller box fits (`_fits_with_half`), else stays low and crawls. Under water
+  with move input, buoyancy is 25 % so tunnels/seabed can be followed. Saves keep `lie`. Tests: `test_swim` (5).
 - **Map** (`6cf636c` + WIP `0b9004a`): no roads between places in revision-5 worlds (village paths stay); extensible
   icon registry per boss/place kind/biome, player markers (`ui/map_markers.gd`), share codes (`ui/map_share.gd`),
   grey island outlines in `map_image.gd`. Fix added here: `test_map_ui` left a lambda in a static registry, which
