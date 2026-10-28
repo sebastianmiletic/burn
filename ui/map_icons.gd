@@ -116,6 +116,7 @@ static func _ensure() -> void:
 			["tower", &"tower", "Watchtower", STONE], ["ruin", &"ruin", "Ruins", STONE],
 			["hell_spawn", &"portal", "Portal", PORTAL], ["tartarus", &"keep", "Fortress", Color(0.92, 0.58, 0.48)],
 			["throne", &"throne", "Palace", Color(1.0, 0.68, 0.42)], ["mine", &"mine", "Mine", EARTH],
+			["everbloom", &"b_tree", "Everbloom Cavern", GREEN], ["undercity", &"hall", "Underground City", STONE],
 			# Place types: set loc meta "map_kind" to one of these.
 			["cave", &"cave", "Cave mouth", EARTH], ["dungeon", &"dungeon", "Dungeon", STONE],
 			["wreck", &"wreck", "Wreck", SEA], ["sunken_ruin", &"sunken", "Sunken ruins", SEA],
