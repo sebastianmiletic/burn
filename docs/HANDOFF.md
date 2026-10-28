@@ -2,7 +2,45 @@
 
 Written for whoever continues this project (human or another AI). It covers what the game is, what state it is in, what was being worked on, what is left, how to test, and the gotchas that cost time.
 
-## 0000. Round 3 partial merge (28 Oct 2026) — resume here
+## 00000. Round 3 completion pass (28 Oct 2026, evening) — RESUME HERE
+
+Seven agents each brought one paused round-3 branch onto main, made it compile, finished what they could in
+~30 minutes and tested it headless. **Nothing in this section has been seen in a game window**: every claim below
+is from unit tests, the scripted playtest or headless generation checks. Do a GPU pass (`--capture-game`
+tours, `tests/gpu/ui_gallery.tscn`) before calling any of it finished. New terrain is all behind
+`WorldGen.revision >= 5` (`LATEST_REVISION = 5`); revisions 2/3/4 golden chunk hashes are unchanged (tested).
+**Make a NEW world to see any revision-5 content.**
+
+### Merged into main in this pass (from agent branches `worktree-agent-*`)
+
+| Area | Works (tested headless) | Not done / not verified |
+|---|---|---|
+| **Building + containers** (`a46f1e4c…`) | Build pieces: foundation, floor, walls, windows, doorway, door, trapdoor, pillar, beam, stairs, fence, gate, 5 roof shapes, table/chair/bench/bed/shelf/wall torch/lantern post; chest, iron chest, barrel. Materials: log, plank, iron-banded, stone, cobble, brick, reinforced stone, thatch, shingle, slate; every piece×material is an item with a recipe and builds a mesh (`world/building/*`, `items/building_items.gd`). Container screen (`ui/container_screen.gd`): drag, shift-click, half-stack, take all, deposit all, sort, server-synced; placed chests/barrels can be mined (drop item + spill contents); loot chests open in the same UI. Village **wells** (`entities/interact/well.gd`): E lowers the bucket, 240 s cooldown, ~80% junk / 18% useful / 2% rare. **Ores as small ragged veins** in rev 5 (rev 2–4 unchanged). Tests: `test_building` (8). | No visual check of pieces, ghost placement, container layout, well bucket. Two-player container sync untested. Ruin/mine loot chests can't be mined or carried; no "pick up keeping contents". Wells spawn in all revisions (bucket moved from village mesh to entity). |
+| **Villagers, pets, fishing** (`ab27fefe…`) | Only the villager you hit gets angry (`npc_temper.gd`: chases, calms after 22 s or at range, yields after 90 dmg, −12 village reputation). Profession trading end to end (`professions.gd`, `world/village_life/trading.gd`, shop screen "trade" mode, daily stock, reputation-locked offers). Fishing: 5 rod tiers + line recipe, bite timing, catch tables, reel fight (`items/fishing/*`). Taming: fox/cat/raven with fish, dog with meat (`entities/wildlife/pet.gd`, naming dialog). **Phoenix**: ultra-rare wild spawn over peaks/canyons, tamed only with an Ember Eel (fished at boiling vents), never sold, defends its owner. Tests: `test_village_life` (6), temper test in `test_npc`; activity test `--only=npc` passes. | Not seen in game: casting/line, fishing HUD, pets following/commands, trade screen look, MP relay. **Not done:** coastal fishing shacks (icon only), villager daily work/farms, more ultra-rare pets. |
+| **Volcano, Atlantis, isles** (`a0490b4f…`) | Mount Pyrrhos: 310 m cone, caldera via the Fire Road canyon, lava lake with the Emberheart altar island, 3 inner lava falls + rivers, 3 outer lava channels with falls. Kilnhollow fire-folk village (huts, hall, forge). Outer isles: Scumport + Cutthroat Cove, Stormbreak Light, Isle of Hollow Crowns. **Atlantis** in the deep trench (domes, treasury, columns); **the Kraken now lives in Atlantis' throne room** (`atlantis_throne`, >60 m below sea level) with an arena. Sword rules: `world/adventures/emberheart_event.gd` (draw once → fire folk hostile → 150 s countdown with rising shake → eruption; keep the sword only if outside the blast radius; saves/loads) + `sword_emberheart` (72 dmg, unsellable). Tests: `test_adventures` (5). | **Sword event is not wired into play**: no altar prompt, no item hand-over, no hostility switch, HUD timer, camera shake, eruption FX/damage. Fire folk have no NPC kind (positions only). No lava-fall/spew particles. Isle enemies use `archer` (no cutthroat mob). Atlantis Tide Gate/Tidestone and air pockets not written. Celestial prison (Aaravos-like) not built. No boats. |
+| **Caves / underground** (`a5854108…`) | Rev-5 cave variety: moss, dripstone, ochre, verdigris, violet, sandstone caves with their own rock colours (blocks 77–81), six chamber shapes, great caverns, fissures, daylight shafts, lava tubes, flooded grottos; decor mapped per kind. **Everbloom** (`entities/interact/everbloom.gd`): harvest leaves (20 s), fruit (180 s), sap (420 s); 2 new potion recipes; any hit kills the tree permanently and starts a 14 s cave collapse (`world/underground/cave_collapse.gd`, rubble + damage). **Hearthold** underground city first pass (`world/underground/underground_city.gd`): two rings of stone houses round a Heartcrystal, forge, gates, hidden surface cleft. Locations' "entity" spawns now actually spawn (`location_director.gd`). Tests: `test_underground` (5). | No visual check. Withered tree despawns after 4 s (returns withered on reload). Collapse doesn't seal exits, no shake/sound, MP untested. Hearthold has no bridges/upper level/market/Stonekin model (uses villagers). Rev-5 planning data is static (two rev-5 worlds in one process would clash). `crystal_glow.gdshader` unused. |
+| **Surface biomes** (`a99d12e9…`) | Sunscar Dunes desert (dunes, mesas, arches, banded sandstone); **oasis** spring with grass ring — no hostile spawns there and hostiles stop at its rim / walk out; **Moony Meadows** head-high silver grass that bends as you walk through (FoliageInteraction), no hostile spawns; **Dragons' Graveyard** grey basin with rock spines and pits, shades + skeletons, `dragon_fang`/`dragon_blood`/`dragon_femur` loot; escarpment cliffs and U-valleys everywhere in rev 5; ~120 m blended biome edges; own terrain tints (material codes 123–126). Tests: `test_surface_biomes` (7). | **Not done:** meadow trapdoors + labyrinth, dragon skeleton props, quicksand/moving sand, cyan oasis water (water tint is global), a real ghost mob (uses `shade`). Distant horizon ignores the new tints. Dragon parts may be lost if enemies are rebuilt from a save. |
+
+Merge conflicts resolved by hand: `items/item_db.gd` (kept both `BuildingItems` and `VillageGoods` registration),
+`entities/entity_factory.gd` (kept both `well` and `ug_everbloom`).
+
+VERIFICATION_PLACEHOLDER
+
+### Still open from the user's round-3 list (not merged or not started)
+
+- **Roles/spells** (`wip/r3-roles-spells` `f7be110`): Warrior/Archer/Mage pick in a lobby even solo, role kits, slow per-role ranks
+  (double jump, dash…), drawn-glyph spells incl. invisibility and flight, spell/potion/crafting books with exact steps and
+  failure outcomes, hard brewing, achievements on the main menu, skins, PvP servers by category. ROLES_PLACEHOLDER
+- **Boss/biome music** (`wip/r3-bosses` `088daed`) and **Hades portal on the map + creative teleport**: MUSIC_PLACEHOLDER
+- **Water/art/films rest** (`wip/r3-water-art-films`): randomised wave check at dusk, hyperreal swords and first-person arms,
+  two new loading films (dragon flying through clouds; Atlantis without the Kraken). Not started this pass.
+- **Not started:** phasing through 3D models/props (collision audit), better-looking portals (Hades and all others),
+  larger mapped ocean, more islands/island villages beyond the four isles above, farms, rideable/tameable sea creatures
+  (user said: later), the sword-in-stone/eruption gameplay wiring, labyrinth, quicksand, celestial prison, fishing shacks.
+- **Minimap request** ("outline of every island grey, no names/biome lines/boss/structure icons until explored"):
+  code merged earlier today (`map_image.gd`, `map_fog.gd`, `minimap.gd`), map unit tests pass, **never looked at**.
+
+## 0000. Round 3 partial merge (28 Oct 2026, afternoon) — earlier pass
 
 Merged into `main` from the paused round-3 branches (only work that compiled and passed tests):
 
