@@ -10,7 +10,11 @@ extends CreatureModel
 ##
 ## The entity position is the mantle's anchor at the water line. Set
 ## `surfaced`, `engaged`, `water_y` and `arena_center`; one-shot actions:
-## slam, sweep, throw (wreck grab), cast (ink), summon (whirlpool), roar, die.
+## slam, sweep (every arm swings across the decks), throw (wreck grab), cast
+## (ink), summon (whirlpool), roar, bite (the mantle lunges, beak gaping),
+## grab (two arms close on a marked spot and crush it), whip (a feeding
+## tentacle lashes the length of a marked lane), submerge / emerge (it shifts
+## to another part of the pool), hit (recoil), die (sinks, arms trailing).
 
 var surfaced := false
 var engaged := false
@@ -35,6 +39,11 @@ var _slammed := false
 var _phase_power := 0.0
 var _clouds: Array = []   # [node, age]
 var _pending_ink: Array = []   # [pos, radius, time left]
+var _grab_target := Vector3.INF
+var _grab_arms: Array[int] = []
+var _lash_start := Vector3.INF
+var _lash_dir := Vector3.FORWARD
+var _lash_len := 30.0
 
 
 func _init() -> void:
@@ -46,6 +55,12 @@ func _init() -> void:
 	durations["cast"] = 1.8
 	durations["summon"] = 3.0
 	durations["roar"] = 2.0
+	durations["bite"] = 1.8
+	durations["grab"] = 2.4
+	durations["whip"] = 2.2
+	durations["submerge"] = 1.6
+	durations["emerge"] = 1.8
+	durations["hit"] = 0.7
 
 
 func _enter_tree() -> void:
@@ -70,6 +85,16 @@ func _on_telegraph(style: String, shape: String, pos: Vector3, dir: Vector3, siz
 			_slammed = false
 		"ink":
 			_pending_ink.append([pos, size.x, duration])
+		"grab":
+			_grab_target = pos
+			_grab_arms.clear()
+			var first := _arm_towards(pos)
+			_grab_arms.append(first)
+			_grab_arms.append((first + 1) % ARMS)
+		"lash":
+			_lash_start = pos
+			_lash_dir = Vector3(dir.x, 0, dir.z).normalized()
+			_lash_len = size.x
 	var _u := shape
 
 
@@ -205,6 +230,7 @@ func _animate(delta: float) -> void:
 	var lean := lerpf(0.05, -0.32, _surf)
 	var bob := sin(_time * 0.9) * 0.35
 	var shake := 0.0
+	var fwd_shift := 0.0
 	if p >= 0.0 and not _dead:
 		match _action:
 			"roar", "summon":
@@ -214,11 +240,38 @@ func _animate(delta: float) -> void:
 				rise -= 3.0 * w
 			"slam":
 				lean += 0.15 * w
-	var mpos := Vector3(base.x, water_y + rise + bob, base.z)
+			"bite":
+				# Wind back, then the whole mantle lunges over the pool edge (impact ~55 %).
+				var lunge := keys(p, [[0, 0], [0.35, -0.5], [0.55, 1.0], [0.75, 0.9], [1, 0]])
+				lean += lunge * 0.55
+				rise -= maxf(0.0, lunge) * 2.0
+				fwd_shift = lunge * 4.5
+			"submerge":
+				rise -= 6.0 * w
+				lean += 0.3 * w
+			"emerge":
+				lean -= 0.3 * w
+				shake = 0.1 * w
+			"hit":
+				lean -= 0.3 * sin(PI * p)
+				shake = 0.05 * sin(PI * p)
+			"grab", "whip":
+				lean -= 0.12 * w
+	var mpos := Vector3(base.x, water_y + rise + bob, base.z) + yb * Vector3(0, 0, -fwd_shift)
 	if shake > 0.0:
 		mpos += Vector3(sin(_time * 29.0), 0, cos(_time * 25.0)) * shake * 3.0
 	mantle.global_transform = Transform3D(yb * Basis(Vector3.RIGHT, lean), mpos)
-	beak.rotation.x = sin(_time * 1.3) * 0.05 + (0.25 * w if _action in ["roar", "summon"] else 0.0)
+	var gape := 0.0
+	if p >= 0.0 and not _dead:
+		match _action:
+			"roar", "summon", "emerge":
+				gape = w
+			"bite":
+				gape = keys(p, [[0, 0], [0.4, 1.0], [0.55, 0.0], [1, 0]])
+			"hit":
+				gape = 0.5 * sin(PI * p)
+	beak.rotation.x = sin(_time * 1.3) * 0.05 + 0.25 * gape
+	beak.scale = Vector3(1.0 + 0.35 * gape, 1.0, 1.0 + 0.35 * gape)
 	for e in eyes:
 		e.set_instance_shader_parameter(&"intensity", 0.0 if _dead else 1.0 + _phase_power * 0.8)
 	for g in _glow:
@@ -237,6 +290,10 @@ func _pose_arm(i: int, crown: Vector3, yb: Basis, p: float, w: float, delta: flo
 	var anchor := _arm_anchor(i, crown, yb) + Vector3(0, 1.8, 0)
 	var dir := _arm_dir(i, yb)
 	var club := i >= ARMS
+	var sweeping := _action == "sweep" and p >= 0.0 and not club
+	if sweeping:
+		# Every arm swings round across the decks: wind up, then whip past (impact ~80 %).
+		dir = dir.rotated(Vector3.UP, keys(p, [[0, 0], [0.45, -0.7], [0.8, 0.9], [1, 0.3]]) * w)
 	var length := chain.length
 	var ph := float(i) * 1.7
 	var whirl := 0.0
@@ -244,6 +301,8 @@ func _pose_arm(i: int, crown: Vector3, yb: Basis, p: float, w: float, delta: flo
 		whirl = w
 	var side := Vector3(-dir.z, 0, dir.x)
 	var raise := _surf * (0.6 if not club else 0.9)
+	if sweeping:
+		raise *= 1.0 - 0.8 * w
 	for j in n:
 		var t := float(j) / (n - 1)
 		var out := dir * length * t * lerpf(0.82, 0.55, raise)
@@ -276,6 +335,32 @@ func _pose_arm(i: int, crown: Vector3, yb: Basis, p: float, w: float, delta: flo
 			_slammed = true
 			if particles_enabled:
 				CreatureFx.play(_fx_parent(), "splash", target, 2.4)
+	# The crush: two arms reach for the marked spot, coil over it and squeeze.
+	if _action == "grab" and p >= 0.0 and i in _grab_arms and _grab_target.is_finite():
+		var reach := keys(p, [[0, 0.2], [0.45, 0.8], [0.62, 1.0], [1, 1.0]])
+		var lift := keys(p, [[0, 0], [0.4, 1.0], [0.62, 0.0], [1, 0]])
+		var start := chain.display[1]
+		var target := _grab_target + Vector3(0, 0.6, 0) + side * (1.2 if i == _grab_arms[0] else -1.2)
+		var end := start.lerp(target, reach) + Vector3.UP * lift * 6.0
+		var ctrl := start.lerp(target, 0.5) + Vector3.UP * (4.0 + lift * 6.0)
+		for j in range(1, n):
+			var t := float(j) / (n - 1)
+			var q := start.lerp(ctrl, t).lerp(ctrl.lerp(end, t), t)
+			if t > 0.75 and p > 0.6:
+				# The tip coils round the spot.
+				var a := (t - 0.75) * 14.0 + _time * 3.0
+				q += Vector3(cos(a), 0.3, sin(a)) * 1.6 * (t - 0.75) * 4.0
+			chain.display[j] = chain.display[j].lerp(q, w)
+	# The lash: the second feeding tentacle rears high and cracks down along its lane.
+	if i == ARMS + 1 and _action == "whip" and p >= 0.0 and _lash_start.is_finite():
+		var lift := keys(p, [[0, 0.2], [0.45, 1.0], [0.6, 0.0], [1, 0]])
+		var lay := keys(p, [[0, 0], [0.45, 0.2], [0.6, 1.0], [1, 1.0]])
+		var top := crown + Vector3(0, 16.0, 0) - _lash_dir * 4.0
+		for j in range(1, n):
+			var t := float(j) / (n - 1)
+			var flat := _lash_start + _lash_dir * _lash_len * t + Vector3(0, 0.4, 0)
+			var raised := chain.display[0].lerp(top, t) + Vector3.UP * sin(PI * t) * 3.0 * lift
+			chain.display[j] = chain.display[j].lerp(raised.lerp(flat, lay), w * smoothstep(0.0, 0.3, t + 0.1))
 	# The wreck grab: a feeding tentacle lifts its prize overhead.
 	if i == ARMS and _action == "throw" and p >= 0.0:
 		var top := crown + Vector3(0, 14.0, 0) + dir * 4.0

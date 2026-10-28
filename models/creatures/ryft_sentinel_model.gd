@@ -130,52 +130,177 @@ func _pose_ryft(delta: float) -> void:
 	var t := _time
 	var p := action_progress()
 	var w := action_weight(0.12, 0.22)
-	var spin := 1.0 + _power * 1.6
+	var surge := phase_surge()
+	var recoil := hit_recoil()
+	var spin := 1.0 + _power * 1.6 + surge * 3.0
 	_hover = damp(_hover, 0.0 if _dead else 1.0, 2.0, delta)
 	var bob := sin(t * 1.1) * 0.15
-	_body.position.y = (1.0 + bob) * _hover - 0.8 * _break
-	_heart.rotation.y += delta * 0.8 * spin
-	var heart_scale := 1.0 + 0.06 * sin(t * 3.0) + _power * 0.15
-	var arms_up := 0.0
-	var slam := 0.0
-	var reach := 0.0
-	var spread := 0.0
+	# Action pose parameters: arms (forward, out, bend per side), body pitch /
+	# twist / height, heart size, orbit spread, ring alignment, blink scale.
+	var r_arm := Vector3(0.15, 0.12, 0.35)
+	var l_arm := Vector3(0.15, 0.12, 0.35)
+	var pitch := 0.0
+	var twist := 0.0
+	var lift := 0.0
+	var heart := 0.0
+	var orbit := 0.0
+	var align := 0.0
+	var blink := 1.0
+	var head_up := 0.0
 	if p >= 0.0 and not _dead:
 		match _action:
-			"cast", "throw":
-				reach = keys(p, [[0, 0], [0.35, -0.3], [0.5, 1.0], [0.8, 1.0], [1, 0]])
+			"thrust", "cast", "throw", "attack":
+				# Lance: the right arm draws back while a shard forms, then punches.
+				var draw := keys(p, [[0, 0], [0.42, 1.0], [0.55, 0.0]])
+				var punch := keys(p, [[0.42, 0.0], [0.55, 1.0], [0.8, 1.0], [1, 0]])
+				r_arm = Vector3(lerpf(-0.7 * draw, 1.55, punch), 0.15 + 0.3 * draw, 1.3 * draw)
+				l_arm = Vector3(0.5 * draw + 0.2, 0.4, 0.9)
+				twist = 0.35 * draw - 0.3 * punch
+				pitch = 0.18 * punch - 0.08 * draw
+				heart = 0.3 * draw
+			"swipe", "sweep", "attack2":
+				# Backhand: the right arm swings out and back, then rakes across.
+				var wind := keys(p, [[0, 0], [0.4, 1.0], [0.55, 0.0]])
+				var rake := keys(p, [[0.4, 0.0], [0.55, 1.0], [0.75, 0.9], [1, 0]])
+				r_arm = Vector3(0.6 + 0.8 * rake, 1.4 * wind - 0.5 * rake, 0.2)
+				l_arm = Vector3(0.3, 0.5 * wind + 0.2, 0.6)
+				twist = 0.6 * wind - 0.7 * rake
+				pitch = 0.12 * rake
 			"slam", "spikes":
-				arms_up = keys(p, [[0, 0], [0.4, 1.0], [0.55, -0.2], [0.8, -0.1], [1, 0]])
-				slam = keys(p, [[0.4, 0.0], [0.55, 1.0], [0.85, 1.0], [1, 0]])
-			"summon", "roar":
-				spread = w
+				# Both fists rise overhead, tremble, crash down.
+				var up := keys(p, [[0, 0], [0.4, 1.0], [0.5, 1.05], [0.55, 0.0]])
+				var down := keys(p, [[0.45, 0.0], [0.55, 1.0], [0.85, 1.0], [1, 0]])
+				var arm_f := 2.8 * up + 1.0 * down + sin(t * 40.0) * 0.04 * up
+				r_arm = Vector3(arm_f, 0.25 - 0.15 * down, 0.3 * up)
+				l_arm = r_arm
+				pitch = -0.15 * up + 0.4 * down
+				lift = 0.3 * up - 0.5 * down
+				head_up = 0.3 * up
+			"nova":
+				# Curls in around the heart, then bursts open.
+				var curl := keys(p, [[0, 0], [0.45, 1.0], [0.55, 0.0]])
+				var burst := keys(p, [[0.48, 0.0], [0.58, 1.0], [0.85, 0.6], [1, 0]])
+				r_arm = Vector3(1.0 * curl + 0.3 * burst, -0.5 * curl + 1.6 * burst, 1.4 * curl)
+				l_arm = r_arm
+				pitch = 0.25 * curl - 0.15 * burst
+				lift = -0.35 * curl + 0.3 * burst
+				heart = -0.25 * curl + 0.7 * burst
+				orbit = -0.4 * curl + 1.2 * burst
+				spin += 5.0 * burst
+			"beam":
+				# The heart opens and pours its light forward.
+				var open := keys(p, [[0, 0], [0.5, 1.0], [0.9, 1.0], [1, 0]])
+				r_arm = Vector3(-0.4 * open, 1.1 * open, 0.4)
+				l_arm = r_arm
+				pitch = keys(p, [[0, 0], [0.45, -0.2], [0.55, 0.2], [0.9, 0.2], [1, 0]])
+				heart = 0.55 * open + 0.1 * sin(t * 18.0) * open
+				align = open
+				head_up = -0.2 * open
+			"volley":
+				# Arms raised high, the shard orbit lifts and scatters crystal.
+				var raise := keys(p, [[0, 0], [0.2, 1.0], [0.85, 1.0], [1, 0]])
+				r_arm = Vector3(2.6 * raise, 0.6 * raise + 0.08 * sin(t * 6.0), 0.2)
+				l_arm = Vector3(2.6 * raise, 0.6 * raise + 0.08 * sin(t * 6.0 + 1.5), 0.2)
+				head_up = 0.4 * raise
+				orbit = 0.9 * raise
+				heart = 0.25 * raise
+				spin += 2.0 * raise
+			"special1":
+				# Refraction mirrors: arms aim at different points, the heart
+				# pulses once for each mirror.
+				var hold := keys(p, [[0, 0], [0.3, 1.0], [0.85, 1.0], [1, 0]])
+				r_arm = Vector3(1.5 * hold, 0.9 * hold, 0.1)
+				l_arm = Vector3(0.6 * hold, 1.5 * hold, 0.1)
+				twist = 0.25 * sin(p * TAU * 1.5) * hold
+				heart = 0.4 * absf(sin(p * PI * 3.0)) * hold
+				align = hold
+			"teleport":
+				# Folds into a point of light, then unfolds where it lands.
+				blink = keys(p, [[0, 1.0], [0.7, 0.08], [0.78, 0.08], [1, 1.0]])
+				r_arm = Vector3(0.8, -0.3, 1.5) * (1.0 - blink)
+				l_arm = r_arm
+				spin += 6.0 * (1.0 - blink)
+			"charge":
+				# Rears back, then rams head-first, both fists leading.
+				var rear := keys(p, [[0, 0], [0.45, 1.0], [0.55, 0.0]])
+				var ram := keys(p, [[0.48, 0.0], [0.56, 1.0], [0.85, 1.0], [1, 0]])
+				r_arm = Vector3(-0.8 * rear + 1.6 * ram, 0.5 * rear - 0.15 * ram, 0.4 * rear)
+				l_arm = r_arm
+				pitch = -0.3 * rear + 0.6 * ram
+				lift = 0.2 * rear - 0.3 * ram
+				heart = 0.4 * ram
+			"spin":
+				# Shard orbit: arms out level, the whole body spins twice.
+				var out := keys(p, [[0, 0], [0.3, 1.0], [0.85, 1.0], [1, 0]])
+				r_arm = Vector3(0.2, 1.5 * out, 0.0)
+				l_arm = r_arm
+				twist = keys(p, [[0.3, 0.0], [0.9, TAU * 2.0]])
+				orbit = 1.6 * out
+				spin += 4.0 * out
+			"special2":
+				# Constellation: rises slowly, arms lift, rings align, the heart blazes.
+				var rise := keys(p, [[0, 0], [0.5, 1.0], [0.9, 1.0], [1, 0]])
+				var blaze := keys(p, [[0.45, 0.0], [0.55, 1.0], [0.8, 0.5], [1, 0]])
+				r_arm = Vector3(1.6 * rise, 1.0 * rise, 0.3)
+				l_arm = r_arm
+				lift = 0.6 * rise
+				head_up = 0.5 * rise
+				heart = 0.3 * rise + 0.7 * blaze
+				align = rise
+			"phase", "roar", "summon":
+				r_arm = Vector3(1.0 * w, 1.6 * w, 0.0)
+				l_arm = r_arm
+				head_up = 0.5 * w
+				heart = 0.6 * w
 				spin += 3.0 * w
-				heart_scale += 0.35 * w
-			"sweep", "attack", "attack2":
-				reach = keys(p, [[0, 0], [0.3, 0.6], [0.6, 0.8], [1, 0]])
-	_heart.scale = Vector3.ONE * heart_scale
+	# Phase change: it shudders and throws its arms wide as the shell breaks.
+	if surge > 0.0 and not _dead:
+		var shake := sin(t * 47.0) * 0.06 * surge
+		r_arm = r_arm.lerp(Vector3(0.9, 1.7, 0.0), surge * 0.7)
+		l_arm = l_arm.lerp(Vector3(0.9, 1.7, 0.0), surge * 0.7)
+		pitch += shake - 0.2 * surge
+		twist += shake
+		heart += 0.8 * surge
+		head_up += 0.5 * surge
+	# A flinch: the body recoils, the head snaps back, the arms jerk out.
+	pitch -= 0.3 * recoil
+	r_arm += Vector3(-0.3, 0.3, 0.2) * recoil
+	l_arm += Vector3(-0.3, 0.3, 0.2) * recoil
+	head_up += 0.4 * recoil
+	_body.position.y = (1.0 + bob + lift) * _hover - 0.8 * _break
+	var tumble := _tumble * _break * 0.9
+	_body.rotation = Vector3(pitch + _lean.x + tumble.x, twist, _lean.z + tumble.z)
+	_body.scale = Vector3.ONE * blink
+	_heart.rotation.y += delta * 0.8 * spin
+	_heart.scale = Vector3.ONE * (1.0 + 0.06 * sin(t * 3.0) + _power * 0.15 + heart)
 	for i in _rings.size():
 		var r := _rings[i]
 		r.rotation.y += delta * (0.5 + i * 0.35) * spin * (1.0 if i % 2 == 0 else -1.0)
 		r.rotation.x += delta * 0.2 * (i - 1) * spin
+		if align > 0.0:
+			# The rings line up like an instrument taking aim.
+			r.rotation.x = lerp_angle(r.rotation.x, PI * 0.5, 1.0 - exp(-6.0 * align * delta))
+			r.rotation.z = lerp_angle(r.rotation.z, 0.0, 1.0 - exp(-6.0 * align * delta))
 	_orbit.rotation.y += delta * 0.6 * spin
-	_head.rotation = Vector3(sin(t * 0.7) * 0.05 - spread * 0.3, sin(t * 0.4) * 0.15, 0)
-	_head.position.y = 4.55 + sin(t * 1.3 + 1.0) * 0.08 + spread * 0.2
+	_orbit.scale = damp_v(_orbit.scale, Vector3.ONE * (1.0 + orbit + _break * 1.5), 6.0, delta)
+	_orbit.position.y = damp(_orbit.position.y, 1.0 + orbit * 1.5 - _break * 0.8, 4.0, delta)
+	pose(_head, Vector3(sin(t * 0.7) * 0.05 + head_up * 0.6 - 0.15 * _lean.x, sin(t * 0.4) * 0.15 - twist * 0.3, 0), 8.0, delta)
+	_head.position.y = 4.55 + sin(t * 1.3 + 1.0) * 0.08 + head_up * 0.15 + _break * 0.4
+	if _dead:
+		# Death: the arms fall slack and drift apart as the construct sinks.
+		r_arm = Vector3(-0.3 * _break, 0.6 * _break, 0.0)
+		l_arm = r_arm
 	for i in 2:
 		var side := -1.0 if i == 0 else 1.0
-		var sway := sin(t * 0.9 + i * 1.7) * 0.08
-		var x := -reach * (1.3 if i == 1 else 0.4) - arms_up * 2.6 + slam * 1.2
-		var z := side * (0.12 + spread * 1.0 + sway)
-		_shoulders[i].rotation = _shoulders[i].rotation.lerp(Vector3(x, 0, z), 1.0 - exp(-10.0 * delta))
-		_elbows[i].rotation = _elbows[i].rotation.lerp(Vector3(-0.35 - reach * 0.3 - arms_up * 0.5, 0, 0), 1.0 - exp(-10.0 * delta))
+		var a := l_arm if i == 0 else r_arm
+		var sway := sin(t * 0.9 + i * 1.7) * 0.06
+		arm(_shoulders[i], _elbows[i], side, a.x + sway, a.y + sway, a.z, 10.0, delta)
 		_fists[i].rotation.y += delta * 0.6 * spin
-	# Death: the parts drift apart and sink.
+		_shoulders[i].position.x = side * (1.55 + _break * 0.8)
+		_elbows[i].position.y = -1.85 - _break * 0.6
 	if _dead:
-		for i in 2:
-			_shoulders[i].position.x = (-1.0 if i == 0 else 1.0) * (1.55 + _break * 0.8)
-			_elbows[i].position.y = -1.85 - _break * 0.6
-		_head.position.y += _break * 0.4
-		_orbit.scale = Vector3.ONE * (1.0 + _break * 1.5)
+		for r in _rings:
+			r.position.y = damp(r.position.y, 2.6 - _break * 2.2, 2.0, delta)
 
 
 func _on_boss_phase(new_phase: int) -> void:

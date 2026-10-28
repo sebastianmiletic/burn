@@ -8,14 +8,18 @@ extends CreatureModel
 ## current and is flung out of it.
 ##
 ## The entity position is the maw. Set `risen`, `engaged`, `fury` (0..1),
-## `water_y` and `arena_center`; actions: bite (gulp), throw (debris), summon
-## (vortex/spin), roar, die.
+## `water_y` and `arena_center` (and `lean_to`, the offset it is wandering
+## towards: the risen maw tilts that way); actions: bite (gulp), throw (debris),
+## summon (vortex/spin/undertow), roar, lunge (heaves over the rim towards
+## `lean_to`), spout (sinks and blasts geysers up), hit (recoil), die (the
+## rings slacken, the gullet dies and the whirlpool winds down).
 
 var risen := false
 var engaged := false
 var fury := 0.0
 var water_y := 13.0
 var arena_center := Vector3.INF
+var lean_to := Vector3.ZERO
 
 const RIM := 11.6
 const DEPTH := 13.0
@@ -28,6 +32,8 @@ var debris: Array = []   # [node, radius, height, phase, speed]
 var _rise := 0.0
 var _open := 0.3
 var _spin := 1.0
+var _tilt := Vector3.ZERO
+var _drop := 0.0
 
 
 func _init() -> void:
@@ -37,6 +43,9 @@ func _init() -> void:
 	durations["throw"] = 3.0
 	durations["summon"] = 3.0
 	durations["roar"] = 2.4
+	durations["lunge"] = 2.7
+	durations["spout"] = 2.0
+	durations["hit"] = 0.7
 
 
 func _ember_extents() -> Vector3:
@@ -183,12 +192,38 @@ func _animate(delta: float) -> void:
 				open_t = lerpf(open_t, 1.0, w)
 			"throw":
 				open_t = lerpf(open_t, 0.8 + 0.2 * sin(_time * 9.0), w)
+			"lunge":
+				open_t = keys(p, [[0, 0.4], [0.45, 1.1], [0.6, 0.0], [0.8, 0.2], [1, 0.4]])
+			"spout":
+				open_t = lerpf(open_t, 1.1, w)
+			"hit":
+				open_t = lerpf(open_t, 0.05, sin(PI * p))
 	if _dead:
 		open_t = 0.9
 	_open = damp(_open, open_t, 8.0, delta)
 	# The maw rides the entity (risen to the rim or deep in the throat); it never leaves the funnel axis.
 	var my := global_position.y
-	maw.global_transform = Transform3D(Basis(Vector3.UP, _time * 0.25 * _spin), Vector3(c.x, my, c.z))
+	# The maw wanders round the funnel with the entity (never past its walls) and
+	# tilts towards where it is heading once it has risen; it heaves and jolts.
+	var off := Vector3(global_position.x - c.x, 0, global_position.z - c.z).limit_length(RIM - 5.5)
+	var tilt_goal := Vector3(lean_to.x, 0, lean_to.z).limit_length(1.0) * 0.35 * _rise
+	var drop_goal := 0.0
+	if p >= 0.0 and not _dead:
+		match _action:
+			"lunge":
+				tilt_goal *= 1.0 + keys(p, [[0, 0], [0.45, 0.6], [0.6, 1.6], [1, 0.4]])
+				drop_goal = -keys(p, [[0, 0], [0.45, 1.5], [0.6, 2.5], [1, 0]])
+			"spout":
+				drop_goal = keys(p, [[0, 0], [0.4, 2.5], [0.65, -1.0], [1, 0]])
+			"hit":
+				drop_goal = 1.2 * sin(PI * p)
+	_tilt = _tilt.lerp(tilt_goal, 1.0 - exp(-4.0 * delta))
+	_drop = damp(_drop, drop_goal, 9.0, delta)
+	var tilt_axis := Vector3(_tilt.z, 0, -_tilt.x)
+	var mb := Basis(Vector3.UP, _time * 0.25 * _spin)
+	if tilt_axis.length() > 0.001:
+		mb = Basis(tilt_axis.normalized(), tilt_axis.length()) * mb
+	maw.global_transform = Transform3D(mb, Vector3(c.x + off.x, my - _drop, c.z + off.z))
 	for i in rings.size():
 		var ring := rings[i]
 		ring.rotation.y = _time * (0.4 + i * 0.25) * (1.0 if i % 2 == 0 else -1.0) * (0.5 + fury)

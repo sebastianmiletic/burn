@@ -26,11 +26,100 @@ var _prev_pos := Vector3.INF
 var _orb_light: OmniLight3D
 
 
+## Fraction of each action at which its blow lands (BogHagBoss plays the
+## action for telegraph / IMPACT so her move meets the filled warning).
+const IMPACT := {"swipe": 0.6, "curse": 0.6, "spit": 0.6, "summon": 0.56, "burst": 0.8}
+## Pounce: airborne from POUNCE[0], lands at POUNCE[1] of POUNCE_TIME seconds.
+const POUNCE := [0.3, 0.6]
+const POUNCE_TIME := 1.8
+
+
 func _init() -> void:
 	super({"height": 2.8, "bulk": 0.95, "gaunt": true, "hunch": -0.55, "arm_length": 1.3, "cloak": true, "cloak_hem": 0.85,
 		"tattered": true, "held": "hag_staff", "eyes": BOG, "cloak_color": SHAWL})
 	durations["cast"] = 1.2
 	durations["attack2"] = 0.9
+	death_kneel = false
+	# A witch's tricks: a spiteful staff swipe, hexes flicked from her claw,
+	# the staff stabbed into the mud for the roots, a gob of bog bile, a
+	# whirl into gas when she blinks, a scuttling pounce, the dead called up,
+	# arms flung up to burst the swamp gas, and the staff stirring the sky
+	# for the mire rain.
+	moves["swipe"] = Moves.sweep(IMPACT["swipe"])
+	moves["hex"] = Moves.fling(0.5 / 1.92, 1.06 / 1.92, 3)
+	moves["curse"] = Moves.plant(IMPACT["curse"], Vector3(0.08, 1.0, -0.36), Vector3.UP)
+	moves["spit"] = _spit(IMPACT["spit"])
+	moves["teleport"] = Moves.spin(0.25, 0.55, 1.0)
+	moves["summon"] = Moves.invoke(IMPACT["summon"])
+	moves["pounce"] = Moves.leap(POUNCE[0], POUNCE[1], 0.45)
+	moves["burst"] = Moves.invoke(IMPACT["burst"])
+	moves["volley"] = _stir()
+	moves["phase"] = _cackle()
+	moves["hit"] = Moves.flinch()
+	moves["roar"] = _cackle()
+
+
+## Hexes: one flick of the claw per bolt (2 + phase bolts; HexBolt timing in BogHagBoss).
+func _on_action(action_name: String) -> void:
+	super._on_action(action_name)
+	if action_name == "hex":
+		var total := 2 + boss_phase
+		var dur := 0.8 + total * 0.28
+		moves["hex"] = Moves.fling(0.5 / dur, (0.5 + (total - 1) * 0.28) / dur, total)
+
+
+## Bog bile: she rears back, then pitches forward with her jaw gaping wide.
+func _spit(i: float) -> Dictionary:
+	var z := Vector3.ZERO
+	var b := i * 0.7
+	return {
+		R.SPINE: [[0, z], [b, Vector3(0.35, 0, 0)], [i, Vector3(-0.45, 0, 0)], [minf(1.0, i + 0.2), Vector3(-0.4, 0, 0)], [1, z]],
+		R.CHEST: [[0, z], [b, Vector3(0.2, 0, 0)], [i, Vector3(-0.2, 0, 0)], [1, z]],
+		R.NECK: [[0, z], [b, Vector3(0.2, 0, 0)], [i, Vector3(-0.35, 0, 0)], [1, z]],
+		R.HEAD: [[0, z], [b, Vector3(0.45, 0, 0)], [i, Vector3(-0.1, 0, 0)], [1, z]],
+		R.UARM_L: [[0, Moves.ARM_L], [b, Vector3(0.2, 0, -0.7)], [i, Vector3(0.6, 0, -0.5)], [1, Moves.ARM_L]],
+		"hips": [[0, z], [b, Vector3(0, 0.03, 0.06)], [i, Vector3(0, -0.08, -0.1)], [1, z]],
+		"jaw": [[0, 0.0], [b, 0.15], [i, 0.7], [minf(1.0, i + 0.2), 0.6], [1, 0.0]],
+		"fing": [[0, 1.0], [b, 1.6], [i, -0.2], [1, 1.0]],
+	}
+
+
+## Stirring the clouds: the staff raised high and turned in slow circles.
+func _stir() -> Dictionary:
+	var arm := [[0.0, Moves.ARM_R]]
+	var chest := [[0.0, Vector3.ZERO]]
+	for k in 7:
+		var p := 0.15 + k * 0.11
+		var a := k * PI * 0.5
+		arm.append([p, Vector3(2.5 + sin(a) * 0.25, cos(a) * 0.35, 0.3)])
+		chest.append([p, Vector3(0.2, cos(a) * 0.2, sin(a) * 0.08)])
+	arm.append([1.0, Moves.ARM_R])
+	chest.append([1.0, Vector3.ZERO])
+	return {
+		R.UARM_R: arm,
+		R.FARM_R: [[0, Vector3(0.7, 0, 0)], [0.15, Vector3(0.3, 0, 0)], [0.85, Vector3(0.3, 0, 0)], [1, Vector3(0.7, 0, 0)]],
+		R.UARM_L: [[0, Moves.ARM_L], [0.2, Vector3(1.0, 0.3, -0.9)], [0.85, Vector3(1.0, 0.3, -0.9)], [1, Moves.ARM_L]],
+		R.CHEST: chest,
+		R.HEAD: [[0, Vector3.ZERO], [0.15, Vector3(0.5, 0, 0)], [0.85, Vector3(0.5, 0, 0)], [1, Vector3.ZERO]],
+		"jaw": [[0, 0.0], [0.2, 0.3], [0.85, 0.3], [1, 0.0]],
+		"shake": [[0, 0.0], [0.2, 0.5], [0.85, 0.5], [1, 0.0]],
+		"fing": [[0, 1.0], [0.2, -0.2], [0.85, -0.2], [1, 1.0]],
+	}
+
+
+## A shrieking cackle, hunched over, claws hooked up by her face, shoulders shaking.
+func _cackle() -> Dictionary:
+	var z := Vector3.ZERO
+	return {
+		R.SPINE: [[0, z], [0.25, Vector3(-0.35, 0, 0)], [0.55, Vector3(0.3, 0, 0)], [0.85, Vector3(0.25, 0, 0)], [1, z]],
+		R.HEAD: [[0, z], [0.25, Vector3(-0.2, 0, 0)], [0.55, Vector3(0.6, 0, 0)], [0.85, Vector3(0.55, 0, 0)], [1, z]],
+		R.UARM_L: [[0, Moves.ARM_L], [0.3, Vector3(1.2, -0.5, -0.4)], [0.85, Vector3(1.3, -0.4, -0.6)], [1, Moves.ARM_L]],
+		R.FARM_L: [[0, Vector3(0.3, 0, 0)], [0.3, Vector3(2.2, 0, 0)], [0.85, Vector3(2.0, 0, 0)], [1, Vector3(0.3, 0, 0)]],
+		"hips": [[0, z], [0.25, Vector3(0, -0.1, 0)], [0.55, Vector3(0, 0.02, 0)], [1, z]],
+		"jaw": [[0, 0.0], [0.5, 0.6], [0.6, 0.2], [0.7, 0.6], [0.8, 0.2], [0.9, 0.5], [1, 0.0]],
+		"shake": [[0, 0.0], [0.45, 1.0], [0.9, 1.0], [1, 0.0]],
+		"fing": [[0, 1.0], [0.3, 1.7], [1, 1.0]],
+	}
 
 
 func _ember_extents() -> Vector3:

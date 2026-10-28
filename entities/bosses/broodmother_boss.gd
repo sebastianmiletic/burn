@@ -4,9 +4,13 @@ extends Boss
 ## cavern deep beneath Emberwood.
 ##   Phase 1: bite (cone), leg stab (two marked circles under her raised
 ##            forelegs), web lash (a lane of silk shot from her spinnerets that
-##            knocks you down), venom volley (lobbed globs, landing spots marked)
+##            knocks you down), venom volley (lobbed globs, landing spots
+##            marked), foreleg sweep (wide cone), skitter (scuttles to a
+##            flank, often along the cavern wall)
 ##   Phase 2: + brood (the egg sacs on her back burst into spiderlings),
-##            + pounce (crouches, leaps onto a marked spot)
+##            + pounce (crouches, leaps onto a marked spot), + venom spray
+##            (a wide marked cone), + silk swing (up her line, then swings
+##            down a marked lane across the hollow and lets go at the far end)
 ##   Phase 3: climbs to the cavern roof on a silk line (the roof height is
 ##            probed, so any lair works), rains venom on marked spots, then
 ##            drops onto one of them; plus everything above, faster.
@@ -14,6 +18,7 @@ extends Boss
 ## BroodmotherModel.IMPACT so the animation and the hit agree.
 
 const HANG_BELOW := 6.5   ## body hangs this far under the roof
+const SWING_TELE := 1.4
 
 var arena_center := Vector3.ZERO
 var arena_r := 22.0
@@ -36,6 +41,7 @@ func _init() -> void:
 	hit_radius = 3.6
 	hit_height = 4.4
 	body.half_extents = Vector3(2.0, 1.6, 2.0)
+	strafe_speed = 2.2
 	loot = [["potion_greater", 1.0, 2, 4], ["silver_ore", 1.0, 6, 10], ["amethyst", 1.0, 3, 6], ["spider_silk", 1.0, 6, 12],
 		["gold_ore", 1.0, 6, 10], ["ruby", 0.7, 1, 3], ["ember_crystal", 1.0, 3, 6]]
 
@@ -103,6 +109,10 @@ func _attacks() -> Dictionary:
 		"brood": {"phase": 2, "weight": 1.0, "cooldown": 1.6, "ok": func() -> bool: return summons.size() < 5},
 		"pounce": {"phase": 2, "weight": 1.6, "min": 7.0, "cooldown": 1.2},
 		"ceiling": {"phase": 3, "weight": 1.6, "cooldown": 1.5},
+		"sweep": {"phase": 1, "weight": 2.0, "max": 8.0, "cooldown": 0.9},
+		"skitter": {"phase": 1, "weight": 1.2, "cooldown": 0.4},
+		"spray": {"phase": 2, "weight": 1.5, "max": 13.0, "cooldown": 1.2},
+		"swing": {"phase": 2, "weight": 1.2, "min": 6.0, "cooldown": 1.4},
 	}
 
 
@@ -145,7 +155,7 @@ func _begin_attack(name: String) -> void:
 						_shake_near(c, 0.3))
 		"web":
 			var tele := 0.9
-			_play("shoot", _dur("shoot", tele))
+			_play("web", _dur("shoot", tele))
 			var dir := _fwd()
 			if _target != null:
 				dir = (_target.global_position - global_position)
@@ -172,6 +182,35 @@ func _begin_attack(name: String) -> void:
 				func() -> void:
 					_shake_near(target, 0.7)
 					Audio.play("stomp", target, 4.0, 0.7))
+		"sweep":
+			var tele := 0.55
+			_play("sweep", _dur("sweep", tele))
+			Audio.play("spider_hiss", center(), 5.0, 0.55)
+			_tele("cone", g + _fwd() * 1.0, _fwd(), Vector3(8.0, 120.0, 0), tele, 28.0, "hit", 9.0,
+				func() -> void:
+					Audio.play("swing_heavy", g + _fwd() * 5.0, 4.0, 0.7)
+					_shake_near(global_position, 0.25))
+		"skitter":
+			# Scuttle to a flank: out towards the cavern wall, round the target.
+			var around := (_target.global_position if _target != null else global_position) - arena_center
+			around.y = 0.0
+			var a := atan2(around.z, around.x) + _rng.randf_range(0.9, 1.9) * (-1.0 if _rng.randf() < 0.5 else 1.0)
+			var r := arena_r * _rng.randf_range(0.45, 0.85)
+			_attack_data["to"] = _inside(arena_center + Vector3(cos(a), 0, sin(a)) * r, 3.0)
+			_play("dodge", 1.4)
+			Audio.play("spider_hiss", center(), 3.0, 1.2)
+		"spray":
+			var tele := 0.8
+			_play("spit", _dur("spit", tele))
+			Audio.play("spider_hiss", center(), 6.0, 0.5)
+			_tele("cone:venom", g + _fwd() * 1.5, _fwd(), Vector3(13.0, 70.0, 0), tele, 30.0, "hit", 4.0,
+				func() -> void:
+					_fx_burst(g + _fwd() * 7.0 + Vector3(0, 0.5, 0), false, 1.2)
+					Audio.play("spider_hiss", g + _fwd() * 6.0, 4.0, 1.4))
+		"swing":
+			_play("roar", 1.0)
+			Audio.play("spider_hiss", center(), 6.0, 0.6)
+			_attack_data["real"] = 0.0
 		"ceiling":
 			_play("roar", 1.4)
 			Audio.play("spider_hiss", center(), 8.0, 0.4)
@@ -217,7 +256,77 @@ func _update_attack(name: String, t: float, delta: float) -> bool:
 			return rt > 1.9
 		"ceiling":
 			return _update_ceiling(delta)
+		"sweep":
+			return t > _dur("sweep", 0.55)
+		"skitter":
+			var to: Vector3 = _attack_data["to"]
+			_move_towards(to, walk_speed * 2.4, delta, 1.0)
+			_move_intent = false
+			if _target != null and _flat_to(to) < 3.0:
+				_face(_target.global_position, delta, 6.0)
+			return _flat_to(to) < 1.5 or t > 3.0
+		"spray":
+			return t > _dur("spit", 0.8) + 0.1
+		"swing":
+			return _update_swing(delta)
 	return true
+
+
+## Up the silk line, then a pendulum swing down a marked lane across the
+## hollow (it reaches the far end as the lane fills) and a drop to the floor.
+func _update_swing(delta: float) -> bool:
+	_attack_data["real"] = float(_attack_data["real"]) + delta
+	var t: float = _attack_data["real"]
+	var top := clampf(ceiling_y - HANG_BELOW, floor_y + 5.0, floor_y + 12.0)
+	if t < 1.0:
+		if t > 0.3:
+			if not flying:
+				flying = true
+				body.fly = true
+				_hang_y = global_position.y
+			var f := clampf((t - 0.3) / 0.7, 0.0, 1.0)
+			global_position.y = lerpf(_hang_y, top, f * f * (3.0 - 2.0 * f))
+			body.velocity = Vector3.ZERO
+		return false
+	if not _attack_data.has("from"):
+		var aim := _target.global_position if _target != null else arena_center
+		var dir := aim - global_position
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length() > 0.5 else _fwd()
+		var from := global_position
+		var end := _inside(_ground_at(aim + dir * 8.0), 3.0)
+		_attack_data["from"] = from
+		_attack_data["end"] = end
+		_attack_data["dir"] = dir
+		_play("glide", SWING_TELE + 0.6)
+		_tele("line:web", _ground_at(from), dir, Vector3(maxf(6.0, Vector2(end.x - from.x, end.z - from.z).length()), 4.5, 0),
+			SWING_TELE, 40.0, "hit", 11.0,
+			func() -> void:
+				_shake_near(global_position, 0.6)
+				Audio.play("stomp", global_position, 5.0, 0.6))
+	var st := t - 1.0
+	var a: Vector3 = _attack_data["from"]
+	var b: Vector3 = _attack_data["end"]
+	var dir: Vector3 = _attack_data["dir"]
+	yaw = lerp_angle(yaw, atan2(-dir.x, -dir.z), 1.0 - exp(-6.0 * delta))
+	var swing_from := SWING_TELE * 0.45
+	if st >= swing_from and st < SWING_TELE:
+		var f := (st - swing_from) / (SWING_TELE - swing_from)
+		var pos := a.lerp(b, f)
+		# A pendulum arc: low through the middle, rising to the far end.
+		pos.y = lerpf(a.y, floor_y + 1.5, f) - sin(PI * f) * maxf(0.0, a.y - floor_y - 2.0) * 0.6
+		pos.y = maxf(pos.y, floor_y)
+		global_position = pos
+		body.velocity = Vector3.ZERO
+	elif st >= SWING_TELE:
+		if flying:
+			flying = false
+			body.fly = false
+			body.velocity = Vector3.ZERO
+			global_position = b
+			_play("lunge", 0.6)
+		return st > SWING_TELE + 0.6
+	return false
 
 
 func _physics(delta: float) -> void:
@@ -225,7 +334,7 @@ func _physics(delta: float) -> void:
 		rotation.y = yaw
 		_sync()
 		return
-	if flying:
+	if flying or (_attack == "swing" and _attack_data.has("from")):
 		rotation.y = yaw
 		_sync()
 		return
@@ -317,7 +426,9 @@ func _update_ceiling(delta: float) -> bool:
 
 
 func _on_phase_changed(new_phase: int) -> void:
-	_play("roar", 1.6)
+	# Mid-attack the blow keeps its animation (it stays in sync with its warning).
+	if _attack == "":
+		_play("phase", 2.0)
 	Audio.play("spider_hiss", center(), 8.0, 0.4)
 	_shake_near(global_position, 0.5)
 	_next_attack = 1.0

@@ -28,7 +28,13 @@ extends Entity
 ## indexes ACTIONS and `anim_time` stamps when it started.
 
 const ACTIONS := ["", "attack", "attack2", "sweep", "slam", "roar", "bite", "claw", "tail", "breath", "gust",
-		"takeoff", "land", "dive", "pounce", "howl", "summon", "throw", "cast", "spikes", "teleport", "hit", "fly"]
+		"takeoff", "land", "dive", "pounce", "howl", "summon", "throw", "cast", "spikes", "teleport", "hit", "fly",
+		# Appended (indices above must never move: they replicate as `anim`).
+		"attack3", "combo", "thrust", "uppercut", "stomp", "leap", "spin", "charge", "grab", "shriek", "web", "spit",
+		"submerge", "emerge", "beam", "nova", "rift", "strafe", "hover", "phase", "stagger", "lunge", "swipe", "smash",
+		"bash", "kick", "rake", "whip", "crush", "pull", "burst", "volley", "wave", "lash", "drain", "curse", "hex",
+		"eclipse", "starfall", "glide", "circle", "ink", "spout", "vortex", "taunt", "block", "dodge", "special1",
+		"special2", "special3", "special4"]
 ## Seconds after a fresh pull in which arriving players still scale the boss's health.
 const PULL_WINDOW := 15.0
 ## Seconds without a target before an engaged boss disengages.
@@ -91,12 +97,28 @@ var _move_intent := false
 var _snap_seen := false
 var _seen_alive := false
 var _announce_t := -1.0
+# Combat movement (server): circling between attacks, repositioning and flinches.
+## Speed while circling the target between attacks (0 = stand and face).
+var strafe_speed := -1.0
+## Seconds between flinches; heavy blows interrupt the boss's idle stance only.
+var flinch_cooldown := 2.5
+## Ceiling of the flying volume above the spawn point (fliers stay inside it).
+var air_ceiling := 24.0
+var _strafe_dir := 1.0
+var _strafe_t := 0.0
+var _flinch_t := 0.0
+var _reposition := Vector3.INF
 ## Headless simulation hook (tests): when set, used instead of GameWorld.instance.
 var sim_world: Object = null
 
 
 func is_boss() -> bool:
 	return true
+
+
+## Music state for this boss's fight (audio/music_library.gd renders one per boss).
+func music_state() -> String:
+	return "boss_" + kind
 
 
 ## GameWorld keeps ticking an engaged boss even when nobody is near, so an
@@ -196,7 +218,16 @@ func take_damage(amount: float, source_id := 0, damage_kind := "hit") -> float:
 		if not dead:
 			_last_active = _clock()
 			_remember()
+			_flinch(dealt)
 	return dealt
+
+
+## A heavy blow makes an idle (not attacking) boss flinch. Never interrupts an attack.
+func _flinch(dealt: float) -> void:
+	if not engaged or _attack != "" or _flinch_t > 0.0 or dealt < max_health * 0.02 or not is_server():
+		return
+	_flinch_t = flinch_cooldown
+	_play("hit", 0.5)
 
 
 func _on_damaged(amount: float, source_id: int, damage_kind: String) -> void:
@@ -284,6 +315,7 @@ func server_tick(delta: float) -> void:
 		_physics(delta)
 		return
 	fight_time += delta
+	_flinch_t -= delta
 	_touch_t -= delta
 	if _touch_t <= 0.0:
 		_touch_t = 1.0
@@ -402,6 +434,7 @@ func _reset() -> void:
 	phase = BossLogic.phase_for(health / max_health)
 	flying = false
 	body.fly = false
+	_reposition = Vector3.INF
 	_reset_t = 0.0
 	_fresh_pull = false
 	global_position = spawn_point
@@ -605,11 +638,86 @@ func _approach(delta: float) -> void:
 		_move_towards(spawn_point, walk_speed, delta, 2.0)
 		return
 	var d := _flat_dist(_target)
+	if _reposition.is_finite():
+		# Repositioning (set by _reposition_to): walk there, then resume.
+		if _flat_to(_reposition) < 1.5 or d < melee_range * 0.6:
+			_reposition = Vector3.INF
+		else:
+			_move_towards(_reposition, walk_speed * 1.2, delta, 1.0)
+			return
 	if d > melee_range:
 		_move_towards(_target.global_position, walk_speed * (1.3 if d > melee_range * 3.0 else 1.0), delta, melee_range * 0.8)
 	else:
-		_move_towards(global_position, 0.0, delta, 0.5)
+		_circle(delta)
 		_face(_target.global_position, delta, 4.0)
+
+
+## Between attacks at melee range the boss circles its target (changing
+## direction now and then) instead of standing still.
+func _circle(delta: float) -> void:
+	var speed := strafe_speed if strafe_speed >= 0.0 else walk_speed * 0.4
+	_strafe_t -= delta
+	if _strafe_t <= 0.0:
+		_strafe_t = 1.5 + _rng.randf() * 2.5
+		_strafe_dir = -1.0 if _rng.randf() < 0.5 else 1.0
+	if speed <= 0.0 or _target == null:
+		_move_towards(global_position, 0.0, delta, 0.5)
+		return
+	var to := _target.global_position - global_position
+	to.y = 0.0
+	if to.length() < 0.1:
+		return
+	var side := to.normalized().cross(Vector3.UP) * _strafe_dir
+	# Keep a little inside melee range while circling.
+	var radial := to.normalized() * clampf((to.length() - melee_range * 0.75) * 0.6, -1.0, 1.0)
+	var goal := global_position + (side + radial) * 3.0
+	var out := goal - spawn_point
+	out.y = 0.0
+	if out.length() > arena_radius * 0.95:
+		_strafe_dir = -_strafe_dir
+	var desired := (side + radial).normalized() * speed
+	_move_intent = false
+	body.velocity.x = lerpf(body.velocity.x, desired.x, 1.0 - exp(-4.0 * delta))
+	body.velocity.z = lerpf(body.velocity.z, desired.z, 1.0 - exp(-4.0 * delta))
+
+
+## Walk to a point in the arena (clamped inside it) before the next attack.
+func _reposition_to(p: Vector3) -> void:
+	_reposition = _clamp_arena(p, 0.9)
+
+
+## `p` pulled inside the arena circle (fraction of arena_radius).
+func _clamp_arena(p: Vector3, frac := 0.9) -> Vector3:
+	var off := p - spawn_point
+	var flat := Vector2(off.x, off.z)
+	var lim := arena_radius * frac
+	if flat.length() > lim:
+		flat = flat.normalized() * lim
+	return Vector3(spawn_point.x + flat.x, p.y, spawn_point.z + flat.y)
+
+
+## `p` clamped to the flying volume: inside the arena and between `min_alt`
+## and `air_ceiling` above the spawn point.
+func _clamp_air(p: Vector3, min_alt := 3.0) -> Vector3:
+	var q := _clamp_arena(p, 0.95)
+	q.y = clampf(p.y, spawn_point.y + min_alt, spawn_point.y + air_ceiling)
+	return q
+
+
+## Flies towards `p` (clamped to the air volume) at `speed`; returns true on arrival.
+func _fly_towards(p: Vector3, speed: float, delta: float, arrive := 1.5, face := true) -> bool:
+	var goal := _clamp_air(p, 0.0)
+	var to := goal - global_position
+	var arrived := to.length() < arrive
+	var desired := Vector3.ZERO if arrived else to.normalized() * minf(speed, to.length() / maxf(delta, 0.001))
+	body.velocity = body.velocity.lerp(desired, 1.0 - exp(-3.5 * delta))
+	if face and Vector2(to.x, to.z).length() > 0.5:
+		_face(goal, delta, 2.5)
+	return arrived
+
+
+func _flat_to(p: Vector3) -> float:
+	return Vector2(p.x - global_position.x, p.z - global_position.z).length()
 
 
 func _move_towards(target: Vector3, speed: float, delta: float, stop: float) -> void:
@@ -806,4 +914,4 @@ func _announce_if_missed(delta: float) -> void:
 		return
 	Events.boss_engaged.emit(self, display_name)
 	Events.boss_health_changed.emit(self, health, max_health, phase)
-	Audio.set_music("boss")
+	Audio.set_music(music_state())

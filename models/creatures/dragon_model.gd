@@ -31,7 +31,7 @@ const PELVIS := 13       ## joints 7..13: torso, 13..27: tail
 const SHOULDER := 8
 const HIPS := 12
 ## Fraction of an action at which its blow lands (the boss times its telegraphs to these).
-const IMPACT := {"bite": 0.55, "claw": 0.52, "tail": 0.55, "gust": 0.5, "slam": 0.35, "land": 0.42}
+const IMPACT := {"bite": 0.55, "claw": 0.52, "tail": 0.55, "gust": 0.5, "slam": 0.35, "land": 0.42, "stomp": 0.55}
 ## Breath: fire from BREATH_ON to BREATH_OFF of the action while the head sweeps +-SWEEP.
 const BREATH_ON := 0.3
 const BREATH_OFF := 0.9
@@ -79,6 +79,10 @@ var _head_pos := Vector3.INF
 var _look := Vector3.FORWARD
 var _head_pitch := 0.0
 var _prev_root := Vector3.INF
+## Heading change measured from the model itself (works on clients too).
+var _prev_yaw := NAN
+var _yaw_rate := 0.0
+var _bank := 0.0
 var _vel := Vector3.ZERO
 var _last_ground := 0.0
 var _fx_t := 0.0
@@ -117,6 +121,12 @@ func _init() -> void:
 	durations["tail"] = 1.5
 	durations["gust"] = 1.6
 	durations["fly"] = 1.0
+	durations["charge"] = 1.8
+	durations["stomp"] = 1.8
+	durations["swoop"] = 1.4
+	durations["rake"] = 1.4
+	durations["hover"] = 3.6
+	durations["phase"] = 2.0
 	looping["fly"] = true
 
 
@@ -590,6 +600,10 @@ func _animate(delta: float) -> void:
 		_prev_root = root.origin
 	_vel = _vel.lerp((root.origin - _prev_root) / maxf(delta, 0.001), 1.0 - exp(-5.0 * delta))
 	_prev_root = root.origin
+	var yaw_now := atan2(-fwd.x, -fwd.z)
+	if not is_nan(_prev_yaw):
+		_yaw_rate = lerpf(_yaw_rate, angle_difference(_prev_yaw, yaw_now) / maxf(delta, 0.001), 1.0 - exp(-6.0 * delta))
+	_prev_yaw = yaw_now
 	var air := flying and not _dead
 	if not air and _fly < 0.3:
 		_last_ground = root.origin.y
@@ -599,7 +613,7 @@ func _animate(delta: float) -> void:
 	var speed := Vector2(_vel.x, _vel.z).length() if not air else 0.0
 	_walk = damp(_walk, clampf(maxf(speed, move_speed if not air else 0.0) / 4.0, 0.0, 1.0), 4.0, delta)
 	_fly = damp(_fly, 1.0 if air else 0.0, 2.5, delta)
-	var step_rate := maxf(speed, move_speed) / 3.4 + absf(turn_rate) * 0.35
+	var step_rate := maxf(speed, move_speed) / 3.4 + absf(maxf(absf(turn_rate), absf(_yaw_rate))) * 0.35
 	_gait += delta * clampf(step_rate, 0.0, 1.6) * (1.0 - _fly)
 	var breathe := sin(_time * 1.1)
 
@@ -628,11 +642,21 @@ func _animate(delta: float) -> void:
 
 	var strafing := air and (strafe or act == "breath")
 	if air:
-		t_pitch = 0.22 if not strafing else 0.02
+		# Cruising: nose down with speed, nose up when climbing or hovering;
+		# banks into turns; glides between bursts of wingbeats at speed.
+		var air_speed := Vector2(_vel.x, _vel.z).length()
+		var cruise := clampf(air_speed / 12.0, 0.0, 1.0)
+		t_pitch = (lerpf(0.3, 0.04, cruise) - clampf(_vel.y * 0.03, -0.25, 0.25)) if not strafing else 0.02
+		_bank = damp(_bank, clampf(-_yaw_rate * 0.55, -0.6, 0.6) * cruise, 3.0, delta)
+		t_roll = _bank
 		t_fold = 0.0
 		head_l = CHEST + Vector3(0, 2.2, -4.9)
 		t_head_pitch = -0.35
 		flap_speed = 1.05 if not strafing else 0.75
+		if not strafing and cruise > 0.6 and _vel.y > -2.0:
+			var glide := smoothstep(0.1, 0.7, sin(_time * 0.55))
+			t_flap = lerpf(1.0, 0.18, glide)
+			t_raise = 0.12 * glide
 		if strafing:
 			breath_on = act != "breath" or (p > 0.04 and p < 0.96)
 			head_l = CHEST + Vector3(0, 0.4, -5.6)
@@ -769,6 +793,84 @@ func _animate(delta: float) -> void:
 			head_l = CHEST + Vector3(0, 0.6, -5.8)
 			t_head_pitch = -0.6
 			t_throat = 1.6
+		"charge":
+			# Head down, shoulders driving: wind-up, then the run.
+			var wind := keys(p, [[0, 0], [0.3, 1.0], [0.42, 0.6], [1, 0.4]])
+			var run := keys(p, [[0, 0], [0.38, 0.0], [0.45, 1.0], [0.75, 1.0], [1, 0]])
+			t_crouch = 0.5 * wind + 0.25 * run
+			t_lunge = 1.2 * run
+			t_pitch = -0.1 * run + 0.06 * wind
+			head_l = head_l.lerp(Vector3(0, 3.1, -9.6), maxf(wind * 0.6, run))
+			t_head_pitch = lerpf(t_head_pitch, -0.6, run)
+			t_jaw = 0.4 + 0.5 * run
+			t_fold = lerpf(t_fold, 0.55, run)
+			t_raise = 0.25 * run
+			t_throat = 0.6 + run
+			_gait += delta * 1.8 * run
+			if p > 0.45 and not _impact_done:
+				_impact_done = true
+				_fx("dust_cloud", Vector3(0, 0, 2.0), 1.4)
+		"stomp":
+			var hit_at: float = IMPACT["stomp"]
+			var rise := keys(p, [[0, 0], [hit_at - 0.12, 1.0], [hit_at, 0.0], [1, 0]])
+			var down := keys(p, [[0, 0], [hit_at - 0.04, 0.0], [hit_at + 0.04, 1.0], [0.85, 0.6], [1, 0]])
+			t_rear = 0.6 * rise
+			t_crouch = 1.0 * down
+			t_fold = 1.0 - 0.8 * rise
+			t_raise = 0.9 * rise - 0.4 * down
+			t_flap = 0.0
+			claw_lift = rise
+			claw_reach = 0.4 * rise + 0.6 * down
+			head_l += Vector3(0, 2.0, 1.2) * rise + Vector3(0, -1.4, -1.2) * down
+			t_head_pitch += 0.4 * rise - 0.3 * down
+			t_jaw = 0.4 + 0.6 * maxf(rise, down)
+			if p > hit_at and not _impact_done:
+				_impact_done = true
+				_fx("dust_cloud", Vector3(0, 0, -5.0), 1.8)
+				for i in 6:
+					var a := TAU * float(i) / 6.0
+					_fx("dust_cloud", Vector3(cos(a), 0, sin(a)) * 7.0 + Vector3(0, 0, -5.0), 1.0)
+				_quake(root * Vector3(0, 0, -5.0), 0.7)
+				Audio.play("land_heavy", root.origin, 6.0, 0.5)
+		"swoop", "rake":
+			# Low pass: talons thrown forward, wings swept back.
+			var talon := keys(p, [[0, 0], [0.3, 1.0], [0.7, 1.0], [1, 0]])
+			t_pitch = lerpf(t_pitch, -0.25, talon)
+			t_fold = 0.35 * talon
+			t_flap = lerpf(t_flap, 0.1, talon)
+			t_raise = 0.35 * talon
+			claw_lift = talon
+			claw_reach = talon
+			head_l = head_l.lerp(CHEST + Vector3(0, 1.0, -5.8), talon)
+			t_head_pitch = lerpf(t_head_pitch, -0.5, talon)
+			t_jaw = 0.85 * talon
+			t_throat = 1.2
+		"hover":
+			# Upright hover, deep slow beats (fireball volleys).
+			t_pitch = lerpf(t_pitch, 0.55, w)
+			flap_speed = 0.8
+			t_flap = 1.0
+			head_l += Vector3(0, 0.8, -0.4) * w
+			t_head_pitch = lerpf(t_head_pitch, -0.55, w)
+			t_throat = 1.4 * w + 0.3
+			t_inner = 0.6 * w
+		"phase":
+			# Rears up and spreads its wings with a roar; its fire wells up.
+			t_rear = 0.45 * w if not air else 0.0
+			t_pitch = (0.4 * w) if air else t_pitch
+			head_l += Vector3(0, 2.0, -0.4) * w
+			t_head_pitch = lerpf(t_head_pitch, 0.55, w)
+			t_jaw = lerpf(t_jaw, 1.1 + sin(_time * 40.0) * 0.05, w)
+			t_fold = lerpf(t_fold, 0.0, w)
+			t_raise = 1.0 * w
+			t_flap = t_flap * (1.0 - w) + (0.6 * w if air else 0.0)
+			t_throat = 3.0 * w
+			t_inner = 2.4 * w
+			if p > 0.2 and not _impact_done:
+				_impact_done = true
+				_fx("embers", Vector3(0, 1.0, -3.0), 3.0)
+				_fx("dust_cloud", Vector3(0, 0, 0), 1.6)
+				_quake(root.origin, 0.4)
 		"hit":
 			var s := sin(PI * p)
 			head_l += Vector3(0.8, 0.6, 1.4) * s

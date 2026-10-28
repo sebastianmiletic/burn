@@ -19,7 +19,7 @@ extends CreatureModel
 
 const BODY_H := 2.7
 ## Fraction of an action at which its blow lands (the boss times telegraphs to these).
-const IMPACT := {"bite": 0.55, "slam": 0.5, "lunge": 0.7, "shoot": 0.45, "cast": 0.5}
+const IMPACT := {"bite": 0.55, "slam": 0.5, "lunge": 0.7, "shoot": 0.45, "cast": 0.5, "sweep": 0.5, "spit": 0.5}
 
 var hanging := false
 var ceiling_y := NAN
@@ -41,6 +41,9 @@ var web_line: MeshInstance3D
 var _gait := 0.0
 var _walk := 0.0
 var _prev_root := Vector3.INF
+## Heading change measured from the model itself (turning steps on clients too).
+var _prev_yaw := NAN
+var _yaw_rate := 0.0
 var _vel := Vector3.ZERO
 var _last_ground := 0.0
 var _impact_done := false
@@ -68,6 +71,14 @@ func _init() -> void:
 	durations["summon"] = 1.8
 	durations["roar"] = 1.8
 	durations["lunge"] = 1.2
+	durations["web"] = 1.0
+	durations["sweep"] = 1.1
+	durations["spit"] = 1.6
+	durations["skitter"] = 1.2
+	durations["dodge"] = 1.2
+	durations["phase"] = 2.0
+	durations["swing"] = 3.0
+	durations["glide"] = 2.0
 	_rng.seed = 909
 
 
@@ -252,6 +263,11 @@ func _animate(delta: float) -> void:
 		_prev_root = root.origin
 	_vel = _vel.lerp((root.origin - _prev_root) / maxf(delta, 0.001), 1.0 - exp(-6.0 * delta))
 	_prev_root = root.origin
+	var fwd_now := -basis.z
+	var yaw_now := atan2(-fwd_now.x, -fwd_now.z)
+	if not is_nan(_prev_yaw):
+		_yaw_rate = lerpf(_yaw_rate, angle_difference(_prev_yaw, yaw_now) / maxf(delta, 0.001), 1.0 - exp(-6.0 * delta))
+	_prev_yaw = yaw_now
 	var p := action_progress()
 	var w := action_weight(0.1, 0.2)
 	var act := _action if p >= 0.0 else ""
@@ -269,7 +285,7 @@ func _animate(delta: float) -> void:
 		_last_ground = root.origin.y
 	var speed := Vector2(_vel.x, _vel.z).length() if not hanging else 0.0
 	_walk = damp(_walk, clampf(maxf(speed, move_speed) / 4.0, 0.0, 1.0), 6.0, delta)
-	_gait += delta * clampf(maxf(speed, move_speed) / 3.2 + absf(turn_rate) * 0.4, 0.0, 2.4)
+	_gait += delta * clampf(maxf(speed, move_speed) / 3.2 + maxf(absf(turn_rate), absf(_yaw_rate)) * 0.4, 0.0, 2.4)
 
 	# Idle twitches: a leg taps or shifts now and then, unsettlingly.
 	_twitch_t -= delta
@@ -312,7 +328,7 @@ func _animate(delta: float) -> void:
 				for side: float in [-1.0, 1.0]:
 					_fx("dust_cloud", Vector3(side * 3.0, 0, -6.5), 0.8)
 				_quake(global_position, 0.3)
-		"shoot":
+		"shoot", "web":
 			var aim := keys(p, [[0, 0], [0.3, 1.0], [0.6, 1.0], [1, 0]])
 			abd_t += Vector3(-0.9 * aim, 0, 0)
 			t_rot.x -= 0.25 * aim
@@ -324,6 +340,57 @@ func _animate(delta: float) -> void:
 			t_pos.y += 0.4 * maxf(0.0, spit)
 			fang_open = 1.2 * absf(spit)
 			front_raise = 0.4 * maxf(0.0, spit)
+		"sweep":
+			# Forelegs raised wide, then raked together across the front.
+			var up := keys(p, [[0, 0], [0.35, 1.0], [0.5, 0.2], [1, 0]])
+			var rake := keys(p, [[0, 0], [0.4, 0.0], [0.55, 1.0], [0.8, 0.8], [1, 0]])
+			front_raise = up
+			spread = up - 0.6 * rake
+			stab = 0.6 * rake
+			t_rot.x += 0.3 * up - 0.2 * rake
+			t_pos += Vector3(0, 0.5 * up - 0.3 * rake, -0.8 * rake)
+			fang_open = 0.5 + 0.6 * maxf(up, rake)
+			if p > IMPACT["sweep"] and not _impact_done:
+				_impact_done = true
+				_fx("dust_cloud", Vector3(0, 0, -6.0), 1.0)
+				_quake(global_position, 0.25)
+		"spit":
+			# Rears back, then sprays venom from the fangs in a wide arc.
+			var back := keys(p, [[0, 0], [0.3, 1.0], [0.45, 0.0], [1, 0]])
+			var spray := keys(p, [[0, 0], [0.4, 0.0], [0.5, 1.0], [0.85, 1.0], [1, 0]])
+			t_rot.x += 0.35 * back - 0.25 * spray
+			t_rot.y = sin(clampf((p - 0.5) / 0.35, 0.0, 1.0) * TAU * 0.5) * 0.35 * spray
+			t_pos.y += 0.5 * back - 0.3 * spray
+			front_raise = 0.6 * back
+			fang_open = 0.4 + 1.0 * maxf(back, spray)
+			if p > IMPACT["spit"] and not _impact_done:
+				_impact_done = true
+				_fx("venom", Vector3(0, 0, -6.0), 1.6)
+		"skitter", "dodge":
+			# Low and fast, legs a blur.
+			crouch = 0.35 * w
+			_gait += delta * 1.6 * w
+			fang_open = 0.3
+		"phase":
+			# Rears high, every leg spread, shrieking; the sacs throb.
+			front_raise = w
+			second_raise = w
+			spread = 1.2 * w
+			t_rot.x += 0.45 * w
+			t_pos.y += 1.3 * w
+			fang_open = lerpf(fang_open, 1.4 + sin(_time * 30.0) * 0.12, w)
+			abd_t += Vector3(sin(_time * 16.0) * 0.08, 0, 0) * w
+			eye_t = 1.0 + 1.8 * w
+			if p > 0.25 and not _impact_done:
+				_impact_done = true
+				_fx("dust_cloud", Vector3.ZERO, 1.6)
+				_quake(global_position, 0.45)
+		"swing", "glide":
+			# Swinging on the silk line: legs reach for the ground ahead.
+			front_raise = 0.8 * w
+			spread = 0.5 * w
+			fang_open = 0.9 * w
+			t_rot.x -= 0.3 * w
 		"roar", "howl":
 			front_raise = w
 			second_raise = 0.7 * w

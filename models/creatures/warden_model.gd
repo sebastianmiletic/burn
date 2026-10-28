@@ -25,12 +25,54 @@ var _lantern_vel := Vector2.ZERO
 var _prev_pos := Vector3.INF
 var _soul_flames: Array[GPUParticles3D] = []
 
+## Fraction of each action at which its blow lands (WardenBoss plays the
+## action for telegraph / IMPACT so the blade meets the filled warning).
+const IMPACT := {"sweep": 0.65, "slam": 0.7, "thrust": 0.55, "spikes": 0.55, "summon": 0.56, "leap": 0.62}
+## The three-blow combo: blows land at these fractions of COMBO_TIME seconds.
+const COMBO := [0.28, 0.55, 0.86]
+const COMBO_TIME := 2.5
+## Whirlwind: cuts between these fractions of SPIN_TIME (two turns).
+const SPIN := [0.42, 0.85]
+const SPIN_TIME := 2.1
+## Charge: the dash runs between these fractions of CHARGE_TIME.
+const CHARGE := [0.5, 0.75]
+const CHARGE_TIME := 1.8
+
 
 func _init() -> void:
 	super({"height": 5.0, "bulk": 1.35, "hunch": -0.04, "cloak": true, "cloak_hem": 0.1, "tattered": true,
 		"held": "warden_blade", "eyes": SOUL, "cloth": CLOTH, "cloak_color": CLOTH})
 	durations["sweep"] = 1.3
 	durations["slam"] = 1.4
+	# A knight's fencing: wide flat cuts, a crushing overhead, a lunging
+	# thrust, a three-blow combination, a leaping strike, a whirlwind, the
+	# blade driven into the floor for its bone spikes, and a shoulder charge.
+	moves["sweep"] = Moves.sweep(IMPACT["sweep"])
+	moves["slam"] = Moves.overhead(IMPACT["slam"], 0.28)
+	moves["thrust"] = Moves.thrust(IMPACT["thrust"], 0.6)
+	moves["combo"] = Moves.chain([[Moves.sweep(0.7), 0.0, 0.4], [Moves.backhand(0.6), 0.4, 0.65], [Moves.overhead(0.6), 0.65, 1.0]])
+	moves["leap"] = Moves.leap(0.3, IMPACT["leap"], 0.8)
+	moves["spin"] = Moves.spin(SPIN[0], SPIN[1], 2.0)
+	moves["spikes"] = Moves.plant(IMPACT["spikes"], Vector3(0.035, 1.12, -0.34))
+	moves["summon"] = _lantern_call(IMPACT["summon"])
+	moves["charge"] = Moves.charge(CHARGE[0], CHARGE[1])
+	moves["phase"] = Moves.chain([[Moves.plant(0.6, Vector3(0.035, 1.12, -0.34)), 0.0, 0.45], [Moves.bellow(0.4), 0.45, 1.0]])
+	moves["hit"] = Moves.flinch()
+	moves["roar"] = Moves.bellow(0.35)
+
+
+## Summoning: the blade planted, the off hand lifts the soul lantern's light
+## high and drags the dead up out of the floor.
+func _lantern_call(i: float) -> Dictionary:
+	var m := Moves.plant(0.3, Vector3(0.035, 1.12, -0.34))
+	m.erase("grip_l")
+	var z := Vector3.ZERO
+	m[R.UARM_L] = [[0, Moves.ARM_L], [i * 0.8, Vector3(2.6, 0.1, -0.35)], [i, Vector3(1.0, 0.2, -1.0)], [1, Moves.ARM_L]]
+	m[R.FARM_L] = [[0, Vector3(0.3, 0, 0)], [i * 0.8, Vector3(0.2, 0, 0)], [i, Vector3(0.1, 0, 0)], [1, Vector3(0.3, 0, 0)]]
+	m[R.HEAD] = [[0, z], [i * 0.8, Vector3(0.4, 0, 0)], [i, Vector3(-0.2, 0, 0)], [1, z]]
+	m["fing"] = [[0, 1.4], [i * 0.8, -0.3], [i, 1.5], [1, 1.4]]
+	m["jaw"] = [[0, 0.0], [i, 0.4], [1, 0.0]]
+	return m
 
 
 func _ember_extents() -> Vector3:

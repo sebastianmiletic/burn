@@ -32,6 +32,16 @@ var _fx_nodes: Array[Node3D] = []
 var _lights: Array[OmniLight3D] = []
 var _light_energy: Array[float] = []
 
+const Moves := preload("res://models/creatures/boss_moves.gd")
+## Bespoke moves (BossMoves choreography) played instead of the shared
+## HumanoidModel swings: action -> move dictionary. Filled by each boss model.
+var moves := {}
+## Death: kneel first (weapon planted), then topple; false = the shared fall.
+var death_kneel := true
+var _move_rot := Vector3.ZERO
+var _spin := 0.0
+var _shake := 0.0
+
 
 func _init(style_dict := {}) -> void:
 	super(style_dict)
@@ -202,11 +212,140 @@ func _tick_boss(_delta: float) -> void:
 
 
 func _pose(dt: float) -> void:
+	_move_rot = Vector3.ZERO
+	_spin = 0.0
+	_shake = 0.0
 	super._pose(dt)
+	if not _dead:
+		_pose_turning()
+		_tgt[R.HIPS] += _move_rot
+		if _shake > 0.0:
+			var s := sin(_time * 41.0) * 0.025 * _shake
+			_tgt[R.CHEST] += Vector3(s, s * 0.6, 0)
+			_tgt[R.HEAD] += Vector3(s * 1.4, -s, 0)
+	if _root != null:
+		_root.rotation.y = _spin * TAU
 	var want := 1.0 if (dormant and not _dead and _action == "" and _speed < 0.3) else 0.0
 	_dormant_w = damp(_dormant_w, want, 2.5 if want > _dormant_w else 4.0, dt)
 	if _dormant_w > 0.01:
 		_pose_dormant(_tgt, _dormant_w)
+
+
+## Turning on the spot: the head and shoulders lead into the turn and the
+## feet shuffle round under the body.
+func _pose_turning() -> void:
+	var tw := clampf(absf(_turn) / 1.6, 0.0, 1.0) * (1.0 - _mv)
+	if _action != "":
+		tw *= 0.3
+	if tw < 0.02:
+		return
+	var sg := signf(_turn)
+	_tgt[R.HEAD] += Vector3(0, 0.35 * sg, 0) * tw
+	_tgt[R.NECK] += Vector3(0, 0.15 * sg, 0) * tw
+	_tgt[R.CHEST] += Vector3(0, 0.2 * sg, 0) * tw
+	for side in 2:
+		var lift := maxf(0.0, sin(_time * 7.0 + side * PI))
+		_foot[side] += Vector3(-0.06 * sg * lift, 0.09 * lift, 0) * tw
+	_hips_tgt.y -= 0.03 * tw
+
+
+# --- Bespoke moves -------------------------------------------------------------------------
+
+func _pose_action(action: String, p: float, w: float, t: PackedVector3Array, hips_rot: Vector3) -> void:
+	var m: Variant = moves.get(action)
+	if m == null:
+		super._pose_action(action, p, w, t, hips_rot)
+		return
+	_pose_move(m, p, w, t)
+
+
+## Plays one BossMoves dictionary at progress p with weight w.
+func _pose_move(m: Dictionary, p: float, w: float, t: PackedVector3Array) -> void:
+	if m.has("chain"):
+		for part: Array in m["chain"]:
+			var a: float = part[1]
+			var b: float = part[2]
+			if p >= a and p <= b:
+				_pose_move(part[0], (p - a) / maxf(0.001, b - a), w, t)
+				return
+		return
+	for key: Variant in m:
+		var track: Variant = m[key]
+		if key is int:
+			t[key] = t[key].lerp(Moves.kv(p, track), w)
+			continue
+		match key:
+			"add":
+				for bone: int in track:
+					t[bone] += Moves.kv(p, track[bone]) * w
+			"hips":
+				_hips_tgt += Moves.kv(p, track) * w
+			"rot":
+				_move_rot += Moves.kv(p, track) * w
+			"turn":
+				_spin = Moves.kf(p, track)
+			"foot_l":
+				_foot[0] += Moves.kv(p, track) * w
+			"foot_r":
+				_foot[1] += Moves.kv(p, track) * w
+			"two_hand":
+				if _held_id in TWO_HANDED:
+					_arm_ik_w = w
+			"fing":
+				var f := Moves.kf(p, track)
+				_fing[0] = lerpf(_fing[0], f, w)
+				_fing[1] = lerpf(_fing[1], f, w)
+			"jaw":
+				t[R.JAW] = Vector3(-Moves.kf(p, track) * w, 0, 0)
+			"shake":
+				_shake = Moves.kf(p, track) * w
+			"swing":
+				_swing_window(p, track[0], track[1])
+			"grip_r", "grip_l":
+				var gw := Moves.kf(p, m.get("grip_w", [[0, 1.0]])) * w
+				var g := _grip_at(p, track)
+				hand_goals[1 if key == "grip_r" else 0] = [g[0], g[1], g[2], gw]
+
+
+## Interpolated [wrist, item dir, finger dir] of a grip track.
+func _grip_at(p: float, track: Array) -> Array:
+	var wrist := []
+	var item := []
+	var fing := []
+	for k: Array in track:
+		wrist.append([k[0], k[1]])
+		item.append([k[0], k[2]])
+		fing.append([k[0], k[3]])
+	return [Moves.kv(p, wrist), Moves.kv(p, item).normalized(), Moves.kv(p, fing).normalized()]
+
+
+## Bosses go down slowly: they sag to one knee (weapon planted, head bowed)
+## and only then topple.
+func _pose_dead(t: PackedVector3Array, hips_rot: Vector3) -> void:
+	const KNEEL := 1.5
+	if not death_kneel or _dead_t > KNEEL:
+		if death_kneel:
+			_dead_t -= KNEEL
+			super._pose_dead(t, hips_rot)
+			_dead_t += KNEEL
+		else:
+			super._pose_dead(t, hips_rot)
+		return
+	var k := smoothstep(0.0, 0.7, _dead_t)
+	var sway := sin(_dead_t * 5.0) * 0.04 * k
+	_hips_tgt = _rest[R.HIPS] + Vector3(0, -0.42, 0.05) * k
+	_foot[0] = _rest[R.FOOT_L] + Vector3(-0.02, 0, -0.32) * k
+	_foot[1] = _rest[R.FOOT_R] + Vector3(0.02, 0.0, 0.35) * k
+	t[R.SPINE] = Vector3(-0.35 + sway, 0, 0) * k
+	t[R.CHEST] = Vector3(-0.2, 0, 0.05) * k
+	t[R.NECK] = Vector3(-0.25, 0, 0) * k
+	t[R.HEAD] = Vector3(-0.35, 0.1, 0) * k
+	t[R.JAW] = Vector3(-0.2 * k, 0, 0)
+	if _held_id != "" and death_kneel:
+		hand_goals[1] = [Vector3(0.1, 0.8, -0.5), Vector3.DOWN, Vector3(-1, 0, 0.35), k]
+		hand_goals[0] = [Vector3(-0.3, 0.75, -0.2), Vector3(0, -1, 0.2), Vector3(1, 0, 0), k * 0.6]
+	_fing[0] = 1.2
+	_fing[1] = 1.4
 
 
 ## Override: the brooding idle pose blended by w (0..1). Default: head bowed.
@@ -224,7 +363,7 @@ var hand_goals := {}
 
 func _apply(dt: float) -> void:
 	super._apply(dt)
-	if hand_goals.is_empty() or _dead:
+	if hand_goals.is_empty() or (_dead and (not death_kneel or _dead_t > 1.5)):
 		hand_goals.clear()
 		return
 	for side: int in hand_goals:
