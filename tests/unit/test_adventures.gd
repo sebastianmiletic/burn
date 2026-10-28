@@ -103,3 +103,113 @@ func test_adventure_spawns_use_known_entity_kinds() -> void:
 		for type: String in ["enemy", "boss"]:
 			for s in loc.spawns_of(type):
 				check(String(s["kind"]) in known, "%s spawns a known %s kind (%s)" % [id, type, s["kind"]])
+
+
+static func _scum_town(loc: Location) -> Dictionary:
+	for p: Dictionary in loc.props:
+		if p.get("type", "") == "builder" and p.has("houses"):
+			return p
+	return {}
+
+
+static func _stamped(loc: Location, c: Vector3i) -> int:
+	for bp in loc.blueprints:
+		var l := c - bp.origin
+		var v := bp.get_local(l.x, l.y, l.z)
+		if v != Blueprint.KEEP:
+			return v
+	return Blueprint.KEEP
+
+
+func test_scumport_is_a_crowded_harbour_town() -> void:
+	check(_find(_world(4), &"scumport") == null, "revision 4 has no Scumport")
+	var loc := _find(_world(), &"scumport")
+	if loc == null:
+		check(false, "Scumport planned")
+		return
+	var town := _scum_town(loc)
+	var houses: Array = town.get("houses", [])
+	check(houses.size() >= 120, "Scumport is packed with houses (%d)" % houses.size())
+	# Several times the old 46 m town: the footprint of its houses.
+	var bounds := Rect2(Vector2((houses[0]["lot"] as Rect2i).position), Vector2.ZERO)
+	var roles := {}
+	var over_water := 0
+	for h: Dictionary in houses:
+		var lot: Rect2i = h["lot"]
+		bounds = bounds.merge(Rect2(Vector2(lot.position), Vector2(lot.size)))
+		roles[h["role"]] = int(roles.get(h["role"], 0)) + 1
+		var c := lot.get_center()
+		if ScumportPlan._ground_at(town["town"], c.x, c.y) < WorldGen.SEA_LEVEL:
+			over_water += 1
+		check(int(h["storeys"]) >= 1 and int(h["storeys"]) <= 4, "1-4 storeys")
+	check(bounds.size.x >= 70.0 and bounds.size.y >= 120.0, "Scumport spreads %s m" % str(bounds.size))
+	check(over_water * 3 >= houses.size(), "much of the town stands over the water (%d of %d)" % [over_water, houses.size()])
+	check(int(roles.get("tavern", 0)) >= 3, "several taverns (%d)" % int(roles.get("tavern", 0)))
+	check(int(roles.get("shop", 0)) >= 5, "shops (%d)" % int(roles.get("shop", 0)))
+	# Huddled together: the median gap to the nearest neighbour is (almost) nothing.
+	var gaps: Array[float] = []
+	for h: Dictionary in houses:
+		var a: Rect2i = h["lot"]
+		var best := 1e9
+		for o: Dictionary in houses:
+			if o == h:
+				continue
+			var b: Rect2i = o["lot"]
+			var dx := maxi(0, maxi(a.position.x - b.end.x, b.position.x - a.end.x))
+			var dz := maxi(0, maxi(a.position.y - b.end.y, b.position.y - a.end.y))
+			best = minf(best, Vector2(dx, dz).length())
+		gaps.append(best)
+	gaps.sort()
+	check(gaps[gaps.size() / 2] <= 0.5, "houses stand wall to wall (median gap %.1f m)" % gaps[gaps.size() / 2])
+	# Every door opens onto the boardwalks, all joined to the market quay.
+	var deck := ScumportPlan.DECK
+	var walk := func(x: int, z: int) -> bool:
+		if _stamped(loc, Vector3i(x, deck, z)) != Blocks.STRUCTURE:
+			return false
+		for y in [1, 2]:
+			var v := _stamped(loc, Vector3i(x, deck + y, z))
+			if v != Blueprint.KEEP and v != Blueprint.CARVE:
+				return false
+		return true
+	var start := Vector2i(floori(loc.center.x), floori(loc.center.z))
+	check(walk.call(start.x, start.y), "the market quay is walkable")
+	var seen := {start: true}
+	var queue: Array[Vector2i] = [start]
+	while not queue.is_empty():
+		var p: Vector2i = queue.pop_back()
+		for dv: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var q := p + dv
+			if not seen.has(q) and walk.call(q.x, q.y):
+				seen[q] = true
+				queue.append(q)
+	check(seen.size() > 4000, "a big boardwalk network (%d cells)" % seen.size())
+	var stranded := 0
+	for h: Dictionary in houses:
+		var front: Vector3 = (h["door_out"] as Vector3) - (h["out"] as Vector3) * 0.5
+		if not seen.has(Vector2i(floori(front.x), floori(front.z))):
+			stranded += 1
+	check_eq(stranded, 0, "every house's door is reachable along the boardwalks")
+	# Taverns and shops can be walked into.
+	for h: Dictionary in houses:
+		if not h["enterable"]:
+			continue
+		var inside: Vector3 = h["inside"]
+		check_eq(_stamped(loc, Vector3i(inside.floor())), Blueprint.CARVE, "%s room is open" % h["role"])
+	# Crowds, but no cutthroats in the town itself (they keep to the cove).
+	var npcs := loc.spawns_of("npc")
+	check(npcs.size() >= 30, "Scumport is crowded (%d people)" % npcs.size())
+	var traders := 0
+	for s in npcs:
+		check(_stamped(loc, Vector3i((s["pos"] as Vector3).floor())) in [Blueprint.KEEP, Blueprint.CARVE], "npc spawn %s is free" % str(s["pos"]))
+		if String(s.get("role", "")) in ["merchant", "fisher"]:
+			traders += 1
+	check(traders >= 6, "traders and fishers to deal with (%d)" % traders)
+	check(loc.spawns_of("enemy").is_empty(), "no hostile spawns inside Scumport")
+	check(not _find(_world(), &"scumport_cove").spawns_of("enemy").is_empty(), "the cutthroats keep to the cove")
+	# No visible cube blocks: only invisible structure collision.
+	for bp in loc.blueprints:
+		for v in bp.data:
+			if v != Blueprint.KEEP and v != Blueprint.CARVE and v != Blocks.STRUCTURE:
+				check(false, "Scumport writes only STRUCTURE collision (found %s)" % Blocks.name_of(v))
+				return
+	check_eq(MapIcons.kind_of(loc), "scumport", "Scumport has its own map kind")

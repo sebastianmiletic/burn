@@ -124,7 +124,8 @@ static func _ensure() -> void:
 			["oasis", &"oasis", "Oasis", GREEN], ["volcano", &"volcano", "Volcano", FIRE],
 			["labyrinth", &"labyrinth", "Labyrinth", STONE], ["portal", &"portal", "Portal", PORTAL],
 			["camp", &"tent", "Camp", EARTH], ["lighthouse", &"lighthouse", "Lighthouse", QUEST],
-			["lair", &"cave", "Lair", Color(0.95, 0.45, 0.35)], ["island", &"palm", "Isle", GREEN]]:
+			["lair", &"cave", "Lair", Color(0.95, 0.45, 0.35)], ["island", &"palm", "Isle", GREEN],
+			["scumport", &"village", "Harbour town", VILLAGE], ["smuggler_cove", &"anchor", "Smugglers' cove", SEA]]:
 		_add_kind(spec[0], spec[1], spec[2], spec[3], false)
 	# Known location ids.
 	for spec: Array in [["wreck_", &"wreck", "Wreck", SEA], ["sunken_", &"sunken", "Sunken ruins", SEA],
