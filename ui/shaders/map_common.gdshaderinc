@@ -10,6 +10,9 @@
 // relief, inked coastlines, engraved waterlines off the shore, dotted biome
 // borders and paper grain. Unexplored ground keeps only the shape of the
 // land: a grey relief silhouette with a grey coastline over grey water.
+// Beyond the charted square the sheet never ends: a faint survey grid on
+// dark sea-slate runs on forever (chart_void), so panning or zooming out
+// never shows a black border.
 
 uniform sampler2D color_tex : source_color, filter_linear, repeat_disable;
 uniform sampler2D height_tex : filter_linear, repeat_disable;
@@ -197,13 +200,37 @@ vec3 explored_colour(vec2 uv, float h, float depth, float fw, float grain) {
 	return col;
 }
 
+const vec3 VOID_SEA = vec3(0.1, 0.113, 0.124);
+
+// Off the chart: dark sea-slate with an endless survey grid. The major lines
+// fall on the atlas squares (world_size / 12) and split by four as you zoom
+// in; each level fades in and out smoothly, so lines stay 14..220 px apart
+// at any zoom. `mpp` is metres per screen pixel.
+vec3 chart_void(vec2 wpos, float mpp, float grain) {
+	vec3 col = VOID_SEA * (0.95 + grain * 0.08) + (_fbm(wpos / 300.0) - 0.5) * 0.018;
+	float cell = world_size / 12.0;
+	float lvl = log(mpp * 56.0 / cell) / log(4.0);
+	float l0 = floor(lvl);
+	float f = lvl - l0;
+	float ink = 0.0;
+	for (int i = 0; i < 3; i++) {
+		float s = cell * pow(4.0, l0 + float(i));
+		vec2 g = abs(fract(wpos / s + 0.5) - 0.5) * s / mpp;
+		float line = 1.0 - smoothstep(0.2, 1.05, min(g.x, g.y));
+		ink = max(ink, line * clamp(0.5 + 0.5 * (float(i) - f), 0.0, 1.0));
+	}
+	return mix(col, vec3(0.66, 0.6, 0.47), ink * 0.2);
+}
+
 // Full map colour at `uv` (0..1 over the world).
 vec3 map_colour(vec2 uv) {
+	vec2 wpos = uv * world_size;
+	vec2 dw = fwidth(wpos);
+	float mpp = max(max(dw.x, dw.y), 1e-4);
 	if (!has_map) {
-		return vec3(0.05, 0.045, 0.045);
+		return chart_void(wpos, mpp, _noise(wpos / 2.2));
 	}
 	vec2 cuv = clamp(uv, vec2(0.0), vec2(1.0));
-	vec2 wpos = uv * world_size;
 	float h = has_height ? map_height(cuv) : sea_level + 20.0;
 	float fw = max(fwidth(h), 0.02);
 	float depth = sea_level - h;
@@ -224,8 +251,15 @@ vec3 map_colour(vec2 uv) {
 		float rim = seen * (1.0 - seen) * 4.0;
 		col = mix(col, vec3(0.09, 0.07, 0.05), rim * 0.35);
 	}
-	if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {
-		col = vec3(0.06, 0.06, 0.065) * (0.9 + grain * 0.15);
+	// The charted square fades into the endless grid over a short band
+	// (signed distance to the square's edge, metres; negative inside).
+	vec2 outside = max(max(-uv, uv - 1.0), vec2(0.0)) * world_size;
+	float inside = min(min(uv.x, uv.y), min(1.0 - uv.x, 1.0 - uv.y)) * world_size;
+	float sd = inside > 0.0 ? -inside : length(outside);
+	float band = max(60.0, mpp * 26.0);
+	float off_chart = smoothstep(-band * 0.35, band, sd);
+	if (off_chart > 0.0) {
+		col = mix(col, chart_void(wpos, mpp, grain), off_chart);
 	}
 	return col;
 }

@@ -6,14 +6,19 @@ extends UiModal
 ## calling out squares in co-op, a compass rose and a scale bar.
 ##
 ## Wheel or +/- zooms (smoothly, about the cursor), drag or WASD / arrows
-## pans, Space recentres on you, click an objective in the side panel to fly
-## to it. Right-click (or double-click) the map to place a marker; click one
+## pans, the Recentre button (or C / Space) glides back to you, click an
+## objective in the side panel to fly to it. The sheet never ends: past the
+## world's square the shader draws an endless survey grid (map_common). Right-click (or double-click) the map to place a marker; click one
 ## of your markers to rename, re-icon, recolour, share or delete it.
 
 const SHADER := preload("res://ui/shaders/world_map.gdshader")
 const SIDEBAR_W := 250.0
 ## The atlas grid: GRID x GRID squares over the whole world, A.. by 1..
 const GRID := 12
+## How far past the world's square you can pan (in world widths) and how far
+## out you can zoom (1 = the world fills the view's short side).
+const PAN_MARGIN := 1.0
+const MIN_ZOOM := 0.4
 
 var _view: Control
 var _map: ColorRect
@@ -37,6 +42,7 @@ var _marker_list: VBoxContainer
 var _marker_rev := -1
 var _legend: Control
 var _editor: MarkerEditor
+var _recentre_btn: RecentreButton
 var _pending_focus := Vector3.INF
 var _pending_zoom := 0.0
 
@@ -83,6 +89,12 @@ func _build() -> void:
 	_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_view.add_child(_overlay)
+	_recentre_btn = RecentreButton.new()
+	_recentre_btn.pressed.connect(func() -> void:
+		UiContext.sound("ui_click")
+		_recentre())
+	_view.add_child(_recentre_btn)
+	_view.resized.connect(_place_recentre)
 	_editor = MarkerEditor.new()
 	_editor.screen = self
 	_editor.visible = false
@@ -111,8 +123,15 @@ func _build() -> void:
 	side.add_child(_heading("LEGEND"))
 	_legend = Legend.new()
 	side.add_child(_legend)
-	var hints := UiTheme.label("wheel / + −   zoom\ndrag / WASD   pan\nspace   centre on you\nright-click   place marker\nM / esc   close", 11, UiTheme.TEXT_FAINT)
+	var hints := UiTheme.label("wheel / + −   zoom\ndrag / WASD   pan\nC / space   recentre on you\nright-click   place marker\nM / esc   close", 11, UiTheme.TEXT_FAINT)
 	side.add_child(hints)
+
+
+## Bottom-right of the map view, above the frame.
+func _place_recentre() -> void:
+	var s := _recentre_btn.get_combined_minimum_size()
+	_recentre_btn.size = s
+	_recentre_btn.position = _view.size - s - Vector2(16, 16)
 
 
 func _heading(text: String) -> Control:
@@ -123,6 +142,7 @@ func _heading(text: String) -> Control:
 
 func _on_open() -> void:
 	fit_panel(panel_size, Vector2(40, 36))
+	_place_recentre.call_deferred()
 	var world := UiContext.world()
 	var player := UiContext.player()
 	_dim = int(player.get("dimension")) if player != null and player.get("dimension") != null else 0
@@ -169,14 +189,28 @@ func _uv(p: Vector3) -> Vector2:
 	return Vector2(p.x, p.z) / world_size()
 
 
+## Glides (or jumps) the view back to the player.
 func _recentre(instant := false) -> void:
 	var player := UiContext.player()
 	if player != null:
 		var uv := _uv((player as Node3D).global_position)
+		_velocity = Vector2.ZERO
+		_zoom_anchor = Vector2(-1, -1)
 		if instant:
 			_center = uv
+			_center_goal = Vector2(-1, -1)
 		else:
 			_center_goal = uv
+			# Coming back from far out, also zoom in enough to see where you are.
+			_zoom_goal = maxf(_zoom_goal, 1.6)
+
+
+## Pixels between the view centre and the player (0 without a player).
+func off_centre_px() -> float:
+	var player := UiContext.player()
+	if player == null or _view == null:
+		return 0.0
+	return world_to_view((player as Node3D).global_position).distance_to(_view.size * 0.5)
 
 
 func world_size() -> float:
@@ -257,7 +291,11 @@ func _process(delta: float) -> void:
 		_velocity *= exp(-delta * 5.0)
 		if _velocity.length() * _side() < 2.0:
 			_velocity = Vector2.ZERO
-	_center = _center.clamp(Vector2(-0.1, -0.1), Vector2(1.1, 1.1))
+	_center = _center.clamp(Vector2(-PAN_MARGIN, -PAN_MARGIN), Vector2(1.0 + PAN_MARGIN, 1.0 + PAN_MARGIN))
+	var away := clampf((off_centre_px() - 24.0) / 120.0, 0.0, 1.0)
+	if not is_equal_approx(_recentre_btn.attention, away):
+		_recentre_btn.attention = away
+		_recentre_btn.queue_redraw()
 	var side := maxf(_side(), 1.0)
 	_mat.set_shader_parameter(&"view_size", _view.size)
 	_mat.set_shader_parameter(&"uv_per_px", 1.0 / side)
@@ -288,7 +326,7 @@ func _region_at(p: Vector3) -> String:
 
 
 func _zoom_by(factor: float, at := Vector2(-1, -1)) -> void:
-	_zoom_goal = clampf(_zoom_goal * factor, 0.85, _max_zoom())
+	_zoom_goal = clampf(_zoom_goal * factor, MIN_ZOOM, _max_zoom())
 	_zoom_anchor = at
 	_center_goal = Vector2(-1, -1)
 
@@ -364,7 +402,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
 	if key != null and key.pressed and not key.echo and not _typing():
 		match key.keycode:
-			KEY_SPACE:
+			KEY_SPACE, KEY_C:
 				_recentre()
 				get_viewport().set_input_as_handled()
 				return
@@ -467,6 +505,49 @@ func _rebuild_markers(marks: MapMarkers) -> void:
 			shown += 1
 	if shown == 0:
 		_marker_list.add_child(UiTheme.label("Right-click the map to\nplace a marker.", 12, UiTheme.TEXT_FAINT))
+
+
+## The map's "Recentre" button: a crosshair, the word and its key, in a dark
+## plate at the view's bottom-right. It warms up (`attention` 0..1) the further
+## the view has drifted from you. Never takes focus, so Space / C don't press
+## it a second time.
+class RecentreButton:
+	extends Button
+
+	var attention := 0.0
+
+	func _init() -> void:
+		flat = true
+		focus_mode = Control.FOCUS_NONE
+		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		tooltip_text = "Recentre on you (C or Space)"
+		custom_minimum_size = Vector2(150, 36)
+		mouse_entered.connect(queue_redraw)
+		mouse_exited.connect(queue_redraw)
+		button_down.connect(queue_redraw)
+		button_up.connect(queue_redraw)
+
+	func _draw() -> void:
+		var hot := clampf(attention + (0.35 if is_hovered() else 0.0), 0.0, 1.0)
+		var r := Rect2(Vector2.ZERO, size)
+		var bg := Color(0.03, 0.025, 0.024, 0.86) if not is_pressed() else Color(0.12, 0.07, 0.03, 0.92)
+		draw_rect(r, bg)
+		draw_rect(r.grow(-0.5), UiTheme.ACCENT_DIM.lerp(UiTheme.ACCENT_HOT, hot), false, 1.0 + hot)
+		var ink := UiTheme.TEXT_DIM.lerp(UiTheme.ACCENT_HOT, hot)
+		# Crosshair: a ring, four ticks and a dot.
+		var c := Vector2(20, size.y * 0.5)
+		draw_arc(c, 7.0, 0.0, TAU, 28, ink, 1.6, true)
+		for d: Vector2 in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+			draw_line(c + d * 4.5, c + d * 10.5, ink, 1.6, true)
+		draw_circle(c, 2.0, ink, true, -1.0, true)
+		var font := UiTheme.title_font(700)
+		draw_string(font, Vector2(36, size.y * 0.5 + 5), "RECENTRE", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, ink.lerp(UiTheme.TEXT, 0.3))
+		# The key cap.
+		var cap := Rect2(size.x - 30, size.y * 0.5 - 10, 20, 20)
+		draw_rect(cap, Color(1, 1, 1, 0.06))
+		draw_rect(cap, Color(ink, 0.7), false, 1.0)
+		var ts := UiTheme.MONO.get_string_size("C", HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
+		draw_string(UiTheme.MONO, cap.get_center() + Vector2(-ts.x * 0.5, 4.5), "C", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, ink)
 
 
 ## A small symbol swatch (marker lists, editor buttons).
@@ -878,6 +959,7 @@ class MapOverlay:
 			var pulse := fposmod(screen._time * 0.6, 1.0)
 			draw_arc(pos, 10.0 + pulse * 14.0, 0, TAU, 32, Color(1, 0.85, 0.55, (1.0 - pulse) * 0.5), 1.5, true)
 			Minimap._chevron(self, pos, -yaw, 10.0, Color(1, 0.86, 0.55), 1.0)
+			_you_pointer(pos)
 		_frame()
 		_scale_bar(px_per_m)
 		_compass_rose(Vector2(size.x - 64, 84), 40.0)
@@ -954,6 +1036,30 @@ class MapOverlay:
 				var t := str(i + 1)
 				var ts := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
 				draw_string(font, Vector2(10 - ts.x * 0.5, y + 4), t, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiTheme.ACCENT_DIM.lightened(0.3))
+
+	## When you are off the view: a gold arrow on its edge pointing your way.
+	func _you_pointer(pos: Vector2) -> void:
+		var inset := Rect2(Vector2.ZERO, size).grow(-30.0)
+		if inset.has_point(pos):
+			return
+		var c := size * 0.5
+		var d := pos - c
+		var half := inset.size * 0.5
+		var t := minf(half.x / maxf(absf(d.x), 0.001), half.y / maxf(absf(d.y), 0.001))
+		var at := c + d * t
+		var dir := d.normalized()
+		var side := Vector2(-dir.y, dir.x)
+		var gold := Color(1, 0.86, 0.55)
+		draw_circle(at, 13.0, Color(0.03, 0.025, 0.024, 0.85), true, -1.0, true)
+		draw_arc(at, 13.0, 0.0, TAU, 28, Color(gold, 0.8), 1.4, true)
+		draw_colored_polygon(PackedVector2Array([at + dir * 9.0, at - dir * 5.0 + side * 6.5, at - dir * 2.0, at - dir * 5.0 - side * 6.5]), gold)
+		var metres := d.length() / maxf(screen._side() / screen.world_size(), 0.0001)
+		var text := ("%d m" % int(metres)) if metres < 1000.0 else ("%.1f km" % (metres / 1000.0))
+		var ts := UiTheme.MONO.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11)
+		var lp := at - dir * (30.0 + absf(dir.x) * ts.x * 0.5) + Vector2(-ts.x * 0.5, 4)
+		draw_rect(Rect2(lp + Vector2(-5, -13), Vector2(ts.x + 10, 18)), Color(0.03, 0.025, 0.024, 0.85))
+		draw_string_outline(UiTheme.MONO, lp, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 4, Color(0, 0, 0, 0.8))
+		draw_string(UiTheme.MONO, lp, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, gold)
 
 	## A double neat-line round the sheet with small corner diamonds.
 	func _frame() -> void:

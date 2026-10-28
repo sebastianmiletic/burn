@@ -24,8 +24,9 @@ func _ready() -> void:
 	_run.call_deferred()
 
 
+## Extra shots of a screen ("map_panned") come with it ("--only=map").
 func _wants(name: String) -> bool:
-	return _only.is_empty() or _only.has(name)
+	return _only.is_empty() or _only.has(name) or _only.has(name.get_slice("_", 0))
 
 
 func _run() -> void:
@@ -199,6 +200,13 @@ func _run() -> void:
 		await _wait(0.8)
 		await _shot("hud_look")
 		hud.status.call("_on_look", "", "", "")
+		# The minimap at the world's edge: the endless grid past the square.
+		var lp: Node3D = _world.get("local_player")
+		var home := lp.global_position
+		lp.global_position = Vector3(40, 22, 70)
+		await _wait(0.8)
+		await _shot("hud_edge")
+		lp.global_position = home
 	if _wants("chat"):
 		ev.emit_signal("chat_message", "Brandmark", "/me raises a torch toward the pass", "party")
 		ev.emit_signal("chat_message", "Kindlewright", "meet at the shrine, bring coal", "whisper")
@@ -222,6 +230,17 @@ func _run() -> void:
 			hud.quest_log.open()
 			hud.quest_log.call("_set_tab", QuestLogScreen.Tab.PATH)],
 		["map", func() -> void: hud.map_screen.open()],
+		# Panned off the world's corner: grid past the edge, the arrow to you, Recentre.
+		["map_panned", func() -> void:
+			hud.map_screen.open()
+			hud.map_screen.set("_zoom", 1.6)
+			hud.map_screen.set("_zoom_goal", 1.6)
+			hud.map_screen.set("_center", Vector2(-0.3, 0.06))],
+		["map_out", func() -> void:
+			hud.map_screen.open()
+			hud.map_screen.set("_zoom", 0.5)
+			hud.map_screen.set("_zoom_goal", 0.5)
+			hud.map_screen.set("_center", Vector2(0.5, 0.5))],
 		["pause", func() -> void: hud.pause_menu.open()],
 		["death", func() -> void: ev.emit_signal("player_died", "Burned by the Mountain King's hearthfire")],
 		["downed", func() -> void:
