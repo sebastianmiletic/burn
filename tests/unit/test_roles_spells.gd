@@ -188,6 +188,38 @@ func test_books_teach_their_gated_spells_and_drop_from_chests() -> void:
 	check(Spells.can_cast("veil", "warrior", 4, {"book_spells_adept": true}), "warrior Veil with the adept tome")
 
 
+func test_player_role_kit_xp_pools_and_save() -> void:
+	var root := (Engine.get_main_loop() as SceneTree).root
+	var p := Player.new()   # not local: no arcana node or input, pure state
+	root.add_child(p)
+	p.set_role("archer")
+	p.give_starting_kit()
+	check(p.inventory.has("bow_hunting"), "an archer starts with a bow")
+	check(p.inventory.has("arrow"), "and arrows")
+	check(not p.inventory.has("sword_rusty"), "but no sword")
+	p.add_xp(ItemDB.RANK_XP[2])
+	check_eq(p.rank, 2, "archer reaches rank 2")
+	p.set_role("mage")
+	check_eq(p.rank, 0, "the mage pool starts empty")
+	p.give_role_kit_once()
+	check(p.inventory.has("staff_apprentice"), "switching to mage hands over a staff")
+	var count := p.inventory.count_of("staff_apprentice")
+	p.give_role_kit_once()
+	check_eq(p.inventory.count_of("staff_apprentice"), count, "only once")
+	check_eq(p.role_ranks()["archer"], 2, "the archer rank is kept")
+	var d := p.to_dict()
+	var q := Player.new()
+	root.add_child(q)
+	q.load_from(d)
+	check_eq(q.role, "mage", "the saved role comes back")
+	check_eq(q.role_ranks()["archer"], 2, "per-role ranks survive a save")
+	q.set_role("archer")
+	check_eq(q.rank, 2, "switching back restores the archer rank")
+	check(q.max_health > Player.BASE_HEALTH, "rank health applies")
+	p.queue_free()
+	q.queue_free()
+
+
 func test_rank_rows_cover_every_rank() -> void:
 	for r: String in Roles.ORDER:
 		var rows := Roles.rank_rows(r)

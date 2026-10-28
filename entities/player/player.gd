@@ -1387,6 +1387,7 @@ func load_from(d: Dictionary) -> void:
 		role_xp[saved_role] = int(d.get("xp", 0))
 	knowledge = (d.get("knowledge") as Dictionary).duplicate() if d.get("knowledge") is Dictionary else {}
 	kits_given = (d.get("kits_given") as Dictionary).duplicate() if d.get("kits_given") is Dictionary else {saved_role: true}
+	role = saved_role if Roles.is_role(saved_role) else Roles.DEFAULT
 	xp = int(role_xp.get(role, 0))
 	rank = ItemDB.rank_for_xp(xp)
 	max_health = _max_health_for(rank)
