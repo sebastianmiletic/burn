@@ -37,6 +37,15 @@ NOT run: `tests/net/*` network/MP scripts (spell networking, pets, containers, f
 activity test on the combined build, any GPU capture, any hands-on play. The `burn_slot.sh` helper was missing for the
 agents, so tests ran under heavy parallel load; timing-sensitive guards (music render time) were loosened.
 
+### Final touches (28 Oct, last 10 minutes)
+
+- **Creative mode** (pause menu, solo only): the teleport list now holds **every place on every map** (labelled with its realm;
+  Mount Pyrrhos lands beside the **sword in the stone**, portals land in front of the gate, e.g. the **Gates of Hades**), and a
+  new item picker gives a full stack of **any item in the game**. `test_map_ui`/`ui_logic`/`adventures` 24/0.
+- Fixed a per-frame `%g` format error in the world map's scale bar (`ui/map_screen.gd`) that only shows in a real window.
+- Launched `godot --path ~/Coding/Burn` for real (windowed): menu boot and a solo world load ran with **zero errors** in the log.
+  Teleport/item picker were not clicked through by hand.
+
 ### Still open from the user's round-3 list (not merged or not started)
 
 - **Roles/spells left:** brewing *screen* (step rules exist as logic only; the cauldron opens the alchemy table, TODO in

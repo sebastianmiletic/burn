@@ -176,4 +176,4 @@ func test_hades_portal_on_map_and_creative_teleport() -> void:
 	village.add_spawn("portal", Vector3(40, 10, 40), {"to": 2})
 	check_eq(GameWorld.creative_target(village), Vector3(5, 13, 5), "villages still land at their centre")
 	var ruin := Location.new(&"ruin_3", "Old Ruin", Location.Kind.RUIN, Vector3.ZERO)
-	check(not GameWorld.creative_destination(ruin), "plain ruins are not listed")
+	check(GameWorld.creative_destination(ruin), "every place, plain ruins too, is a creative destination")

@@ -980,7 +980,7 @@ class MapOverlay:
 			draw_rect(seg, UiTheme.TEXT if i % 2 == 0 else Color(0.08, 0.07, 0.06))
 		draw_rect(Rect2(x0, y, px, 5.0), UiTheme.TEXT, false, 1.0)
 		var font := UiTheme.MONO
-		var unit := func(m: float) -> String: return ("%d" % int(m)) if m < 1000.0 else ("%g" % (m / 1000.0))
+		var unit := func(m: float) -> String: return ("%d" % int(m)) if m < 1000.0 else str(snappedf(m / 1000.0, 0.1))
 		draw_string(font, Vector2(x0 - 3, y - 6), "0", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiTheme.TEXT_DIM)
 		var mid: String = unit.call(metres * 0.5)
 		draw_string(font, Vector2(x0 + px * 0.5 - font.get_string_size(mid, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x * 0.5, y - 6), mid, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, UiTheme.TEXT_DIM)

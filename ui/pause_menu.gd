@@ -9,10 +9,12 @@ var _paused_tree := false
 var _creative: Button
 var _destinations: OptionButton
 var _teleport: Button
+var _items: OptionButton
+var _give: Button
 
 
 func _init() -> void:
-	panel_size = Vector2(460, 560)
+	panel_size = Vector2(460, 660)
 	panel_title = "PAUSED"
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
@@ -30,9 +32,24 @@ func _build() -> void:
 		for dim: int in w.gens:
 			for loc: Location in w.locations(dim):
 				if GameWorld.creative_destination(loc):
-					_destinations.add_item(loc.name)
+					var label := loc.name
+					if loc.has_meta(&"adv") and (loc.get_meta(&"adv") as Dictionary).has("altar"):
+						label += " (sword in the stone)"
+					if dim != 0:
+						label += "  [%s]" % ["Overworld", "Underworld", "Ryft", "Ogygia"][clampi(dim, 0, 3)]
+					_destinations.add_item(label)
 					_destinations.set_item_metadata(_destinations.item_count - 1, loc.id)
 	_teleport = _entry("Teleport to selected location", _teleport_selected)
+	# Creative: any item in the game, a full stack at a time.
+	_items = OptionButton.new()
+	_items.custom_minimum_size.y = 40
+	content.add_child(_items)
+	var ids: Array = ItemDB.ITEMS.keys()
+	ids.sort_custom(func(a: String, b: String) -> bool: return ItemDB.display_name(a) < ItemDB.display_name(b))
+	for id: String in ids:
+		_items.add_item(ItemDB.display_name(id))
+		_items.set_item_metadata(_items.item_count - 1, id)
+	_give = _entry("Give selected item (stack)", _give_selected)
 	_refresh_creative()
 	_entry("Save journey", _save)
 	_entry("Quit to title", func() -> void:
@@ -80,6 +97,8 @@ func _refresh_creative() -> void:
 	_creative.text = "CREATIVE INSPECTION: " + ("ON" if enabled else "OFF")
 	_destinations.disabled = not enabled
 	_teleport.disabled = not enabled or _destinations.item_count == 0
+	_items.disabled = not enabled
+	_give.disabled = not enabled or _items.item_count == 0
 
 
 func _toggle_creative() -> void:
@@ -96,6 +115,15 @@ func _teleport_selected() -> void:
 		return
 	if GameWorld.instance.creative_teleport(_destinations.get_item_metadata(_destinations.selected)):
 		close()
+
+
+func _give_selected() -> void:
+	var w := GameWorld.instance
+	if _items.selected < 0 or w == null or w.local_player == null or not w.local_player.creative or Net.is_online():
+		return
+	var id := String(_items.get_item_metadata(_items.selected))
+	var left := w.local_player.inventory.add(id, ItemDB.max_stack(id))
+	_status.text = ("Inventory full." if left > 0 else "Added %s." % ItemDB.display_name(id))
 
 
 func _save() -> void:

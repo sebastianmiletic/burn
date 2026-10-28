@@ -821,16 +821,20 @@ func fell_tree_fx(root: Vector3i, trunk: int, dim: int, dir: Vector3) -> void:
 
 # --- Dimensions --------------------------------------------------------------------------
 
-## Places creative inspection can teleport to: boss lairs, villages and
-## portals (the Gates of Hades lie deep under the Cinder Crater).
+## Places creative inspection can teleport to: every named place on every map
+## (boss lairs, villages, portals such as the Gates of Hades deep under the Cinder
+## Crater, the volcano's sword in the stone, caves, isles, Atlantis...).
 static func creative_destination(loc: Location) -> bool:
-	return loc != null and (not loc.spawns_of("boss").is_empty() or loc.kind == Location.Kind.VILLAGE
-			or not loc.spawns_of("portal").is_empty())
+	return loc != null
 
 
 ## Where a creative teleport to `loc` lands: before its boss, in front of its
 ## portal (as when coming back from Hades), else above its centre.
 static func creative_target(loc: Location) -> Vector3:
+	# Mount Pyrrhos: beside the altar with the sword in the stone.
+	var adv: Variant = loc.get_meta(&"adv") if loc.has_meta(&"adv") else null
+	if adv is Dictionary and (adv as Dictionary).has("altar"):
+		return ((adv as Dictionary)["altar"] as Vector3) + Vector3(0, 1, 5)
 	for s in loc.spawns_of("boss"):
 		return (s["pos"] as Vector3) + Vector3(0, 2, 8)
 	if loc.kind != Location.Kind.VILLAGE:
