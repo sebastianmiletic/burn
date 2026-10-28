@@ -209,7 +209,7 @@ func _run() -> void:
 				spec[2] = atan2(-to.x, -to.z)
 		if stop in WATER_STOPS:
 			var shore := _find_shore(w, loc)
-			p.global_position = Vector3(shore.x, 0, shore.y)
+			p.global_position = Vector3(shore.x, WorldGen.SEA_LEVEL + 4, shore.y)
 			spec = spec.duplicate()
 			spec[2] = shore.z
 		vw.focus = p.global_position

@@ -32,6 +32,10 @@ var moon := DirectionalLight3D.new()
 var weather: Weather
 ## Freeze the clock (menus, captures).
 var paused := false
+## Sky light from straight up and the sun's radiance, as last handed to the
+## shaders (WorldView tints the underwater murk with them).
+var sky_zenith := Vector3(0.2, 0.3, 0.45)
+var sun_radiance := Vector3.ONE
 
 var _sky_mat := ShaderMaterial.new()
 var _hell_glow := DirectionalLight3D.new()
@@ -383,7 +387,10 @@ func _update_lights(delta: float, force: bool) -> void:
 	environment.fog_sun_scatter = 0.18 * (1.0 - overcast) * dayf * surface_light
 	var morning := _mist_amount()
 	var mist := morning + wet * (1.0 - rain) * 0.5
-	var surface_density := (0.0013 + fog * 0.028 + rain * 0.006 + snowing * 0.009 + storm * 0.004 + dust * 0.012 + mist * 0.003 + ember * 0.004 + heat * 0.0008) * _fog_mult
+	# Rain and snow close the distance in (more so in storms and blizzards,
+	# whose wind drives the precipitation); WorldView adds a matching blur.
+	var precip := wx.precipitation_haze() if wx != null else 0.0
+	var surface_density := (0.0013 + fog * 0.028 + rain * 0.006 + snowing * 0.009 + storm * 0.004 + dust * 0.012 + mist * 0.003 + ember * 0.004 + heat * 0.0008 + precip * precip * 0.012) * _fog_mult
 	# High in the mountains a little cold haze hangs between the ranges (kept
 	# light so the view across the peaks stays the reward for the climb).
 	var alt := 0.0
@@ -475,12 +482,28 @@ func _update_lights(delta: float, force: bool) -> void:
 		"fog_h": environment.fog_height,
 		"fog_h_dens": environment.fog_height_density,
 	}
+	# The sky for shaders that draw their own reflections (water): as drawn,
+	# so dusk water mirrors the glowing horizon, never a black cubemap.
+	var open_k := 1.0 - u * 0.9
+	var zen_c := zenith.lerp(base_col, deck) * sky_dim
+	_set_sky_globals(zen_c * open_k, sky_hz * open_k, sky_hz_sun * open_k, _sun_dir,
+			Vector3(sun.light_color.r, sun.light_color.g, sun.light_color.b) * sun.light_energy)
 	if "--cave-debug=nosdfgi" in OS.get_cmdline_user_args():
 		environment.sdfgi_energy = 0.0
 	if _raw:
 		# Eyes adapt a little to the dark (and to gloomy storms), never fully.
 		var gloom := clampf(nightf * 0.8 + storm * 0.3 + overcast * 0.15, 0.0, 1.0) * surface_light
 		environment.tonemap_exposure = 1.1 * lerpf(1.0, 1.6, gloom) * lerpf(1.0, 1.38, u)
+
+
+func _set_sky_globals(zenith: Vector3, horizon: Vector3, horizon_sun: Vector3, sun_dir: Vector3, sun_rad: Vector3) -> void:
+	sky_zenith = zenith
+	sun_radiance = sun_rad
+	RenderingServer.global_shader_parameter_set(&"sky_zenith_color", zenith)
+	RenderingServer.global_shader_parameter_set(&"sky_horizon_color", horizon)
+	RenderingServer.global_shader_parameter_set(&"sky_horizon_sun_color", horizon_sun)
+	RenderingServer.global_shader_parameter_set(&"sun_direction", sun_dir)
+	RenderingServer.global_shader_parameter_set(&"sun_radiance", sun_rad)
 
 
 ## Aerial-perspective inputs for the horizon (DistantLand's shader uniforms).
@@ -569,5 +592,7 @@ func _hell_environment() -> void:
 	environment.volumetric_fog_gi_inject = 1.0
 	environment.volumetric_fog_density = lerpf(0.005, 0.009, u) * _fog_mult
 	environment.glow_hdr_threshold = lerpf(1.0, 1.25, u)
+	_set_sky_globals(Vector3(0.12, 0.05, 0.03) * open, Vector3(0.3, 0.12, 0.06) * open, Vector3(0.4, 0.16, 0.07) * open,
+			Vector3(0.3, 1.0, -0.45).normalized(), Vector3(1.0, 0.45, 0.22) * sun.light_energy)
 	if _raw:
 		environment.tonemap_exposure = 1.35 * lerpf(1.0, 1.2, u)
