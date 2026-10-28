@@ -132,6 +132,8 @@ static func village(loc: Location, rng: RandomNumberGenerator, is_start: bool) -
 	var stall_ang := deg_to_rad(205.0)
 	loc.add_spawn("npc", Vector3(c.x + 0.5 + cos(stall_ang) * 5.6, ground, c.y + 0.5 + sin(stall_ang) * 5.6), {"role": "merchant"})
 	loc.add_spawn("guard_post", Vector3(c.x + 0.5, ground, c.y + 0.5), {})
+	# The well on the green: E lowers the bucket (entities/interact/well.gd).
+	loc.add_spawn("well", Vector3(c.x + 0.5, ground, c.y + 0.5), {})
 	# The green: well, stalls, lamps, signpost; paths are laid at build time.
 	var items := _plan_props(ctx, placed)
 	var green := {"type": "green", "material": "stone", "at": Vector3(c.x + 0.5, ground, c.y + 0.5), "size": Vector3.ONE,

@@ -505,12 +505,7 @@ static func well(b: ArchBuild, p: Vector3, roof_layer: int, roof_tint: Color, st
 	m.beam(p + Vector3(1.2, 1.4, 0.0), p + Vector3(1.4, 1.4, 0.0), 0.04, 0.04)
 	m.mat(L.LINEN, Color(0.7, 0.6, 0.45), 0.1)
 	m.cylinder(p + Vector3(-0.35, 1.75, 0), p + Vector3(0.35, 1.75, 0), 0.11, -1.0, 8)
-	m.cylinder(p + Vector3(0.1, 1.66, 0.0), p + Vector3(0.1, 0.95, 0.0), 0.012, -1.0, 4)
-	m.mat(L.BOARDS, OAK, 0.3)
-	m.lathe(p + Vector3(0.1, 0.62, 0), PackedVector2Array([Vector2(0.14, 0.0), Vector2(0.17, 0.3), Vector2(0.155, 0.3), Vector2(0.13, 0.03), Vector2(0.0, 0.03)]), 10, true, false)
-	m.mat(L.IRON, Color(0.7, 0.7, 0.7), 0.0)
-	m.lathe(p + Vector3(0.1, 0.65, 0), PackedVector2Array([Vector2(0.148, 0.0), Vector2(0.15, 0.03)]), 10, false, false)
-	m.lathe(p + Vector3(0.1, 0.86, 0), PackedVector2Array([Vector2(0.168, 0.0), Vector2(0.17, 0.03)]), 10, false, false)
+	# The rope and bucket belong to the well entity (entities/interact/well.gd), which lowers them.
 	# Ridge roof.
 	var pitch := deg_to_rad(38.0)
 	var half := 1.15

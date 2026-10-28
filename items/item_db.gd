@@ -438,6 +438,7 @@ static func _static_init() -> void:
 				_add_armor(piece + "_" + tier, piece, tier)
 	for rid: String in BASE_RECIPES:
 		RECIPES[rid] = BASE_RECIPES[rid]
+	BuildingItems.register(ITEMS, RECIPES)
 
 
 static func _add_gear(id: String, kind: String, tier: String) -> void:
@@ -585,6 +586,8 @@ static func type_label(id: String) -> String:
 			return "Light source"
 		"station":
 			return "Crafting station"
+		"building":
+			return "Building piece"
 		"key":
 			return "Relic"
 		"treasure":
@@ -694,7 +697,8 @@ static func recipes_for_station(kind: String) -> Array:
 
 
 static func _recipe_sort_key(rid: String) -> String:
-	const GROUPS := ["basics", "stations", "smelting", "food", "building", "tools", "weapons", "armor", "potions"]
+	const GROUPS := ["basics", "stations", "smelting", "food", "building", "build_frame", "build_walls", "build_openings", "build_roofs",
+			"build_furniture", "build_storage", "tools", "weapons", "armor", "potions"]
 	var r: Dictionary = RECIPES[rid]
 	var g := GROUPS.find(String(r.get("group", "")))
 	var tier := TIER_ORDER.find(tier_of(recipe_result(rid)))
@@ -704,7 +708,7 @@ static func _recipe_sort_key(rid: String) -> String:
 		kind_i = KINDS.keys().find(k)
 	elif ARMOR_PIECES.has(k):
 		kind_i = ARMOR_PIECES.keys().find(k)
-	var order := maxi(tier, 0) if r.get("generated", false) else BASE_RECIPES.keys().find(rid)
+	var order := maxi(tier, 0) if r.get("generated", false) else (int(r["order"]) if r.has("order") else BASE_RECIPES.keys().find(rid))
 	return "%02d|%03d|%02d|%s" % [maxi(g, 0), order, kind_i, rid]
 
 

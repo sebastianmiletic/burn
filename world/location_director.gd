@@ -77,6 +77,8 @@ func _spawn(loc: Location, dim: int, i: int, entry: Dictionary) -> void:
 			e = w.spawn_entity("portal", pos, dim, {"to": int(s.get("to", 1)), "size": s.get("size", Vector2(10, 14))})
 		"lore":
 			e = w.spawn_entity("lore", pos, dim, {"text": s.get("text", "")})
+		"well":
+			e = w.spawn_entity("well", pos, dim, {"key": String(loc.id)})
 		"decor":
 			e = w.spawn_entity("decor", pos, dim, {"decor": s.get("decor", "bones"), "size": s.get("size", 1.0),
 				"yaw": s.get("yaw", 0.0), "tilt": s.get("tilt", 0.0), "seed": s.get("seed", i)})

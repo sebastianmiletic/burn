@@ -280,7 +280,7 @@ func _rebuild_list() -> void:
 		var g := String(ItemDB.recipe(rid).get("group", ""))
 		if g != last_group:
 			last_group = g
-			var h := ItemStyle.header(String(GROUP_NAMES.get(g, g.capitalize())).to_upper())
+			var h := ItemStyle.header(String(GROUP_NAMES.get(g, BuildingItems.GROUP_NAMES.get(g, g.capitalize()))).to_upper())
 			h.custom_minimum_size = Vector2(0, 30)
 			var m := MarginContainer.new()
 			m.add_theme_constant_override("margin_left", 10)
