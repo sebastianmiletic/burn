@@ -327,97 +327,11 @@ static func _corridor(bp: Blueprint, a: Vector2, b: Vector2, fy: int, half_w: fl
 
 # --- Scumport ------------------------------------------------------------------------------
 
-const SCUM_STYLE := {
-	"name": "scum", "walls": "boards", "roofs": ["shingle", "shingle", "thatch"],
-	"plaster": [Color(0.55, 0.5, 0.42), Color(0.48, 0.44, 0.4)],
-	"timber": Color(0.28, 0.22, 0.17), "stone": Color(0.42, 0.42, 0.4), "roof_tint": Color(0.42, 0.4, 0.36),
-	"shutters": [Color(0.3, 0.16, 0.12), Color(0.18, 0.24, 0.22)],
-	"door": Color(0.28, 0.2, 0.15), "banner": Color(0.4, 0.12, 0.14), "sign": Color(0.7, 0.5, 0.2),
-	"wear": 1.0, "snow": 0.0, "stone_ratio": 0.0, "tavern": "The Drowned Rat", "chapel": false, "fence": "wattle",
-	"stilts": true, "flowers": 0.0,
-}
-
-
 static func _scumport(planner: LocationPlanner, rng: RandomNumberGenerator) -> Array[Location]:
 	var isle: Array = AdventureTerrain.ISLES["scumport"]
 	var C: Vector2 = isle[0]
-	# The harbour faces the mainland (west): walk out until the ground meets the sea.
-	var west := Vector2(-1, 0)
-	var shore := C
-	for i in 60:
-		var q := C + west * (i * 3.0)
-		if _g(planner, q.x, q.y) <= SEA + 1:
-			shore = q
-			break
-	var T := shore - west * 30.0
-	var fy := SEA + 3
-	var loc := Location.new(&"scumport", "Scumport", Location.Kind.RUIN, Vector3(T.x, fy + 1, T.y))
-	loc.ground_y = fy
-	loc.radius = 46.0
-	loc.pad_radius = 24.0
-	loc.pad_falloff = 10.0
-	loc.major = true
-	loc.set_meta(&"map_kind", "scumport")
-	var bp := Blueprint.new(Vector3i(floori(T.x) - 80, fy - 12, floori(T.y) - 46), Vector3i(130, 40, 93))
-	loc.blueprints.append(bp)
-	var ctx := {"loc": loc, "bp": bp, "rng": rng, "style": SCUM_STYLE, "rects": [] as Array[Rect2],
-			"c": Vector2i(roundi(T.x), roundi(T.y)), "fy": fy}
-	# The square in the middle, buildings round it; stilt shacks over the water on the piers.
-	var list := [
-		[{"role": "tavern", "kind": "tavern", "w": 9, "d": 7, "enterable": true}, Rect2(4, -16, 9, 7), 3],
-		[{"role": "hall", "kind": "stilt", "w": 8, "d": 6, "enterable": true}, Rect2(-6, -17, 8, 6), 2],
-		[{"role": "house", "kind": "stilt", "w": 6, "d": 5, "enterable": true}, Rect2(12, -2, 6, 5), 3],
-		[{"role": "house", "kind": "stilt", "w": 6, "d": 5, "enterable": false}, Rect2(12, 7, 6, 5), 3],
-		[{"role": "house", "kind": "stilt", "w": 7, "d": 5, "enterable": true}, Rect2(2, 11, 7, 5), 0],
-		[{"role": "house", "kind": "stilt", "w": 6, "d": 5, "enterable": false}, Rect2(-8, 11, 6, 5), 0],
-		[{"role": "smithy", "kind": "smithy", "w": 8, "d": 6, "enterable": true}, Rect2(-19, 8, 8, 6), 1],
-	]
-	var placed: Array = []
-	for it: Array in list:
-		placed.append(VillagePlan._commit(ctx, it[0], it[1], it[2]))
-	# Piers out into the harbour on stilts, shacks along them.
-	var piers: Array = []
-	var deck := SEA + 2
-	for k in 3:
-		var start := shore + west * -4.0 + Vector2(0, (k - 1) * 18.0)
-		var length := 34.0 if k == 1 else 24.0
-		var p0 := start
-		var p1 := start + west * length
-		piers.append([_xz(p0, deck + 1), _xz(p1, deck + 1)])
-		for s in int(length) + 1:
-			var p := p0 + west * s
-			for w in range(-1, 2):
-				var cell := Vector3i(floori(p.x), deck, floori(p.y) + w)
-				_put(bp, cell, S)
-				for y in range(deck + 1, deck + 5):
-					_put(bp, Vector3i(cell.x, y, cell.z), Blueprint.CARVE)
-		if k != 1:
-			var sc := p1 + west * 0.0 + Vector2(0, -6.0 if k == 0 else 6.0)
-			var shack_ctx := ctx.duplicate()
-			shack_ctx["fy"] = deck
-			var rel := Rect2(sc.x - T.x - 3.0, sc.y - T.y - 2.5, 6, 5)
-			placed.append(VillagePlan._commit(shack_ctx, {"role": "house", "kind": "stilt", "w": 6, "d": 5, "enterable": k == 0}, rel, 0 if k == 2 else 2))
-	# Lanterns on poles along the piers and round the square.
-	var lamps: Array = []
-	for pr: Array in piers:
-		var a: Vector3 = pr[0]
-		var b: Vector3 = pr[1]
-		for s in 4:
-			lamps.append(a.lerp(b, (s + 0.5) / 4.0) + Vector3(0, 0, 1.6 if s % 2 == 0 else -1.6))
-	for i in 6:
-		var a := TAU * i / 6.0 + 0.3
-		lamps.append(Vector3(T.x + cos(a) * 9.0, fy + 1, T.y + sin(a) * 9.0))
-	loc.props.append({"type": "builder", "builder": Callable(AdventureArch, "scumport"), "piers": piers, "lamps": lamps, "square": Vector3(T.x, fy + 1, T.y),
-			"west": west, "seed": rng.randi()})
-	var folk: Array = [
-		{"pos": Vector3(T.x + 3.0, fy + 1, T.y - 4.0), "role": "fixer", "seed": 101},
-		{"pos": Vector3(T.x - 4.0, fy + 1, T.y + 3.0), "role": "fence", "seed": 102},
-		{"pos": _xz(shore + west * -2.0 + Vector2(0, 2.0), fy + 1), "role": "harbourmaster", "seed": 103},
-	]
-	for i in 5:
-		var a := TAU * i / 5.0
-		folk.append({"pos": Vector3(T.x + cos(a) * 6.5, fy + 1, T.y + sin(a) * 6.5), "role": "dockhand", "seed": 110 + i})
-	loc.set_meta(&"adv", {"scum_folk": folk, "dock": _xz(shore + west * 10.0 + Vector2(0, 9.0), SEA + 1)})
+	# The harbour town over the water on the west shore (ScumportPlan, its own random stream).
+	var loc := ScumportPlan.plan(planner, planner.gen.world_seed * 7907 + 5)
 	# The Cutthroat Cove on the far (east) side of the isle.
 	var east := C + Vector2(1, 0) * 95.0
 	for i in 40:
