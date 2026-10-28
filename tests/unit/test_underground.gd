@@ -81,3 +81,22 @@ func test_everbloom_cavern_and_harvest() -> void:
 	check_eq(later, {"everbloom_leaf": 3}, "fruit and sap regrow slowly")
 	for item in ["everbloom_leaf", "everbloom_fruit", "everbloom_sap"]:
 		check(ItemDB.exists(item), "item %s exists" % item)
+
+
+func test_everbloom_dies_to_any_wound_and_collapse_stays_inside() -> void:
+	var tree := Everbloom.new()
+	var fired := [false]
+	tree.collapse_started.connect(func(_t: Everbloom) -> void: fired[0] = true)
+	tree.take_damage(0.5, 0, "hit")
+	check(tree.dead, "one blow kills the tree")
+	check(fired[0], "its death starts the collapse")
+	tree.free()
+	var c := Vector3(500, -60, 700)
+	var a := CaveCollapse.new().setup(c, 45.0, -60.0, 0, 7)
+	var b := CaveCollapse.new().setup(c, 45.0, -60.0, 0, 7)
+	for i in 40:
+		var p := a.next_point()
+		check_eq(p, b.next_point(), "rubble falls in the same places for the same seed")
+		check(Vector2(p.x - c.x, p.z - c.z).length() <= 45.0 + 0.01 and p.y > -60.0 and p.y < -57.0, "rubble lands on the cavern floor")
+	a.free()
+	b.free()

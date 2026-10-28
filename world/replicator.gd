@@ -705,6 +705,11 @@ func _resolve_fill(peer: int, point: Vector3, radius: float, block: int, dim: in
 		_broadcast(&"_voxels", [changes, dim])
 
 
+## Server: apply a batch of voxel edits everywhere (cave collapses).
+func broadcast_voxels(changes: PackedInt32Array, dim: int) -> void:
+	_broadcast(&"_voxels", [changes, dim])
+
+
 @rpc("authority", "reliable", "call_local")
 func _voxels(changes: PackedInt32Array, dim: int) -> void:
 	var vw := gw().world_for(dim)

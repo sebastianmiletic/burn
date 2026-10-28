@@ -2,13 +2,14 @@ class_name Everbloom
 extends Entity
 ## The great glowing tree of the Everbloom Cavern (world revision 5, UndergroundSites).
 ## Harvest it (interact) for leaves; fruit and sap regrow slowly and go into potions.
-## Any damage kills it: the tree withers and the cavern begins to collapse
-## (`collapse_started`; the falling-rock pass itself is not built yet).
+## Any damage kills it: the tree withers for good and the cavern roof falls in (CaveCollapse).
 
 ## Seconds before fruit and sap can be taken again.
 const FRUIT_REGROW := 180.0
 const SAP_REGROW := 420.0
 const LEAF_REGROW := 20.0
+## Saved with the opened chests once the tree has died.
+const WITHERED_KEY := "everbloom_cavern:withered"
 
 signal collapse_started(tree: Everbloom)
 
@@ -52,6 +53,11 @@ func on_spawned(data: Dictionary) -> void:
 	_glow.omni_range = 45.0
 	_glow.position.y = 15.0
 	add_child(_glow)
+	var w := world()
+	if w != null and w.opened_chests.has(WITHERED_KEY):
+		dead = true
+		health = 0.0
+		on_event("withered", null)
 
 
 func _part(mesh: PrimitiveMesh, size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
@@ -99,12 +105,21 @@ func server_interact(_p: Player) -> void:
 		world().drop_item(global_position + Vector3(0, 1.2, 1.5), item, int(got[item]), dimension)
 
 
-## Any wound kills the tree (max_health 1): it withers and the cavern starts to fall in.
+## Any wound, however light (a pickaxe, an arrow, fire), is fatal.
+func _on_damaged(_amount: float, _source_id: int, _kind: String) -> void:
+	health = 0.0
+
+
+## The tree withers (saved, so it never regrows) and the cavern starts to fall in (CaveCollapse).
 func _on_died() -> void:
 	collapse_started.emit(self)
 	var w := world()
-	if w != null and w.replicator != null:
+	if w == null:
+		return
+	w.opened_chests[WITHERED_KEY] = true
+	if w.replicator != null:
 		w.replicator.broadcast_entity_event(net_id, "withered")
+	w.add_child(CaveCollapse.new().setup(global_position, UndergroundSites.EVERBLOOM_RADII.x * 0.75, floor_y, dimension, net_id))
 
 
 func on_event(event: String, _arg: Variant) -> void:
