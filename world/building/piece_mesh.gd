@@ -430,7 +430,7 @@ static func _door_frame(b: ArchBuild, mat: String) -> void:
 	var t := thickness(mat)
 	var m := b.shell
 	var r := DOOR
-	var stone := BuildPieces.MATS[mat]["family"] == "stone"
+	var stone: bool = BuildPieces.MATS[mat]["family"] == "stone"
 	m.mat(L.ASHLAR if stone else L.TIMBER, _sill_tint(mat) if stone else TIMBER, 0.3)
 	var jw := 0.14
 	m.box(Vector3(r.position.x - jw * 0.5 + 0.01, r.size.y * 0.5, -t * 0.5), Vector3(jw, r.size.y, t + 0.08), 1)
@@ -577,7 +577,7 @@ static func _beam(b: ArchBuild, mat: String) -> void:
 static func _stairs(b: ArchBuild, mat: String) -> void:
 	var m := b.shell
 	var n := 4
-	var wood := BuildPieces.MATS[mat]["family"] == "wood"
+	var wood: bool = BuildPieces.MATS[mat]["family"] == "wood"
 	for i in n:
 		var z1 := 2.0 - i * 0.5
 		var z0 := z1 - 0.5
