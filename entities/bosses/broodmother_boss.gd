@@ -25,6 +25,8 @@ var arena_r := 22.0
 var floor_y := 0.0
 var ceiling_y := NAN
 var _hang_y := 0.0
+## Phase 2 began mid-attack: the egg sacs burst as soon as that blow ends.
+var _brood_due := false
 
 
 func _init() -> void:
@@ -432,14 +434,31 @@ func _on_phase_changed(new_phase: int) -> void:
 	Audio.play("spider_hiss", center(), 8.0, 0.4)
 	_shake_near(global_position, 0.5)
 	_next_attack = 1.0
-	if new_phase == 2 and _attack == "":
+	if new_phase == 2:
+		if _attack == "":
+			_attack = "brood"
+			_attack_t = 0.0
+			_attack_data = {}
+			_begin_attack("brood")
+		else:
+			_brood_due = true
+
+
+func _choose_attack() -> void:
+	if _brood_due:
+		_brood_due = false
 		_attack = "brood"
 		_attack_t = 0.0
 		_attack_data = {}
+		body.velocity.x = 0.0
+		body.velocity.z = 0.0
 		_begin_attack("brood")
+		return
+	super._choose_attack()
 
 
 func _reset() -> void:
+	_brood_due = false
 	flying = false
 	body.fly = false
 	super._reset()
