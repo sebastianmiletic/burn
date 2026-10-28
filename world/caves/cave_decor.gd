@@ -72,6 +72,9 @@ const ORES := {
 	58: [M.GEODE, 1, T.O_AMETHYST, 0.8, 1.6, M.CRYSTALS_SMALL, T.O_AMETHYST],
 }
 
+## World revision 5 cave biomes (CaveBiomes.Kind >= 8) borrow the decoration of a related
+## kind: moss caves and the Everbloom grow glowroot, violet deeps crystals, lava tubes embers.
+const DECOR_ALIAS := {8: FUNGAL, 14: FUNGAL, 12: CRYSTAL_REFUGE, 16: MAGMA}
 ## Per cave kind: [floor entries, wall entries, ceiling entries]; entry =
 ## [mesh, variants, material, probability per cell, min scale, max scale, placement, fade, light colour, light strength]
 const NONE := Color(0, 0, 0, 0)
@@ -263,6 +266,7 @@ static func plan_chunk(origin: Vector3i, terrain: Array, dimension: int, world_s
 			if kind < 0:
 				var wp := o + p
 				kind = CaveBiomes.decor_kind(wp, world_seed)
+				kind = int(DECOR_ALIAS.get(kind, kind))
 				if not TABLES.has(kind):
 					kind = KARST
 				kinds[ki] = kind

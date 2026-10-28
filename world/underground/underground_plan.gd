@@ -77,7 +77,7 @@ class Ctx:
 				lo = minf(lo, ground(p.x, p.y))
 		return lo
 
-	func free(c: Vector2, r: float) -> bool:
+	func is_free(c: Vector2, r: float) -> bool:
 		for t: Array in taken:
 			if c.distance_to(t[0]) < r + float(t[1]):
 				return false
@@ -226,7 +226,7 @@ static func _grand_caverns(ctx: Ctx) -> void:
 		var rz := rx * ctx.rng.randf_range(0.7, 1.15)
 		var ry := ctx.rng.randf_range(28.0, 36.0)
 		var c2 := Vector2(c.x, c.z)
-		if not ctx.free(c2, maxf(rx, rz) + 30.0) or not ctx.clear_of_sites(c2, maxf(rx, rz) * 0.5):
+		if not ctx.is_free(c2, maxf(rx, rz) + 30.0) or not ctx.clear_of_sites(c2, maxf(rx, rz) * 0.5):
 			continue
 		var floor_y := clampf(c.y - ry * 0.2, -100.0, -30.0)
 		var cy := floor_y + ry * 0.6
@@ -263,7 +263,7 @@ static func _layered(ctx: Ctx) -> void:
 		for kx in range(1, n - 1):
 			var c := Vector3((kx + 0.5) * CaveBiomes.CELL.x, -32.0, (kz + 0.5) * CaveBiomes.CELL.z)
 			var region := CaveBiomes.region(c, gen.world_seed, gen.revision)
-			if int(region["kind"]) != CaveBiomes.Kind.SANDSTONE or not ctx.free(Vector2(c.x, c.z), 40.0):
+			if int(region["kind"]) != CaveBiomes.Kind.SANDSTONE or not ctx.is_free(Vector2(c.x, c.z), 40.0):
 				continue
 			var r := CaveBiomes.radii_of(region)
 			var base := c.y - r.y * 0.55
@@ -295,7 +295,7 @@ static func _fissures(ctx: Ctx) -> void:
 		var ok := true
 		for k in 5:
 			var p := a.lerp(b, k / 4.0)
-			if ctx.ground(p.x, p.y) < top + 10.0 or not ctx.free(p, 6.0):
+			if ctx.ground(p.x, p.y) < top + 10.0 or not ctx.is_free(p, 6.0):
 				ok = false
 				break
 		if not ok or floor_b < -104.0 or ctx.near_pools(Vector3((a.x + b.x) * 0.5, floor_a, (a.y + b.y) * 0.5), length * 0.5):
@@ -321,7 +321,7 @@ static func _shafts(ctx: Ctx) -> void:
 		var g := ctx.ground(p.x, p.y)
 		var bottom := ctx.rng.randf_range(-96.0, -50.0)
 		var to_surface := open < OPEN_SHAFTS and ctx.rng.randf() < 0.45
-		if not ctx.free(p, r + 4.0) or ctx.near_pools(Vector3(p.x, bottom, p.y), 20.0):
+		if not ctx.is_free(p, r + 4.0) or ctx.near_pools(Vector3(p.x, bottom, p.y), 20.0):
 			continue
 		var top := ctx.rng.randf_range(-30.0, -12.0)
 		if to_surface:
@@ -410,7 +410,7 @@ static func _grottos(ctx: Ctx) -> void:
 		var rx := ctx.rng.randf_range(16.0, 28.0)
 		var ry := ctx.rng.randf_range(7.0, 11.0)
 		var cy := ctx.rng.randf_range(-62.0, -22.0)
-		if not ctx.free(p, rx + 8.0) or ctx.ground(p.x, p.y) < cy + ry + 14.0 or ctx.near_pools(Vector3(p.x, cy, p.y), rx + 30.0):
+		if not ctx.is_free(p, rx + 8.0) or ctx.ground(p.x, p.y) < cy + ry + 14.0 or ctx.near_pools(Vector3(p.x, cy, p.y), rx + 30.0):
 			continue
 		var level := cy - ry * 0.35
 		var id := ctx.net.add_blob(Vector3(p.x, cy, p.y), Vector3(rx, ry, rx * ctx.rng.randf_range(0.7, 1.2)), 1.3, level, Blocks.WATER)

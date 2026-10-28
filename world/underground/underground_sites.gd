@@ -19,6 +19,9 @@ const EVERBLOOM_FLOOR := -60.0
 const EVERBLOOM_RADII := Vector3(60, 30, 60)
 const CITY_FLOOR := -56.0
 const CITY_RADII := Vector3(74, 34, 74)
+## Hearthold needs UndergroundCity (layout, blueprints) and the ug_stonekin entity, neither
+## written yet: the city is not planned until they exist.
+const ENABLE_CITY := false
 
 
 static func plan(ctx: UndergroundPlan.Ctx) -> void:
@@ -37,7 +40,7 @@ static func plan(ctx: UndergroundPlan.Ctx) -> void:
 		var d := c.distance_to(home)
 		if d < 420.0 or d > 1500.0:
 			continue
-		if _site_ok(ctx, c, CITY_RADII, CITY_FLOOR):
+		if ENABLE_CITY and _site_ok(ctx, c, CITY_RADII, CITY_FLOOR):
 			city_cell = cell
 			_hearthold(ctx, cell)
 			break
@@ -55,7 +58,7 @@ static func _cell_centre(cell: Vector2i) -> Vector2:
 
 
 static func _site_ok(ctx: UndergroundPlan.Ctx, c: Vector2, radii: Vector3, floor_y: float) -> bool:
-	if not ctx.inside(c, 360.0) or not ctx.free(c, radii.x + 40.0) or not ctx.clear_of_sites(c, radii.x + 20.0):
+	if not ctx.inside(c, 360.0) or not ctx.is_free(c, radii.x + 40.0) or not ctx.clear_of_sites(c, radii.x + 20.0):
 		return false
 	var top := floor_y + radii.y * 1.6
 	if ctx.min_ground(c, radii.x + 8.0) < top + 16.0:
@@ -160,7 +163,8 @@ static func _hearthold(ctx: UndergroundPlan.Ctx, cell: Vector2i) -> void:
 	# Level streets: three overlapping rounded rooms; their corners leave carved bays in the walls.
 	for k in 3:
 		ctx.net.set_scheme(ctx.net.add_room(f, 50.0, 50.0, 9.0, k * PI / 6.0), CaveBiomes.Kind.CITY)
-	var layout := UndergroundCity.layout(gen.world_seed)
+	var city: Variant = load("res://world/underground/underground_city.gd")
+	var layout: Dictionary = city.layout(gen.world_seed)
 	var gates: Array = layout["gates"]
 	# The rune-marked cleft from the surface ends at the first gate; the deep road at the second.
 	var g0: Dictionary = gates[0]
@@ -176,7 +180,7 @@ static func _hearthold(ctx: UndergroundPlan.Ctx, cell: Vector2i) -> void:
 	loc.dimension = 0
 	var fc := Vector3i(roundi(f.x), roundi(f.y), roundi(f.z))
 	loc.blueprints.append(_blueprint_disc(fc, 64, [Blocks.STONE, Blocks.STONE, Blocks.GRANITE, Blocks.GRANITE]))
-	loc.blueprints.append_array(UndergroundCity.blueprints(layout, fc))
+	loc.blueprints.append_array(city.blueprints(layout, fc))
 	for i in (layout["npcs"] as Array).size():
 		var npc: Dictionary = layout["npcs"][i]
 		loc.add_spawn("entity", f + (npc["pos"] as Vector3) + Vector3(0, 0.05, 0), {"kind": "ug_stonekin",

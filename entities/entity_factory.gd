@@ -38,6 +38,8 @@ static func create(kind: String, _data := {}) -> Entity:
 			return LairDecor.new()
 		"station":
 			return Station.new()
+		"ug_everbloom":
+			return Everbloom.new()
 	if kind.begins_with("act_"):
 		# Activity props and markers (world/activities/*).
 		return ActivityDirector.create_entity(kind)

@@ -38,7 +38,7 @@ static func decor_kind(pos: Vector3, seed_value: int) -> int:
 	var z := zone_at(pos)
 	if not z.is_empty():
 		return int(z[1])
-	return kind_at(pos, seed_value, revision) if pos.y < -8.0 else Kind.KARST
+	return kind_at(pos, seed_value, revision if revision >= 5 else 3) if pos.y < -8.0 else Kind.KARST
 
 
 ## The planned zone ([AABB, Kind, name]) containing a point, or [].
