@@ -28,7 +28,7 @@ const TILE := 256
 const LOD_DISTANCE := 1150.0
 const LOD_MARGIN := 120.0
 const SKIRT := 24.0
-const WATER_Y := float(WorldGen.SEA_LEVEL) + 0.85
+const WATER_Y := float(WorldGen.SEA_LEVEL) + ChunkMesher.WATER_TOP - 0.03
 ## Material classes (index -> material code); keep in step with the shader.
 const CLASSES := [Blocks.GRASS, Blocks.DRY_GRASS, SmoothMesher.CODE_FOREST_FLOOR, SmoothMesher.CODE_PEAK_GRASS,
 		Blocks.SAND, Blocks.ASH, Blocks.MUD, Blocks.STONE, Blocks.RED_ROCK, Blocks.BASALT, Blocks.ALPINE_ROCK, Blocks.RED_SAND]

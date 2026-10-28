@@ -4,9 +4,10 @@ render_mode cull_disabled, depth_draw_always;
 //
 // Vertex input (world/voxel/chunk_mesher.gd, liquid surface) - keep in sync:
 //   COLOR.rgb  block colour, COLOR.a legacy material class / 7
-//   UV         position on the face
+//   UV         side faces: position on the face; top faces: (water depth under
+//              the corner in m, 0), 0 along the shore and on the shore skirt
 //   UV2        (block id, skylight 0..1)
-//   NORMAL     face normal (top faces are lowered by 0.12 by the mesher)
+//   NORMAL     face normal (top faces sit at ChunkMesher.WATER_TOP above the block base)
 //
 // Water:
 //  * Geometry: a sum of Gerstner waves. Every train has its own randomised
@@ -18,9 +19,15 @@ render_mode cull_disabled, depth_draw_always;
 //    lakes a short chop, sheltered/underground water stays nearly still.
 //  * Normals: the same trains analytically, plus short randomised chop and
 //    drifting noise ripples (faded out where a pixel covers them: no aliasing).
+//  * Depth (per vertex, from the mesher): the swell is full over deep water,
+//    shoals (grows, its crests sharpen and lean) over 1-6 m, and dies out
+//    along the shore so the surface never lifts off the beach.
+//  * Shoreline: the mesher continues the surface one cell into the ground (a
+//    skirt); the edge is where the smooth terrain rises through it, faded by
+//    the depth behind the water with a noisy, breathing swash line.
 //  * Foam: whitecaps where the Gerstner surface folds (Jacobian < 0) in wind,
-//    breaking lines that roll in towards the shore over the shallows, and a
-//    contact fringe along the water's edge.
+//    crests breaking over the shallows, lines that roll in towards the shore,
+//    and swash foam that runs up and back along the water's edge.
 //  * Optics: own screen-space reflections (with the visible sky behind them)
 //    falling back to an analytic sky from the sky controller (so dusk water
 //    reflects the glowing horizon instead of going black), Fresnel (F0 0.02),
@@ -62,6 +69,8 @@ global uniform vec3 sky_horizon_color;
 global uniform vec3 sky_horizon_sun_color;
 global uniform vec3 sun_direction;
 global uniform vec3 sun_radiance;
+// Dark-ocean regions (0..1): deeper, near-black blue-green, less transparent water.
+global uniform float dark_ocean_amount;
 
 varying vec3 v_world;
 varying vec3 v_wnormal;
@@ -69,6 +78,9 @@ varying vec2 v_rest;       // undisplaced position on the water plane
 varying float v_height;    // wave height at this vertex (m)
 varying float v_calm;      // 0 still .. 1 full sea state
 varying float v_sea;       // 1 open sea, 0 lake
+varying float v_env;       // wave envelope from the water depth (0 at the shore)
+varying float v_shoal;     // 0 deep water .. 1 shallows where the swell steepens
+varying float v_amp;       // rough crest height of the local swell (m)
 varying flat float v_block;
 varying float v_sky;
 
@@ -78,8 +90,9 @@ const int WAVES = 8;
 // Sea state from the weather, the kind of water and its shelter.
 void sea_state(float sea, out float lmax, out float steep) {
 	float ws = clamp(wind_strength, 0.0, 1.0);
-	lmax = mix(mix(3.0, 8.0, ws), mix(14.0, 34.0, ws), sea);
-	steep = mix(0.028, 0.075, ws * ws) * mix(0.8, 1.0, sea);
+	// The open sea always carries some swell from far storms; lakes only chop.
+	lmax = mix(mix(3.0, 8.0, ws), mix(16.0, 44.0, ws), sea);
+	steep = mix(mix(0.026, 0.07, ws * ws), mix(0.034, 0.09, ws * ws), sea);
 }
 
 // The i-th Gerstner train: direction, wavenumber, amplitude, angular speed,
@@ -110,9 +123,20 @@ float group(vec2 p, vec2 dir, float k, float omega, float t, float fi) {
 	return 0.62 + 0.38 * clamp(g * 0.62, -1.0, 1.0);
 }
 
-// Gerstner displacement of a rest position (x, y, z offsets).
-vec3 gerstner(vec2 p, float t, float lmax, float steep, float scale) {
+// Slow, large-scale phase warp: bends every train's crests into long curves
+// that wander over ~100 m (no straight, endlessly parallel ridges). Two fields,
+// shared out between the trains so they do not bend together.
+vec2 crest_warp(vec2 p, float t) {
+	vec2 q = p * 0.011 + vec2(t * 0.004, -t * 0.003);
+	return vec2(n_value2(q), n_value2(q * 1.37 + vec2(5.3, 1.9))) * 5.0 - 2.5;
+}
+
+// Gerstner displacement of a rest position (x, y, z offsets). The mesh is a
+// 1 m grid: trains shorter than ~3 m stay in the normals only. shoal sharpens
+// the crests (more horizontal pinch) over shallow water.
+vec3 gerstner(vec2 p, float t, float lmax, float steep, float scale, float shoal) {
 	vec3 d = vec3(0.0);
+	vec2 w = crest_warp(p, t);
 	for (int i = 0; i < WAVES; i++) {
 		vec2 dir;
 		float k;
@@ -121,8 +145,9 @@ vec3 gerstner(vec2 p, float t, float lmax, float steep, float scale) {
 		float ph;
 		train(i, lmax, steep, dir, k, amp, omega, ph);
 		amp *= group(p, dir, k, omega, t, float(i)) * scale;
-		float th = k * dot(dir, p) - omega * t + ph;
-		float q = 0.55 / (k * amp * float(WAVES) + 1e-4);   // choppiness, never loops
+		amp *= 1.0 - smoothstep(TAU / 4.0, TAU / 2.2, k);
+		float th = k * dot(dir, p) - omega * t + ph + (i % 2 == 0 ? w.x : w.y) * (0.6 + 0.12 * float(i));
+		float q = 0.55 * (1.0 + shoal * 0.7) / (k * amp * float(WAVES) + 1e-4);   // choppiness, never loops
 		q = min(q, 1.0);
 		d.xz += dir * (q * amp * cos(th));
 		d.y += amp * sin(th);
@@ -132,9 +157,10 @@ vec3 gerstner(vec2 p, float t, float lmax, float steep, float scale) {
 
 // Normal of the Gerstner sum (GPU Gems 1, ch. 1) plus its Jacobian (folding
 // crests). lod: metres per pixel; trains finer than that fade out.
-vec3 gerstner_normal(vec2 p, float t, float lmax, float steep, float scale, float lod, out float jac) {
+vec3 gerstner_normal(vec2 p, float t, float lmax, float steep, float scale, float shoal, float lod, out float jac) {
 	vec3 n = vec3(0.0, 1.0, 0.0);
 	jac = 1.0;
+	vec2 w = crest_warp(p, t);
 	for (int i = 0; i < WAVES; i++) {
 		vec2 dir;
 		float k;
@@ -144,8 +170,8 @@ vec3 gerstner_normal(vec2 p, float t, float lmax, float steep, float scale, floa
 		train(i, lmax, steep, dir, k, amp, omega, ph);
 		amp *= group(p, dir, k, omega, t, float(i)) * scale;
 		amp *= 1.0 - smoothstep(0.25, 0.9, k * lod * 0.16);
-		float th = k * dot(dir, p) - omega * t + ph;
-		float q = min(0.55 / (k * amp * float(WAVES) + 1e-4), 1.0);
+		float th = k * dot(dir, p) - omega * t + ph + (i % 2 == 0 ? w.x : w.y) * (0.6 + 0.12 * float(i));
+		float q = min(0.55 * (1.0 + shoal * 0.7) / (k * amp * float(WAVES) + 1e-4), 1.0);
 		float wa = k * amp;
 		n.x -= dir.x * wa * cos(th);
 		n.z -= dir.y * wa * cos(th);
@@ -256,6 +282,9 @@ void vertex() {
 	int b = int(UV2.x + 0.5);
 	v_rest = world.xz;
 	v_height = 0.0;
+	v_env = 0.0;
+	v_shoal = 0.0;
+	v_amp = 0.0;
 	v_sea = 1.0 - smoothstep(sea_level + 0.5, sea_level + 2.5, world.y);
 	v_calm = wave_scale * smoothstep(0.15, 0.85, v_sky) * mix(0.55, 1.0, v_sea);
 	if (NORMAL.y > 0.5) {
@@ -266,11 +295,16 @@ void vertex() {
 			float lmax;
 			float steep;
 			sea_state(v_sea, lmax, steep);
-			// Keep the swell low enough that it does not lift off the shore
-			// (the voxel water has no depth information per vertex).
-			vec3 d = gerstner(world.xz, t, lmax, steep, v_calm * 0.42);
+			// Depth under this vertex (mesher): nothing on the shore, the swell
+			// building over the first metres, growing a little as it shoals
+			// (Green's law) before it breaks, full over deep water.
+			float h = UV.x;
+			v_shoal = smoothstep(0.6, 2.0, h) * (1.0 - smoothstep(2.5, 7.0, h));
+			v_env = smoothstep(0.0, 2.6, h) * (1.0 + 0.35 * v_shoal);
+			vec3 d = gerstner(world.xz, t, lmax, steep, v_calm * v_env, v_shoal);
 			world += d;
 			v_height = d.y;
+			v_amp = 1.6 * steep * lmax / TAU * v_calm * v_env;
 		}
 		VERTEX = (inverse(MODEL_MATRIX) * vec4(world, 1.0)).xyz;
 	}
@@ -407,9 +441,8 @@ void fragment() {
 			float lmax;
 			float steep;
 			sea_state(v_sea, lmax, steep);
-			vec3 gn = gerstner_normal(p, t, lmax, steep, v_calm * 0.42, lod, jac);
-			// Normals keep more relief than the (shore-safe) geometry.
-			gn.xz *= 1.3;
+			// Even the calm water at the very edge keeps a little relief.
+			vec3 gn = gerstner_normal(p, t, lmax, steep, v_calm * max(v_env, 0.25), v_shoal, lod, jac);
 			vec2 g = chop(p, t, lod, mix(0.25, 1.0, v_calm / max(wave_scale, 1e-3)) * min(wave_scale, 1.5));
 			g += rain_ripples(p, t, rain_amount) * (1.0 - smoothstep(0.03, 0.12, lod));
 			n = normalize(vec3(gn.x - g.x, gn.y, gn.z - g.y));
@@ -421,12 +454,30 @@ void fragment() {
 				float tex = n_fbm2(sp * 1.3 - vec2(t * 0.25, 0.0));
 				float fold = smoothstep(0.75, 0.15, jac + (tex - 0.5) * 0.6);
 				foam = fold * smoothstep(0.4, 0.95, ws) * smoothstep(0.35, 0.65, tex) * v_calm;
+				// Wind tears the tops off the highest crests of each wave set.
+				if (v_amp > 0.03) {
+					float cap = smoothstep(0.4, 0.85, v_height / v_amp) * smoothstep(0.5, 1.0, ws);
+					foam = max(foam, cap * smoothstep(0.3, 0.6, tex + cap * 0.2) * v_calm);
+				}
+			}
+			// Shoaling crests spill over: foam on the leading face of the
+			// highest crests where the swell runs into shallow water.
+			if (v_amp > 0.03 && v_shoal * v_sea > 0.01) {
+				float c = v_height / v_amp;
+				float spill = smoothstep(0.35, 0.8, c) * v_shoal * v_sea;
+				float tex2 = n_fbm2(p * 1.6 + vec2(t * 0.35, -t * 0.2));
+				foam = max(foam, spill * smoothstep(0.3, 0.6, tex2 + spill * 0.25) * (0.5 + 0.5 * clamp(wind_strength, 0.0, 1.0)));
 			}
 		}
 		// Body colour: light scattered back out of the water. Looking straight
 		// down you see deeper (darker, greener); out of the sky light it is dark.
 		float facing = clamp(dot(n, view_dir_world), 0.0, 1.0);
-		vec3 body = mix(shallow_color, deep_color, facing) * (0.35 + 0.65 * v_sky);
+		float dark = clamp(dark_ocean_amount, 0.0, 1.0);
+		vec3 sh_col = mix(shallow_color, vec3(0.008, 0.026, 0.024), dark);
+		vec3 dp_col = mix(deep_color, vec3(0.002, 0.008, 0.009), dark);
+		vec3 absorb = absorption * mix(1.0, 3.2, dark);
+		float turb = mix(turbidity, 1.4, dark);
+		vec3 body = mix(sh_col, dp_col, facing) * (0.35 + 0.65 * v_sky);
 		vec3 albedo = body;
 		vec3 emission = vec3(0.0);
 		bool from_above = top && CAMERA_POSITION_WORLD.y > v_world.y - 0.05;
@@ -454,12 +505,12 @@ void fragment() {
 				thick_r = 60.0;
 			}
 			float path = thick_r + depth;   // down to the bed and back up for its light
-			vec3 trans = exp(-absorption * path * 0.5);
+			vec3 trans = exp(-absorb * path * 0.5);
 			vec3 under = textureLod(refr_tex, uv, clamp(path * 0.15, 0.0, 3.0)).rgb;
 			// Caustics on the bed, fading with depth and out of the sun.
 			float cst = caustic(bed.xz + n.xz * 0.6, t) * caustics * exp(-depth * 0.22) * smoothstep(0.02, 0.6, depth);
 			under *= 1.0 + cst * 1.6 * day * v_sky * v_calm / max(wave_scale, 0.3);
-			float scatter = 1.0 - exp(-turbidity * path);
+			float scatter = 1.0 - exp(-turb * path);
 			// Shallows: waves steepen and break in lines rolling up the beach,
 			// with a fringe of foam where the water meets the shore.
 			float shore = 1.0 - smoothstep(0.0, 2.4, depth);
@@ -467,9 +518,14 @@ void fragment() {
 			float band = sin(depth * 4.2 - t * 1.25 + wobble);
 			// Breakers belong to the sea (and grow with the wind), not to ponds.
 			float lines = smoothstep(0.72, 0.97, band) * shore * smoothstep(0.05, 0.5, depth) * v_calm * v_sea * (0.45 + 0.55 * clamp(wind_strength, 0.0, 1.0));
-			float edge = 1.0 - smoothstep(0.0, 0.35, min(depth, thick));
+			float edge = 1.0 - smoothstep(0.0, 0.16, min(depth, thick));
 			float speck = n_fbm2(v_world.xz * 2.4 + vec2(t * 0.2, -t * 0.15));
-			float sf = shore_foam * (lines * smoothstep(0.35, 0.6, speck) + edge * smoothstep(0.3, 0.55, speck + edge * 0.3));
+			// Swash: a foam line that runs up the beach and slides back, out of
+			// step along the shore, as each wave set arrives.
+			float sw_phase = t * 0.55 + n_value2(v_world.xz * 0.08) * 6.0;
+			float sw_d = (0.5 + 0.5 * sin(sw_phase)) * 0.3 * (0.4 + 0.6 * v_sea);
+			float swash = exp(-abs(min(depth, thick) - sw_d) * 14.0) * smoothstep(0.25, 0.6, speck + 0.2) * (0.5 + 0.5 * v_sea);
+			float sf = shore_foam * (lines * smoothstep(0.35, 0.6, speck) + edge * 0.7 * smoothstep(0.4, 0.62, speck + edge * 0.15) + swash * 0.8);
 			foam = max(foam, clamp(sf, 0.0, 1.0));
 			// Steeper normals over the shallows (shoaling), calmer right at the edge.
 			n = normalize(mix(n, vec3(0.0, 1.0, 0.0), edge * 0.6));
@@ -508,12 +564,14 @@ void fragment() {
 			float crest = clamp(v_height / 0.25 + 0.35, 0.0, 1.0);
 			float back = pow(clamp(dot(-view_dir_world, -sun_direction) * 0.5 + 0.5 + 0.0, 0.0, 1.0), 4.0);
 			float back2 = pow(clamp(dot(view_dir_world.xz, -sun_direction.xz) * 0.5 + 0.5, 0.0, 1.0), 3.0);
-			vec3 sss = scatter_color * sun_radiance * crest * (back * 0.6 + back2 * 0.4) * (1.0 - ndv * 0.5) * 0.35 * v_calm * v_sky;
+			vec3 sss = scatter_color * (1.0 - dark * 0.8) * sun_radiance * crest * (back * 0.6 + back2 * 0.4) * (1.0 - ndv * 0.5) * 0.35 * v_calm * v_sky;
 			emission = under * trans * (1.0 - fres) + refl * fres + sun_spec + sss;
 			emission *= 1.0 - foam;
 			albedo = body * scatter;
-			// The shoreline fades out instead of ending in a hard voxel edge.
-			ALPHA = smoothstep(0.0, 0.12, min(depth, thick));
+			// The shoreline fades out along the terrain contour (the skirt
+			// carries the surface over the ground), with a ragged wet edge.
+			float rag = n_value2(v_world.xz * 1.3 + vec2(t * 0.04, 0.0)) * 0.12;
+			ALPHA = smoothstep(0.0, 0.1 + rag, min(depth, thick));
 		} else if (top) {
 			// From below: Snell's window shows the world above, outside it the
 			// surface mirrors the dark water (total internal reflection).
@@ -539,7 +597,8 @@ void fragment() {
 			emission = sky(reflect(-view_dir_world, n)) * 0.25 * v_sky;
 		}
 		ALBEDO = mix(albedo, vec3(0.8, 0.83, 0.85), foam);
-		EMISSION = emission;
+		// Foam scatters the sky light too (it never goes black under a storm sky).
+		EMISSION = emission + foam * (sky_zenith_color * 0.35 + sky_horizon_color * 0.25) * mix(0.3, 1.0, v_sky);
 		NORMAL = normalize((VIEW_MATRIX * vec4(top && !from_above ? -n : n, 0.0)).xyz);
 		// Reflections are the shader's own (SSR + sky, above): no engine IBL.
 		SPECULAR = mix(0.0, 0.1, foam);

@@ -786,7 +786,23 @@ func _task_mesh(k: Vector3i, neighbours: Array, densities: Array, version: int) 
 			var wz := o.z + z
 			surface[x + z * Chunk.SIZE] = int(gen.column(wx, wz, detail, ridge).x) if gen.in_bounds(wx, wz) else -64
 			biomes[x + z * Chunk.SIZE] = gen.surface_biome_at(wx, wz)
-	var result := ChunkMesher.build(neighbours, surface, o.y)
+	# Ground heights at the column corners: the water depth that shapes the waves.
+	var ground := PackedFloat32Array()
+	var own: PackedByteArray = neighbours[13]
+	if own.has(Blocks.WATER):
+		const GW := Chunk.SIZE + 1
+		ground.resize(GW * GW)
+		for cz in GW:
+			for cx in GW:
+				var h: float
+				if cx < Chunk.SIZE and cz < Chunk.SIZE:
+					h = surface[cx + cz * Chunk.SIZE]
+				elif gen.in_bounds(o.x + cx, o.z + cz):
+					h = gen.column(o.x + cx, o.z + cz, detail, ridge).x
+				else:
+					h = -64.0
+				ground[cx + cz * GW] = h + 1.0
+	var result := ChunkMesher.build(neighbours, surface, o.y, ground)
 	var smooth := SmoothMesher.build(neighbours, densities, _sky_heights(surface, o), biomes, o, dimension)
 	if smooth.has("terrain"):
 		result["terrain"] = smooth["terrain"]

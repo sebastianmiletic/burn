@@ -244,3 +244,49 @@ func test_generation_v3_timing() -> void:
 				g.generate(Vector3i(x, y, z))
 				count += 1
 	print("      v3 generate: %.2f ms/chunk" % [(Time.get_ticks_usec() - t0) / 1000.0 / count])
+
+
+## A pond in smooth ground: the water surface runs one cell into the ground all
+## round (the shore skirt, flat and waveless), and the wave depth is 0 on the shore.
+func test_water_surface_skirts_the_shore() -> void:
+	var c := Chunk.empty()
+	for z in 16:
+		for x in 16:
+			for y in 6:
+				c[Chunk.index(x, y, z)] = Blocks.SAND
+	for z in range(5, 11):
+		for x in range(5, 11):
+			for y in range(2, 6):
+				c[Chunk.index(x, y, z)] = Blocks.WATER
+	var neighbours := []
+	neighbours.resize(27)
+	for i in 27:
+		neighbours[i] = PackedByteArray()
+	neighbours[13] = c
+	var surface := PackedInt32Array()
+	surface.resize(256)
+	surface.fill(5)
+	var ground := PackedFloat32Array()
+	ground.resize(17 * 17)
+	ground.fill(6.0)
+	for z in range(5, 12):
+		for x in range(5, 12):
+			ground[x + z * 17] = 2.0
+	var result := ChunkMesher.build(neighbours, surface, 0, ground)
+	check(result.has("liquid"), "pond has a water surface")
+	var verts: PackedVector3Array = result["liquid"][Mesh.ARRAY_VERTEX]
+	var uvs: PackedVector2Array = result["liquid"][Mesh.ARRAY_TEX_UV]
+	var cells := {}
+	var deep := 0
+	for i in verts.size():
+		var v := verts[i]
+		check(absf(v.y - 5.0 - ChunkMesher.WATER_TOP) < 1e-4, "every surface vertex sits at the water level")
+		var on_shore := v.x <= 5.0 or v.x >= 11.0 or v.z <= 5.0 or v.z >= 11.0
+		if on_shore:
+			check_eq(uvs[i].x, 0.0, "no waves on the shoreline")
+		elif uvs[i].x > 3.0:
+			deep += 1
+		if i % 4 == 0:
+			cells[Vector2i(floori(v.x + 0.5), floori(v.z + 0.5))] = true
+	check(deep > 0, "open water carries its depth")
+	check_eq(cells.size(), 8 * 8, "36 water cells plus a ring of 28 skirt cells")
