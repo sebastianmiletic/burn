@@ -99,6 +99,8 @@ static func register(items: Dictionary, recipes: Dictionary) -> void:
 		if not items.has(id):
 			var d: Dictionary = (ITEMS[id] as Dictionary).duplicate()
 			d["model_script"] = MODEL
+			if d.has("rod_tier"):
+				d["use_script"] = ROD_USE
 			items[id] = d
 	for rid: String in RECIPES:
 		if not recipes.has(rid):

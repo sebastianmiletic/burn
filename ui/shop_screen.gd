@@ -2,7 +2,9 @@ class_name ShopScreen
 extends UiModal
 ## Trade, opened by Events.shop_open(kind). The merchant buys and sells; the
 ## blacksmith lets you use his forge: "blacksmith" opens the crafting book of
-## the village smithy (anvil + furnace) instead.
+## the village smithy (anvil + furnace) instead. "trade:<net id>" trades with
+## one villager by their profession (Professions.TRADES via Trading): their
+## own wares, stock and appetite, priced by the village's opinion of you.
 
 var kind := "merchant"
 var _tabs: TabContainer
@@ -10,6 +12,8 @@ var _gold: Label
 var _status: Label
 var _tooltip: ItemTooltip
 var _panel: ItemStyle.OrnatePanel
+## Villager trade ("trade:<id>"): Trading.who_of(npc), else empty (merchant shop).
+var _who := {}
 
 
 func _init() -> void:
@@ -47,6 +51,7 @@ func _build() -> void:
 
 func _install_crafting() -> void:
 	CraftingScreen.ensure(self)
+	PetNameDialog.ensure(self)
 
 
 func open_shop(shop_kind: String) -> void:
@@ -55,12 +60,36 @@ func open_shop(shop_kind: String) -> void:
 		# The smith's forge is a crafting station you may use.
 		UiContext.emit_event("station_open", ["smithy", null])
 		return
+	_who = {}
 	_panel.title = "MERCHANT"
+	if kind.begins_with("trade:"):
+		var npc := _villager(int(kind.trim_prefix("trade:")))
+		if npc == null:
+			return
+		_who = Trading.who_of(npc)
+		_panel.title = String(npc.call("role_title")).to_upper()
 	open()
 
 
+func _villager(id: int) -> Node:
+	var p := UiContext.player() as Entity
+	var w := p.world() if p != null else null
+	return w.entity(id) as Node if w != null else null
+
+
+func _life() -> CharacterLife:
+	return CharacterLife.of(UiContext.player())
+
+
+func _day() -> int:
+	var p := UiContext.player() as Entity
+	var w := p.world() if p != null else null
+	return w.day() if w != null else 0
+
+
 func _on_open() -> void:
-	_status.text = "Coin for comfort. Comfort for coin."
+	_status.text = "Coin for comfort. Comfort for coin." if _who.is_empty() else "%s — the village calls you %s." % [
+		Professions.greeting(String(_who["profession"])), CharacterLife.tier_name(_life().tier(String(_who["village"])))]
 	_status.add_theme_color_override("font_color", ItemStyle.TEXT_DIM)
 	ItemIcons.prewarm()
 	_rebuild(0)
@@ -78,8 +107,12 @@ func _rebuild(tab := 0) -> void:
 		c.queue_free()
 	var inv := UiContext.inventory() as Inventory
 	_gold.text = "%s  ◎" % UiTheme.format_int(inv.gold if inv != null else 0)
-	_build_buy(inv)
-	_build_sell(inv)
+	if not _who.is_empty():
+		_build_trade_buy(inv)
+		_build_trade_sell(inv)
+	else:
+		_build_buy(inv)
+		_build_sell(inv)
 	_tabs.current_tab = clampi(tab, 0, _tabs.get_tab_count() - 1)
 
 
@@ -145,6 +178,49 @@ func _build_sell(inv: Inventory) -> void:
 			_item_row(box, item, "×%d   ·   [color=#ffd36b]%d gold[/color] each" % [int(item.get("count", 1)), price], "Sell one", true, func() -> void: _sell(i))
 	if not any:
 		box.add_child(UiTheme.label("  Nothing the merchant wants. Ore, ingots and gems fetch the best prices.", UiTheme.SIZE_BODY, ItemStyle.TEXT_DIM))
+
+
+## A villager's own wares (Trading.sell_offers): stock per day, some locked by reputation.
+func _build_trade_buy(inv: Inventory) -> void:
+	var box := _list("Buy")
+	var gold := inv.gold if inv != null else 0
+	for o: Dictionary in Trading.sell_offers(_life(), _who, _day()):
+		var id := String(o["item"])
+		var price := int(o["price"])
+		var locked := int(o["locked"])
+		var sub := "[color=#ffd36b]%d gold[/color]   ·   %d left today" % [price, int(o["stock"])]
+		if locked > 0:
+			sub = "[color=#%s]Only for a %s of the village[/color]" % [ItemStyle.TEXT_DIM.to_html(false), CharacterLife.tier_name(locked)]
+		_item_row(box, {"id": id, "count": 1}, sub, "Buy", locked == 0 and int(o["stock"]) > 0 and gold >= price,
+			func() -> void: _trade(true, id))
+
+
+## What the villager wants (Trading.buy_offers), shown when you carry some.
+func _build_trade_sell(inv: Inventory) -> void:
+	var box := _list("Sell")
+	var any := false
+	for o: Dictionary in Trading.buy_offers(_life(), _who, _day()):
+		var id := String(o["item"])
+		var have := inv.count_of(id) if inv != null else 0
+		if have <= 0:
+			continue
+		any = true
+		_item_row(box, {"id": id, "count": have}, "×%d   ·   [color=#ffd36b]%d gold[/color] each   ·   wants %d more today" % [have, int(o["price"]), int(o["wants"])],
+			"Sell one", int(o["wants"]) > 0, func() -> void: _trade(false, id))
+	if not any:
+		box.add_child(UiTheme.label("  Nothing they want. They buy: " + ", ".join(Trading.buy_offers(_life(), _who, _day()).slice(0, 6).map(
+			func(o: Dictionary) -> String: return ItemDB.display_name(String(o["item"])))), UiTheme.SIZE_BODY, ItemStyle.TEXT_DIM))
+
+
+## Trades run on the trading player's own inventory (as with every shop).
+func _trade(buying: bool, id: String) -> void:
+	var inv := UiContext.inventory() as Inventory
+	if inv == null:
+		return
+	var err := Trading.buy(inv, _life(), _who, id, 1, _day()) if buying else Trading.sell(inv, _life(), _who, id, 1, _day())
+	if err == "" and buying:
+		inv.changed.emit()
+	_feedback(err == "", ("Bought %s." if buying else "Sold %s.") % ItemDB.display_name(id), err)
 
 
 func _buy(id: String) -> void:
