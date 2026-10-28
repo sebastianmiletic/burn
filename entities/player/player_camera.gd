@@ -11,9 +11,15 @@ var distance := 4.4
 var min_distance := 1.8
 var max_distance := 9.0
 var shoulder := 0.55
-var pivot_height := 1.55
+const PIVOT_HEIGHT := 1.55
+const EYE_FORWARD := 0.06
+var pivot_height := PIVOT_HEIGHT
 var first_person := true
 var eye_height := 1.62
+## How far ahead of the body's axis the eye sits (a swimmer's head is at the front).
+var eye_forward := EYE_FORWARD
+## Height of the chest above the focus: the eye falls back to it when blocked.
+var chest_height := 1.0
 ## Walking speed (m/s) and grounded state, set by the Player each frame for head bob.
 var move_speed := 0.0
 var grounded := true
@@ -165,7 +171,7 @@ func _follow_first_person(world: VoxelWorld, focus: Vector3, delta: float) -> vo
 	var basis := Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, pitch)
 	var bob_k := _bob * float(Settings.get_value("gameplay", "head_bob")) * (0.0 if Settings.motion_scale() < 1.0 else 1.0)
 	var bob := Vector3(cos(_bob_phase) * 0.035, absf(sin(_bob_phase)) * 0.05 - 0.025, 0.0) * bob_k
-	var target := focus + Vector3(0, eye_height + _dip * Settings.motion_scale(), 0) + Basis(Vector3.UP, yaw) * Vector3(0, 0, -0.06)
+	var target := focus + Vector3(0, eye_height + _dip * Settings.motion_scale(), 0) + Basis(Vector3.UP, yaw) * Vector3(0, 0, -eye_forward)
 	# Smooth vertical steps (stairs, terrain) without lagging horizontally.
 	if _eye == Vector3.ZERO or _eye.distance_to(target) > 3.0:
 		_eye = target
@@ -175,7 +181,7 @@ func _follow_first_person(world: VoxelWorld, focus: Vector3, delta: float) -> vo
 	_eye.y = maxf(_eye.y, target.y - 0.05)
 	var eye := _eye + basis * bob
 	if world != null:
-		eye = _clear_of_ground(world, eye, focus + Vector3(0, 1.0, 0))
+		eye = _clear_of_ground(world, eye, focus + Vector3(0, chest_height, 0))
 	global_transform = Transform3D(basis, eye)
 	rotate_object_local(Vector3.FORWARD, sin(_bob_phase) * 0.006 * bob_k)
 	_trauma = maxf(0.0, _trauma - delta * 1.4)

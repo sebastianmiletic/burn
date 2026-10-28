@@ -336,9 +336,10 @@ func _ogygia(p: Player) -> void:
 	var hp := p.health
 	_check(await _wait_for(func() -> bool: return p.swimming, 15.0), "falling into the sea starts swimming")
 	await _wait(4.0)
-	var eye := p.global_position.y + 1.62
+	var eye := p.global_position.y + p.eye_height()
 	_check(p.swimming and absf(eye - p.water_surface - 0.2) < 0.35, "treading water with the eyes above the surface (eye %.2f, surface %.2f)" % [eye, p.water_surface])
 	_check(p.health >= hp, "diving into deep water does no fall damage")
+	_check(p.lie == 1.0 and p.hit_height < 0.8, "swimming lies the body flat (box %.2f m tall)" % p.hit_height)
 	# Swim forward where the camera looks (down-forward dives). Earlier
 	# dialogues may have left the controls with the UI: take them back.
 	Events.dialog_close.emit()

@@ -178,6 +178,12 @@ func _body_clear(world: VoxelWorld, pos: Vector3) -> bool:
 	return true
 
 
+## Whether the body (at its current size) would stand in the open at `pos`:
+## owners resizing the box (a swimmer standing up) check for room first.
+func fits(world: VoxelWorld, pos: Vector3) -> bool:
+	return world != null and _body_clear(world, pos)
+
+
 ## How deep the body sits in smooth ground (sum of field excess at its sample points).
 func _penetration(world: VoxelWorld, pos: Vector3) -> float:
 	var h := half_extents
