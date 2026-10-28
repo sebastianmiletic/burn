@@ -693,6 +693,7 @@ func _resolve_swing(info: Dictionary) -> void:
 			hits.append(e.net_id)
 	if hits.is_empty() and pvp_hits.is_empty():
 		return
+	inventory.buffs.erase("invisible")   # striking breaks the Veil
 	var crit := randf() < float(a["crit"])
 	var mult := arcana.power_mult(String(info.get("kind", ""))) if arcana != null else 1.0 + rank * 0.06
 	var amount := base * mult * (1.75 if crit else 1.0)

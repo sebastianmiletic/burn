@@ -45,6 +45,9 @@ static func play(world: Node3D, spell: String, pos: Vector3, dir: Vector3, power
 				ModelKit.burst(world, p + Vector3(0, 1.0, 0), 30, 0.5, 2.0, 0.3, hot, cool, 0.9)
 			ModelKit.flash_light(world, pos, cool, 3.0, 7.0, 0.6)
 			Audio.play("potion", pos, -2.0, 1.3)
+		"veil", "flight":
+			ModelKit.burst(world, pos, 40, 0.6, 2.5, 0.4, hot, cool, 0.6)
+			Audio.play("rustle" if spell == "veil" else "jump", pos, -6.0, 0.7)
 		"ward", "war_cry":
 			ModelKit.burst(world, pos, 60, 1.0, 3.0, 0.4, hot, cool, 0.8)
 			ModelKit.flash_light(world, pos, cool, 4.0, 8.0, 0.5)

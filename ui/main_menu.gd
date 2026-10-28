@@ -274,6 +274,28 @@ func _close_panel() -> void:
 	f.grab_focus()
 
 
+## Warrior / Archer / Mage, chosen before loading (solo too). Kept in the
+## profile (PlayerProfile) and applied when the world loads (GameWorld).
+func _role_picker() -> Control:
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var pick := OptionButton.new()
+	for r: String in Roles.ORDER:
+		pick.add_item("Role: %s (%s)" % [Roles.role_name(r), String(Roles.ROLES[r]["weapon"])])
+	pick.select(maxi(0, Roles.ORDER.find(PlayerProfile.role())))
+	pick.custom_minimum_size = Vector2(320, 34)
+	box.add_child(pick)
+	var hint := UiTheme.label(String(Roles.ROLES[PlayerProfile.role()]["desc"]), UiTheme.SIZE_SMALL, UiTheme.TEXT_DIM)
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD
+	hint.custom_minimum_size.x = 320
+	box.add_child(hint)
+	pick.item_selected.connect(func(i: int) -> void:
+		var r: String = Roles.ORDER[clampi(i, 0, Roles.ORDER.size() - 1)]
+		PlayerProfile.set_role(r)
+		hint.text = String(Roles.ROLES[r]["desc"]))
+	return box
+
+
 func _panel_button(text: String, cb: Callable, width := 300.0, size_px := 17) -> MenuOption:
 	var b := MenuOption.new(text.to_upper(), cb, size_px)
 	b.custom_minimum_size = Vector2(width, size_px * 2.4)
@@ -440,6 +462,7 @@ func _select_run(info: Dictionary) -> void:
 		_details.add_child(UiTheme.label("from an earlier version (%s)" % str(info["id"]).replace("_", " "), UiTheme.SIZE_SMALL, UiTheme.TEXT_FAINT))
 	_details.add_child(UiTheme.spacer(8))
 	var id := _selected_id
+	_details.add_child(_role_picker())
 	_play_button = _panel_button("Play", func() -> void: _play_run(id), 320.0, 18)
 	_details.add_child(_play_button)
 	var host := _panel_button("Host for friends", func() -> void: UiContext.game_call("open_lobby_host", [id]), 320.0, 15)

@@ -47,7 +47,9 @@ func interact_prompt(_p: Node) -> String:
 func local_interact(_p: Node) -> void:
 	if station_kind == "cauldron":
 		Audio.play("potion", global_position, -6.0)
-		BrewingScreen.open_for(self)
+		# TODO(roles-spells): the step-by-step brewing screen (Brewing) has no UI yet;
+		# until it does the cauldron opens like the alchemy table.
+		Events.station_open.emit("alchemy", self)
 		return
 	Audio.play("chest" if station_kind == "workbench" else ("hit_metal" if station_kind == "anvil" else ("fire" if station_kind == "campfire" else "potion")), global_position, -6.0)
 	Events.station_open.emit(station_kind, self)

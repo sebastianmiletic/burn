@@ -65,6 +65,13 @@ const SPELLS := {
 	"meteor": {"name": "Meteor", "glyph": "spiral", "ranks": {"mage": 8}, "book": "book_spells_master", "mana": 70.0, "cooldown": 30.0,
 		"kind": "meteor", "power": 90.0, "radius": 5.0,
 		"desc": "Call a burning stone down on where you aim."},
+	# --- Every role, from books ------------------------------------------------------
+	"veil": {"name": "Veil", "glyph": "veil", "ranks": {"warrior": 4, "archer": 4, "mage": 3}, "book": "book_spells_adept", "mana": 45.0, "cooldown": 45.0,
+		"kind": "buff_self", "buff": "invisible", "seconds": 15.0,
+		"desc": "Invisibility: monsters lose sight of you until it fades or you strike."},
+	"flight": {"name": "Flight", "glyph": "rise", "ranks": {"warrior": 7, "archer": 6, "mage": 5}, "book": "book_spells_master", "mana": 60.0, "cooldown": 60.0,
+		"kind": "buff_self", "buff": "flight", "seconds": 12.0,
+		"desc": "Fly: hold jump to climb, sprint to dive, and you never take fall damage while it lasts."},
 }
 
 

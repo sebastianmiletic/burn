@@ -22,6 +22,8 @@ const GLYPHS := {
 	"vee": {"name": "Vee", "how": "Down to a point and back up (a V)."},
 	"caret": {"name": "Peak", "how": "Up to a point and back down (a ^)."},
 	"wave": {"name": "Serpent", "how": "An S from top to bottom."},
+	"rise": {"name": "Rising Line", "how": "One straight vertical stroke (either way)."},
+	"veil": {"name": "Veil Line", "how": "One straight horizontal stroke (either way)."},
 }
 
 const CLOSED := ["circle", "triangle", "square"]
@@ -52,6 +54,12 @@ static func canonical(glyph: String) -> PackedVector2Array:
 			pts = PackedVector2Array([Vector2(-0.8, -1), Vector2(0, 1), Vector2(0.8, -1)])
 		"caret":
 			pts = PackedVector2Array([Vector2(-0.8, 1), Vector2(0, -1), Vector2(0.8, 1)])
+		"rise":
+			for i in 9:
+				pts.append(Vector2(0, 1.0 - 2.0 * float(i) / 8.0))
+		"veil":
+			for i in 9:
+				pts.append(Vector2(-1.0 + 2.0 * float(i) / 8.0, 0))
 		"wave":
 			for i in 41:
 				var t := float(i) / 40.0
@@ -66,14 +74,15 @@ static func _ensure_templates() -> void:
 		var base := resample(canonical(g), N)
 		var variants: Array = []
 		if g in CLOSED:
-			# Every starting corner/point, both directions.
+			# Every starting point, both directions. Every point, not a coarse
+			# subset: a start a point or two off costs as much distance as the
+			# difference between a square and a circle.
 			var ring := base.slice(0, N - 1)
 			for dir in 2:
 				var r := ring.duplicate()
 				if dir == 1:
 					r.reverse()
-				for s in 16:
-					var off := (s * r.size()) / 16
+				for off in r.size():
 					var v := PackedVector2Array()
 					for i in r.size():
 						v.append(r[(i + off) % r.size()])

@@ -41,6 +41,10 @@ var _no_arrow_warned := false
 func _ready() -> void:
 	_recompute(false)
 	mana = max_mana
+	if player != null and player.is_local:
+		var overlay := GlyphOverlay.new()
+		overlay.arcana = self
+		add_child(overlay)
 
 
 func _now() -> float:
@@ -344,7 +348,13 @@ func used_air_dash() -> void:
 
 
 func no_fall_damage() -> bool:
-	return _gliding or player.inventory.buff_active("featherfall")
+	return _gliding or player.inventory.buff_active("featherfall") or player.inventory.buff_active("flight")
+
+
+## Flight (the Flight glyph): hold jump to climb, sprint to dive, otherwise hover.
+static func flight_velocity_y(vy: float, climb: bool, dive: bool, delta: float) -> float:
+	var target := 6.0 if climb else (-6.0 if dive else 0.0)
+	return lerpf(vy, target, 1.0 - exp(-6.0 * delta))
 
 
 ## A jump pressed in the air: wall-kick off a wall you are touching, else a double jump.
@@ -372,6 +382,13 @@ func try_air_jump() -> bool:
 ## Glide and the per-airtime counters (before VoxelBody.step).
 func movement(delta: float) -> void:
 	var body := player.body
+	if player.inventory.buff_active("flight") and not player.swimming:
+		var held := player._input_enabled
+		body.velocity.y = flight_velocity_y(body.velocity.y, held and Input.is_action_pressed("jump"),
+			held and Settings.action_held("sprint") and not body.on_floor, delta)
+		player._fall_speed = 0.0
+		_gliding = false
+		return
 	if body.on_floor or player.swimming:
 		_air_jumps = 1
 		_air_dashes = 1
